@@ -1,0 +1,16 @@
+{
+  "name": "byteforge88/kraoxpe",
+  "description": "KraoxPE core made with PHP",
+  "type": "project",
+  "license": "LGPL-3.0",
+  "autoload": {
+    "psr-4": {
+      "core\\": "src/core/"
+    }
+  },
+  "require": {
+    "php": "8.2.33",
+    "php-64bit": "*",
+    "ext-pmmpthread": "6.3.0"
+  }
+}
