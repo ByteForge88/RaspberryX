@@ -1,16 +1,32 @@
 {
-  "name": "byteforge88/kraoxpe",
-  "description": "KraoxPE core made with PHP",
+  "name": "byteforge88/raspberryx",
+  "description": "Server software for Minecraft: Bedrock Edition written in PHP",
   "type": "project",
   "license": "LGPL-3.0",
+  "require": {
+    "php": "~8.5.12",
+    "php-64bit": "*",
+    "ext-webrtc": "*",
+    "ext-openssl": "*",
+    "ext-json": "*",
+    "react/http": "^1.11.1",
+    "firebase/php-jwt": "^7.2.1",
+    "ext-zlib": "*",
+    "symfony/filesystem": "*",
+    "symfony/yaml": "*"
+  },
+  "suggest": {
+    "ext-pcntl": "Recommended for signal handling on Linux."
+  },
   "autoload": {
     "psr-4": {
-      "core\\": "src/core/"
+      "raspberry\\": "src/raspberry/"
     }
   },
-  "require": {
-    "php": "8.2.33",
-    "php-64bit": "*",
-    "ext-pmmpthread": "6.3.0"
+  "scripts": {
+    "make-server": [
+      "@composer dump-autoload --optimize",
+      "@php -d phar.readonly=0 build/make-server.php"
+    ]
   }
 }

@@ -1,2 +1,8 @@
 .idea/*
 vendor/*
+bin/*
+worlds/*
+data/server-identity.pem
+RaspberryX.phar
+.RaspberryX-build-*.phar
+server.log
