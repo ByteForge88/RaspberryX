@@ -35,6 +35,7 @@ use raspberry\network\mcpe\protocol\AddPlayerPacket;
 use raspberry\network\mcpe\protocol\MoveActorAbsolutePacket;
 use raspberry\network\mcpe\protocol\PlayerListPacket;
 use raspberry\network\mcpe\protocol\RemoveActorPacket;
+use raspberry\network\mcpe\protocol\TextPacket;
 use raspberry\network\nethernet\NetherNetIdentity;
 use raspberry\network\nethernet\NetherNetTransport;
 
@@ -49,6 +50,7 @@ use raspberry\lang\Language;
 
 use raspberry\utils\Config;
 use raspberry\utils\Logger;
+use raspberry\utils\TextFormat;
 
 use raspberry\block\BlockStateRegistry;
 
@@ -62,6 +64,7 @@ use LogicException;
 use UnexpectedValueException;
 use InvalidArgumentException;
 
+use function count;
 use function filter_var;
 use function function_exists;
 use function hrtime;
@@ -324,6 +327,7 @@ class Server{
                 $player->spawnTo($other);
             }
         }
+        $this->broadcastTranslation(TextFormat::YELLOW . "%multiplayer.player.joined", [$player->getName()]);
     }
 
     /**
@@ -331,10 +335,48 @@ class Server{
      */
     public function onPlayerQuit(Player $player) : void{
         $player->despawnFromAll();
+        $this->broadcastTranslation(TextFormat::YELLOW . "%multiplayer.player.left", [$player->getName()], $player);
 
         foreach($this->getInGamePlayers() as $other){
             if($other !== $player){
                 $other->getNetworkSession()->sendPlayerListRemove([$player]);
+            }
+        }
+    }
+
+    /**
+     * Called by NetworkSession with an already cleaned-up chat message.
+     */
+    public function onPlayerChat(Player $player, string $message) : void{
+        $line = "<" . $player->getName() . "> " . $message;
+
+        //$this->logger->info($line);
+        $this->broadcastMessage($line);
+    }
+
+    /**
+     * Sends a plain message to every player in the game and returns how many got it.
+     */
+    public function broadcastMessage(string $message) : int{
+        $players = $this->getInGamePlayers();
+
+        foreach($players as $player){
+            $player->sendMessage($message);
+        }
+
+        return count($players);
+    }
+
+    /**
+     * Sends a message every client translates into its own language.
+     *
+     * @param list<string> $parameters
+     * @param Player|null  $except     a player who should not get it (e.g. the one leaving)
+     */
+    public function broadcastTranslation(string $message, array $parameters = [], ?Player $except = null) : void{
+        foreach($this->getInGamePlayers() as $player){
+            if($player !== $except){
+                $player->sendTranslation($message, $parameters);
             }
         }
     }
@@ -385,7 +427,8 @@ class Server{
             PlayerListPacket::class,
             AddPlayerPacket::class,
             RemoveActorPacket::class,
-            MoveActorAbsolutePacket::class
+            MoveActorAbsolutePacket::class,
+            TextPacket::class
         ] as $packet){
             $this->packetRegistry->register($packet);
         }

@@ -29,6 +29,7 @@ use raspberry\network\mcpe\protocol\AddPlayerPacket;
 use raspberry\network\mcpe\protocol\MoveActorAbsolutePacket;
 use raspberry\network\mcpe\protocol\PlayerListPacket;
 use raspberry\network\mcpe\protocol\RemoveActorPacket;
+use raspberry\network\mcpe\protocol\TextPacket;
 use raspberry\network\mcpe\protocol\types\EntityMetadata;
 use raspberry\network\mcpe\protocol\types\PlayerListEntry;
 use raspberry\network\mcpe\auth\AuthenticatedLogin;
@@ -62,6 +63,9 @@ use function min;
 use function sprintf;
 use function strlen;
 use function usort;
+use function preg_match_all;
+use function preg_replace;
+use function trim;
 
 class NetworkSession{
 
@@ -84,6 +88,9 @@ class NetworkSession{
     public const STATE_CLOSED = 7;
 
     public const COMPRESSION_THRESHOLD = 256;
+
+    /** longest chat message accepted, in characters (the vanilla client allows about this much) */
+    public const CHAT_MAX_LENGTH = 512;
 
     /** chunks sent per tick, so a large view distance does not stall the server */
     private const CHUNKS_PER_TICK = 16;
@@ -109,6 +116,9 @@ class NetworkSession{
     private ?ResourcePackNegotiation $resourcePacks = null;
 
     private ?Player $player = null;
+
+    /** true once the player finished joining; stays true while disconnecting so leaving is still handled */
+    private bool $joined = false;
 
     private int $chunkRadius = 0;
 
@@ -258,6 +268,10 @@ class NetworkSession{
                 }
                 return;
 
+            case ProtocolPacketIds::TEXT_PACKET:
+                $this->handleText($this->decode($buffer, TextPacket::class));
+                return;
+
             case ProtocolPacketIds::RESOURCE_PACKS_INFO_PACKET:
             case ProtocolPacketIds::RESOURCE_PACK_STACK_PACKET:
                 throw new UnexpectedValueException("Client sent a server-only resource-pack packet");
@@ -345,7 +359,7 @@ class NetworkSession{
             return;
         }
 
-        $wasInGame = $this->state === self::STATE_IN_GAME;
+        $wasInGame = $this->joined;
         $reason = $this->closeReason ?? $transportReason;
 
         $this->state = self::STATE_CLOSED;
@@ -369,6 +383,19 @@ class NetworkSession{
         $this->resourcePacks = null;
         $this->chunkQueue = [];
         $this->sentChunks = [];
+    }
+
+    public function sendMessage(string $message) : void{
+        if($message !== ""){
+            $this->sendDataPacket(TextPacket::raw($message));
+        }
+    }
+
+    /**
+     * @param list<string> $parameters
+     */
+    public function sendTranslation(string $message, array $parameters = []) : void{
+        $this->sendDataPacket(TextPacket::translation($message, $parameters));
     }
 
     /**
@@ -469,6 +496,50 @@ class NetworkSession{
         $metadata->setByte(EntityMetadata::KEY_EFFECT_AMBIENCE, 0);
         $metadata->setByte(EntityMetadata::KEY_COLOR_INDEX, 0);
         return $metadata;
+    }
+
+    private function handleText(TextPacket $packet) : void{
+        $player = $this->player;
+
+        if($player === null || $this->state !== self::STATE_IN_GAME){
+            return;
+        }
+
+        if($packet->type !== TextPacket::TYPE_CHAT){
+            throw new UnexpectedValueException("Clients may only send chat messages, got text type {$packet->type}");
+        }
+
+        if($packet->sourceName !== $player->getName() || $packet->xuid !== $player->getXuid()){
+            throw new UnexpectedValueException("Chat message sender does not match the player");
+        }
+
+        $message = self::cleanChatMessage($packet->message);
+
+        if($message === null){
+            $this->server->getLogger()->debug("Session {$this->id}: dropped an invalid or too long chat message");
+            return;
+        }
+
+        if($message !== ""){
+            $this->server->onPlayerChat($player, $message);
+        }
+    }
+
+    /**
+     * Removes colour codes and control characters and trims the message.
+     *
+     * @return string|null null when the message is not valid UTF-8 or longer than CHAT_MAX_LENGTH characters
+     */
+    private static function cleanChatMessage(string $message) : ?string{
+        $message = preg_replace(['/§./su', '/\p{Cc}/u'], '', $message);
+
+        if($message === null){
+            return null;
+        }
+
+        $message = trim($message);
+
+        return preg_match_all('/./su', $message) > self::CHAT_MAX_LENGTH ? null : $message;
     }
 
     private function handleNetworkSettings(RequestNetworkSettingsPacket $request) : void{
@@ -627,6 +698,7 @@ class NetworkSession{
         }
 
         $this->state = self::STATE_IN_GAME;
+        $this->joined = true;
         $this->player->onSpawned();
 
         $this->server->getLogger()->info($this->server->getLanguage()->translate("player.joined", ["player" => $this->getDisplayName()]));

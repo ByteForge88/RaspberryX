@@ -20,6 +20,7 @@ final class Logger{
     public const WARNING = "WARNING";
     public const ERROR = "ERROR";
     public const CRITICAL = "CRITICAL";
+    public const INGAME = "IN-GAME";
 
     private const COLORS = [
         self::DEBUG => "\e[90m",
@@ -27,7 +28,8 @@ final class Logger{
         self::NOTICE => "\e[96m",
         self::WARNING => "\e[93m",
         self::ERROR => "\e[91m",
-        self::CRITICAL => "\e[1;91m"
+        self::CRITICAL => "\e[1;91m",
+        self::INGAME => "\e[0;36m"
     ];
 
     private const RESET = "\e[0m";
@@ -83,13 +85,13 @@ final class Logger{
     }
 
     public function log(string $level, string $message) : void{
-        $line = "[" . date("H:i:s") . "] [{$level}] " . $message;
+        $line = "\e[0;35m" . "[" . date("H:i:s") . "]\e[0m [{$level}]: " . $message;
         $color = $this->colors ? (self::COLORS[$level] ?? "") : "";
 
         fwrite(STDOUT, ($color !== "" ? $color . $line . self::RESET : $line) . PHP_EOL);
 
         if($this->file !== null){
-            fwrite($this->file, "[" . date("Y-m-d H:i:s") . "] [{$level}] " . $message . PHP_EOL);
+            fwrite($this->file, "\e[0;35m" . "[" . date("Y-m-d H:i:s") . "]\e[0m [{$level}]: " . $message . PHP_EOL);
         }
     }
 
