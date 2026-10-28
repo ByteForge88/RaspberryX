@@ -30,6 +30,7 @@ use raspberry\network\mcpe\protocol\MoveActorAbsolutePacket;
 use raspberry\network\mcpe\protocol\PlayerListPacket;
 use raspberry\network\mcpe\protocol\RemoveActorPacket;
 use raspberry\network\mcpe\protocol\TextPacket;
+use raspberry\network\mcpe\protocol\CommandRequestPacket;
 use raspberry\network\mcpe\protocol\types\EntityMetadata;
 use raspberry\network\mcpe\protocol\types\PlayerListEntry;
 use raspberry\network\mcpe\auth\AuthenticatedLogin;
@@ -37,6 +38,7 @@ use raspberry\network\mcpe\compression\PacketCompression;
 use raspberry\network\mcpe\resourcepack\ResourcePackNegotiation;
 use raspberry\network\mcpe\serializer\NetworkChunkSerializer;
 use raspberry\network\mcpe\convert\SkinAdapter;
+use raspberry\network\mcpe\convert\CommandDataAdapter;
 
 use raspberry\entity\Entity;
 use raspberry\entity\Human;
@@ -141,6 +143,10 @@ class NetworkSession{
         $this->id = $id;
         $this->signalingClaims = $signalingClaims;
         $this->compression = new PacketCompression();
+    }
+
+    public function getServer() : Server{
+        return $this->server;
     }
 
     public function getId() : int{
@@ -268,6 +274,10 @@ class NetworkSession{
                 }
                 return;
 
+            case ProtocolPacketIds::COMMAND_REQUEST_PACKET:
+                $this->handleCommandRequest($this->decode($buffer, CommandRequestPacket::class));
+                return;
+
             case ProtocolPacketIds::TEXT_PACKET:
                 $this->handleText($this->decode($buffer, TextPacket::class));
                 return;
@@ -385,6 +395,12 @@ class NetworkSession{
         $this->sentChunks = [];
     }
 
+    public function sendAvailableCommands() : void{
+        if($this->player !== null){
+            $this->sendDataPacket(CommandDataAdapter::createAvailableCommands($this->server->getCommandMap(), $this->player));
+        }
+    }
+
     public function sendMessage(string $message) : void{
         if($message !== ""){
             $this->sendDataPacket(TextPacket::raw($message));
@@ -498,6 +514,21 @@ class NetworkSession{
         return $metadata;
     }
 
+    private function handleCommandRequest(CommandRequestPacket $packet) : void{
+        $player = $this->player;
+
+        if($player === null || $this->state !== self::STATE_IN_GAME){
+            return;
+        }
+
+        $this->server->getLogger()->info($this->server->getLanguage()->translate("player.command", [
+            "player" => $player->getName(),
+            "command" => $packet->command
+        ]));
+
+        $this->server->dispatchCommand($player, $packet->command);
+    }
+
     private function handleText(TextPacket $packet) : void{
         $player = $this->player;
 
@@ -526,7 +557,7 @@ class NetworkSession{
     }
 
     /**
-     * Removes colour codes and control characters and trims the message.
+     * Removes color codes and control characters and trims the message.
      *
      * @return string|null null when the message is not valid UTF-8 or longer than CHAT_MAX_LENGTH characters
      */

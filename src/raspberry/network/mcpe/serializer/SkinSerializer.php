@@ -17,7 +17,6 @@ class SkinSerializer{
 
     public static function write(BinaryWriter $writer, Skin $skin) : void{
         $writer->writeString($skin->skinId);
-        $writer->writeString($skin->playFabId);
         $writer->writeString($skin->resourcePatch);
         $writer->writeUnsignedInt($skin->imageWidth);
         $writer->writeUnsignedInt($skin->imageHeight);

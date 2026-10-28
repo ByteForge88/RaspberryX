@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace raspberry\player;
 
+use raspberry\command\CommandSender;
+
 use raspberry\entity\Human;
 use raspberry\entity\Skin;
 
@@ -15,13 +17,18 @@ use raspberry\network\mcpe\protocol\SetTitlePacket;
 use raspberry\network\mcpe\protocol\TextPacket;
 use raspberry\network\mcpe\protocol\ToastRequestPacket;
 
+use raspberry\permission\PermissionLevel;
+use raspberry\permission\PermissibleTrait;
+use raspberry\permission\PermissionManager;
+
 use raspberry\utils\Uuid;
 
 use raspberry\world\World;
 
 use function is_int;
 
-class Player extends Human{
+class Player extends Human implements CommandSender{
+    use PermissibleTrait;
 
     private NetworkSession $session;
 
@@ -223,6 +230,30 @@ class Player extends Human{
         if($packet->message !== ""){
             $this->session->sendDataPacket($packet);
         }
+    }
+
+    public function isOp() : bool{
+        return $this->session->getServer()->getOperatorList()->isOperator($this->getXuid());
+    }
+
+    public function setOp(bool $op) : void{
+        $operators = $this->session->getServer()->getOperatorList();
+
+        if($op){
+            $operators->add($this->getXuid(), $this->getName());
+        }else{
+            $operators->remove($this->getXuid());
+        }
+
+        $this->session->sendAvailableCommands();
+    }
+
+    public function getPermissionLevel() : PermissionLevel{
+        return $this->isOp() ? PermissionLevel::OPERATOR : PermissionLevel::PUBLIC;
+    }
+
+    protected function getPermissionManager() : PermissionManager{
+        return $this->session->getServer()->getPermissionManager();
     }
 
     public function close() : void{

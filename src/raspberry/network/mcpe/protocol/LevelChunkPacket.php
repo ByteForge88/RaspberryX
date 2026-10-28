@@ -45,6 +45,7 @@ class LevelChunkPacket implements Packet{
         $writer->writeBool(false);
         $writer->writeUnsignedVarInt(0);
         $writer->writeString($this->payload, 16 * 1024 * 1024);
+        $writer->writeBool(false); //client biome update: keep the client's biomes (26.60)
     }
 
     public function decodePayload(BinaryReader $reader) : void{

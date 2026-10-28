@@ -11,6 +11,7 @@ use function function_exists;
 use function fwrite;
 use function sapi_windows_vt100_support;
 use function stream_isatty;
+use function str_replace;
 
 final class Logger{
 
@@ -84,14 +85,25 @@ final class Logger{
         $this->log(self::CRITICAL, $message);
     }
 
+    /**
+     * $message may contain Minecraft colour codes (TextFormat): they are shown as colours in the
+     * console when it supports them, and removed everywhere else.
+     */
     public function log(string $level, string $message) : void{
-        $line = "\e[0;35m" . "[" . date("H:i:s") . "]\e[0m [{$level}]: " . $message;
-        $color = $this->colors ? (self::COLORS[$level] ?? "") : "";
+        $prefix = "\e[0;35m" . "[" . date("H:i:s") . "]\e[0m [{$level}]: ";
 
-        fwrite(STDOUT, ($color !== "" ? $color . $line . self::RESET : $line) . PHP_EOL);
+        if($this->colors){
+            $color = self::COLORS[$level] ?? "";
+
+            $text = str_replace(self::RESET, self::RESET . $color, TextFormat::toAnsi($message));
+
+            fwrite(STDOUT, $color . $prefix . $text . self::RESET . PHP_EOL);
+        }else{
+            fwrite(STDOUT, $prefix . TextFormat::clean($message) . PHP_EOL);
+        }
 
         if($this->file !== null){
-            fwrite($this->file, "\e[0;35m" . "[" . date("Y-m-d H:i:s") . "]\e[0m [{$level}]: " . $message . PHP_EOL);
+            fwrite($this->file, "\e[0;35m" . "[" . date("H:i:s") . "]\e[0m [{$level}]: " . TextFormat::clean($message) . PHP_EOL);
         }
     }
 

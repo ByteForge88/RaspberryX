@@ -118,6 +118,7 @@ class StartGamePacket implements Packet{
         $writer->writeVarInt(0); //editor world type: not an editor world
         $writer->writeBool(false); //created in editor
         $writer->writeBool(false); //exported from editor
+        $writer->writeByte(0);//26.60 update
         $writer->writeVarInt(0); //day cycle lock time
         $writer->writeUnsignedVarInt(0); //education edition offer
         $writer->writeBool(false); //education features enabled

@@ -96,6 +96,7 @@ class AddPlayerPacket implements Packet{
         $writer->writeFloat(0.0); //walk speed
 
         $writer->writeUnsignedVarInt(0); //entity links
+        $writer->writeBool(false); //passenger of block: not riding a block (26.60)
         $writer->writeString(""); //device ID
         $writer->writeInt($this->buildPlatform);
     }

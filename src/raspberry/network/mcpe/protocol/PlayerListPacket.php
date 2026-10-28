@@ -52,6 +52,7 @@ class PlayerListPacket implements Packet{
             $writer->writeVarLong($entry->actorUniqueId);
             $writer->writeString($entry->username);
             $writer->writeString($entry->xuid);
+            $writer->writeString(""); //PlayFab ID, verified by the server; moved here from the skin in 1.26.60
             $writer->writeString(""); //platform chat ID
             $writer->writeInt($entry->buildPlatform);
             SkinSerializer::write($writer, $skin);

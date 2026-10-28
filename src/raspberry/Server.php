@@ -36,8 +36,34 @@ use raspberry\network\mcpe\protocol\MoveActorAbsolutePacket;
 use raspberry\network\mcpe\protocol\PlayerListPacket;
 use raspberry\network\mcpe\protocol\RemoveActorPacket;
 use raspberry\network\mcpe\protocol\TextPacket;
+use raspberry\network\mcpe\protocol\SetTitlePacket;
+use raspberry\network\mcpe\protocol\ToastRequestPacket;
+use raspberry\network\mcpe\protocol\AvailableCommandsPacket;
+use raspberry\network\mcpe\protocol\CommandRequestPacket;
+use raspberry\network\mcpe\protocol\UpdateSoftEnumPacket;
 use raspberry\network\nethernet\NetherNetIdentity;
 use raspberry\network\nethernet\NetherNetTransport;
+
+use raspberry\command\CommandEnum;
+use raspberry\command\CommandMap;
+use raspberry\command\CommandSender;
+use raspberry\command\ConsoleCommandSender;
+use raspberry\command\defaults\DeopCommand;
+use raspberry\command\defaults\HelpCommand;
+use raspberry\command\defaults\KickCommand;
+use raspberry\command\defaults\ListCommand;
+use raspberry\command\defaults\OpCommand;
+use raspberry\command\defaults\SaveAllCommand;
+use raspberry\command\defaults\SayCommand;
+use raspberry\command\defaults\StopCommand;
+use raspberry\command\defaults\TellCommand;
+use raspberry\command\defaults\TitleCommand;
+use raspberry\command\defaults\VersionCommand;
+
+use raspberry\console\ConsoleReader;
+
+use raspberry\permission\OperatorList;
+use raspberry\permission\PermissionManager;
 
 use raspberry\player\GameMode;
 use raspberry\player\Player;
@@ -76,6 +102,9 @@ use function str_contains;
 use function array_keys;
 use function implode;
 use function sapi_windows_set_ctrl_handler;
+use function str_starts_with;
+use function strlen;
+use function strtolower;
 
 class Server{
 
@@ -143,11 +172,21 @@ class Server{
     /** @var array<int, NetworkSession> keyed by transport session ID */
     private array $sessions = [];
 
-    //protected static ?self $instance = null;
+    private PermissionManager $permissionManager;
 
-    /**public static function getInstance() : self{
-    return self::$instance;
-    }*/
+    private OperatorList $operatorList;
+
+    private CommandMap $commandMap;
+
+    private ConsoleCommandSender $consoleSender;
+
+    private ?ConsoleReader $consoleReader = null;
+
+    protected static ?self $instance = null;
+
+    public static function getInstance() : self{
+        return self::$instance ?? throw new LogicException("The server has not been created yet");
+    }
 
     public function __construct(string $dataPath){
         $this->dataPath = Path::canonicalize($dataPath);
@@ -155,6 +194,8 @@ class Server{
         if(!Path::isAbsolute($this->dataPath) || !is_dir($this->dataPath)){
             throw new InvalidArgumentException("Server data path must be an existing absolute directory");
         }
+
+        self::$instance = $this;
 
         $this->startTime = hrtime(true);
 
@@ -194,6 +235,73 @@ class Server{
         );
 
         $this->registerPackets();
+
+        $this->permissionManager = new PermissionManager();
+        $this->operatorList = new OperatorList(Path::join($this->dataPath, "ops.json"));
+        $this->registerPermissions();
+
+        $this->commandMap = new CommandMap($this);
+        $this->consoleSender = new ConsoleCommandSender($this->logger, $this->permissionManager);
+        $this->registerCommands();
+    }
+
+    public function getPermissionManager() : PermissionManager{
+        return $this->permissionManager;
+    }
+
+    public function getOperatorList() : OperatorList{
+        return $this->operatorList;
+    }
+
+    public function getCommandMap() : CommandMap{
+        return $this->commandMap;
+    }
+
+    public function getConsoleSender() : ConsoleCommandSender{
+        return $this->consoleSender;
+    }
+
+    /**
+     * Runs a command line like "kick Steve griefing". Errors inside a command are logged, never fatal.
+     *
+     * @return bool false when the command does not exist
+     */
+    public function dispatchCommand(CommandSender $sender, string $commandLine) : bool{
+        try{
+            return $this->commandMap->dispatch($sender, $commandLine);
+        }catch(Throwable $exception){
+            $this->logger->error("Error while running \"{$commandLine}\": " . $exception::class . ": " . $exception->getMessage());
+            $this->logger->debug($exception->getTraceAsString());
+
+            $sender->sendMessage(TextFormat::RED . $this->language->translate("command.error"));
+
+            return true;
+        }
+    }
+
+    /**
+     * Sends every player their command list again, e.g. after a command was registered or its
+     * arguments changed while players were online.
+     */
+    public function updateCommands() : void{
+        foreach($this->getInGamePlayers() as $player){
+            $player->getNetworkSession()->sendAvailableCommands();
+        }
+    }
+
+    /**
+     * Sends the new values of a soft enum to every player, after CommandEnum::setValues().
+     */
+    public function updateSoftEnum(CommandEnum $enum) : void{
+        if(!$enum->isSoft()){
+            throw new InvalidArgumentException("Enum \"{$enum->getName()}\" is not a soft enum");
+        }
+
+        $packet = UpdateSoftEnumPacket::create($enum->getName(), $enum->getValues(), UpdateSoftEnumPacket::TYPE_SET);
+
+        foreach($this->getInGamePlayers() as $player){
+            $player->getNetworkSession()->sendDataPacket($packet);
+        }
     }
 
     public function getLogger() : Logger{
@@ -305,10 +413,42 @@ class Server{
     }
 
     /**
+     * Finds an in-game player by name, ignoring case. If nobody has that exact name, the player whose
+     * name starts with it and is closest in length is returned, so "kick ste" finds Steve.
+     */
+    public function getPlayerByPrefix(string $name) : ?Player{
+        $name = strtolower($name);
+        $found = null;
+        $closest = PHP_INT_MAX;
+
+        foreach($this->getInGamePlayers() as $player){
+            $playerName = strtolower($player->getName());
+
+            if($playerName === $name){
+                return $player;
+            }
+
+            if(str_starts_with($playerName, $name) && strlen($playerName) - strlen($name) < $closest){
+                $found = $player;
+                $closest = strlen($playerName) - strlen($name);
+            }
+        }
+
+        return $found;
+    }
+
+    /**
      * Called by NetworkSession once a player has loaded the world: everyone gets the new player's
      * player-list entry (with skin), the new player gets everyone else's, then they see each other.
      */
     public function onPlayerJoin(Player $player) : void{
+        $operators = $this->operatorList->getAll();
+
+        if(isset($operators[$player->getXuid()]) && $operators[$player->getXuid()] !== $player->getName()){
+            $this->operatorList->add($player->getXuid(), $player->getName());
+        }
+
+        $player->getNetworkSession()->sendAvailableCommands();
         $others = [];
 
         foreach($this->getInGamePlayers() as $other){
@@ -350,7 +490,7 @@ class Server{
     public function onPlayerChat(Player $player, string $message) : void{
         $line = "<" . $player->getName() . "> " . $message;
 
-        //$this->logger->info($line);
+        $this->logger->info($line);
         $this->broadcastMessage($line);
     }
 
@@ -378,6 +518,41 @@ class Server{
             if($player !== $except){
                 $player->sendTranslation($message, $parameters);
             }
+        }
+    }
+
+    public function broadcastAnnouncement(string $source, string $message) : void{
+        $this->logger->info("[{$source}] {$message}");
+
+        foreach($this->getInGamePlayers() as $player){
+            $player->sendAnnouncement($source, $message);
+        }
+    }
+
+    public function broadcastPopup(string $message) : void{
+        foreach($this->getInGamePlayers() as $player){
+            $player->sendPopup($message);
+        }
+    }
+
+    public function broadcastTip(string $message) : void{
+        foreach($this->getInGamePlayers() as $player){
+            $player->sendTip($message);
+        }
+    }
+
+    /**
+     * @see Player::sendTitle()
+     */
+    public function broadcastTitle(string $title, string $subtitle = "", int $fadeIn = -1, int $stay = -1, int $fadeOut = -1) : void{
+        foreach($this->getInGamePlayers() as $player){
+            $player->sendTitle($title, $subtitle, $fadeIn, $stay, $fadeOut);
+        }
+    }
+
+    public function broadcastToast(string $title, string $body) : void{
+        foreach($this->getInGamePlayers() as $player){
+            $player->sendToast($title, $body);
         }
     }
 
@@ -428,10 +603,56 @@ class Server{
             AddPlayerPacket::class,
             RemoveActorPacket::class,
             MoveActorAbsolutePacket::class,
-            TextPacket::class
+            TextPacket::class,
+            SetTitlePacket::class,
+            ToastRequestPacket::class,
+            AvailableCommandsPacket::class,
+            CommandRequestPacket::class,
+            UpdateSoftEnumPacket::class
         ] as $packet){
             $this->packetRegistry->register($packet);
         }
+    }
+
+    private function registerPermissions() : void{
+        $permissions = [];
+
+        foreach([
+            "help" => true,
+            "list" => true,
+            "tell" => true,
+            "version" => true,
+            "say" => "op",
+            "kick" => "op",
+            "title" => "op",
+            "op" => "op",
+            "deop" => "op",
+            "save-all" => "op",
+            "stop" => "op"
+        ] as $command => $default){
+            $permissions["raspberry.command.{$command}"] = [
+                "description" => $this->language->translate("permission.command", ["command" => $command]),
+                "default" => $default
+            ];
+        }
+
+        $this->permissionManager->registerAll($permissions);
+    }
+
+    private function registerCommands() : void{
+        $this->commandMap->registerAllCommands([
+            new HelpCommand(),
+            new ListCommand(),
+            new SayCommand(),
+            new TellCommand(),
+            new KickCommand(),
+            new TitleCommand(),
+            new OpCommand(),
+            new DeopCommand(),
+            new SaveAllCommand(),
+            new StopCommand(),
+            new VersionCommand()
+        ]);
     }
 
     public function start() : void{
@@ -537,7 +758,7 @@ class Server{
                 $session = $this->sessions[$sessionId] ?? null;
 
                 if($session === null){
-                    return; //the transport can report a close twice
+                    return;
                 }
 
                 unset($this->sessions[$sessionId]);
@@ -556,10 +777,17 @@ class Server{
             $this->logger->info($this->language->translate("server.license", ["name" => self::NAME, "license" => self::LICENSE]));
             $this->logger->info($this->language->translate("server.done", ["time" => sprintf("%.3f", (hrtime(true) - $this->startTime) / 1e9)]));
 
+            $this->consoleReader = new ConsoleReader($this->logger, function(string $line) : void{
+                $this->dispatchCommand($this->consoleSender, $line);
+            });
+
+            $this->consoleReader->start();
+
             $this->runLoop();
         }finally{
             $this->running = false;
 
+            $this->consoleReader?->close();
             $this->disconnectAll();
             $this->transport->shutdown();
             $this->shutdown();
