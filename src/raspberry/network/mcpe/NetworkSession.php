@@ -31,6 +31,13 @@ use raspberry\network\mcpe\protocol\PlayerListPacket;
 use raspberry\network\mcpe\protocol\RemoveActorPacket;
 use raspberry\network\mcpe\protocol\TextPacket;
 use raspberry\network\mcpe\protocol\CommandRequestPacket;
+use raspberry\network\mcpe\protocol\SetPlayerGameTypePacket;
+use raspberry\network\mcpe\protocol\SetActorDataPacket;
+use raspberry\network\mcpe\protocol\UpdateAbilitiesPacket;
+use raspberry\network\mcpe\protocol\UpdateAttributesPacket;
+use raspberry\network\mcpe\protocol\types\AbilityData;
+use raspberry\network\mcpe\protocol\types\AbilityLayer;
+use raspberry\network\mcpe\protocol\types\Attribute;
 use raspberry\network\mcpe\protocol\types\EntityMetadata;
 use raspberry\network\mcpe\protocol\types\PlayerListEntry;
 use raspberry\network\mcpe\auth\AuthenticatedLogin;
@@ -58,6 +65,7 @@ use Throwable;
 use UnexpectedValueException;
 
 use function array_slice;
+use function ceil;
 use function count;
 use function is_string;
 use function max;
@@ -395,6 +403,88 @@ class NetworkSession{
         $this->sentChunks = [];
     }
 
+    public function sendGameMode() : void{
+        if($this->player !== null){
+            $this->sendDataPacket(SetPlayerGameTypePacket::create($this->player->getGameMode()->value));
+            $this->sendAbilities();
+        }
+    }
+
+    public function sendAbilities() : void{
+        $player = $this->player;
+
+        if($player === null){
+            return;
+        }
+
+        $mode = $player->getGameMode();
+        $values = AbilityLayer::WALK_SPEED | AbilityLayer::FLY_SPEED | AbilityLayer::VERTICAL_FLY_SPEED;
+
+        if($mode->allowsFlying()){
+            $values |= AbilityLayer::MAY_FLY;
+        }
+
+        if($player->isFlying()){
+            $values |= AbilityLayer::FLYING;
+        }
+
+        if(!$mode->hasCollision()){
+            $values |= AbilityLayer::NO_CLIP;
+        }
+
+        if($mode->isInvulnerable()){
+            $values |= AbilityLayer::INVULNERABLE;
+        }
+
+        if($mode->hasInstantBuild()){
+            $values |= AbilityLayer::INSTANT_BUILD;
+        }
+
+        if($mode->allowsBuilding()){
+            $values |= AbilityLayer::BUILD | AbilityLayer::MINE;
+        }
+
+        if($mode->allowsInteraction()){
+            $values |= AbilityLayer::DOORS_AND_SWITCHES | AbilityLayer::OPEN_CONTAINERS | AbilityLayer::ATTACK_PLAYERS | AbilityLayer::ATTACK_MOBS;
+        }
+
+        $op = $player->isOp();
+
+        if($op){
+            $values |= AbilityLayer::OPERATOR_COMMANDS | AbilityLayer::TELEPORT;
+        }
+
+        $this->sendDataPacket(UpdateAbilitiesPacket::create(new AbilityData(
+            $player->getId(),
+            $op ? AbilityData::PLAYER_PERMISSION_OPERATOR : AbilityData::PLAYER_PERMISSION_MEMBER,
+            $op ? AbilityData::COMMAND_PERMISSION_OPERATOR : AbilityData::COMMAND_PERMISSION_NORMAL,
+            [new AbilityLayer(AbilityLayer::TYPE_BASE, AbilityLayer::ALL, $values, AbilityLayer::DEFAULT_FLY_SPEED, AbilityLayer::DEFAULT_VERTICAL_FLY_SPEED, AbilityLayer::DEFAULT_WALK_SPEED)]
+        )));
+    }
+
+    public function sendOwnMetadata() : void{
+        if($this->player !== null){
+            $this->sendDataPacket(SetActorDataPacket::create($this->player->getId(), self::createHumanMetadata($this->player), $this->server->getCurrentTick()));
+        }
+    }
+
+    public function sendAttributes() : void{
+        $player = $this->player;
+
+        if($player === null){
+            return;
+        }
+
+        $this->sendDataPacket(UpdateAttributesPacket::create($player->getId(), [
+            new Attribute(Attribute::HEALTH, 0.0, $player->getMaxHealth(), (float) ceil($player->getHealth()), 20.0),
+            new Attribute(Attribute::ABSORPTION, 0.0, PHP_FLOAT_MAX, (float) ceil($player->getAbsorption()), 0.0),
+            new Attribute(Attribute::MOVEMENT_SPEED, 0.0, PHP_FLOAT_MAX, $player->getMovementSpeed(), Player::DEFAULT_MOVEMENT_SPEED),
+            new Attribute(Attribute::HUNGER, 0.0, Player::MAX_FOOD, $player->getFood(), Player::MAX_FOOD),
+            new Attribute(Attribute::SATURATION, 0.0, Player::MAX_FOOD, $player->getSaturation(), Player::DEFAULT_SATURATION),
+            new Attribute(Attribute::EXHAUSTION, 0.0, 5.0, $player->getExhaustion(), 0.0)
+        ], $this->server->getCurrentTick()));
+    }
+
     public function sendAvailableCommands() : void{
         if($this->player !== null){
             $this->sendDataPacket(CommandDataAdapter::createAvailableCommands($this->server->getCommandMap(), $this->player));
@@ -691,6 +781,7 @@ class NetworkSession{
         $startGame->worldName = $this->server->getServerName();
         $startGame->levelId = $world->getName();
         $startGame->time = 6000; //noon; TODO: world time
+        $startGame->playerPermissions = $this->player->isOp() ? StartGamePacket::PERMISSION_OPERATOR : StartGamePacket::PERMISSION_MEMBER;
 
         $this->sendDataPackets([
             new JigsawStructureDataPacket(),
@@ -711,6 +802,9 @@ class NetworkSession{
             $status = new PlayStatusPacket();
             $status->status = PlayStatusPacket::PLAYER_SPAWN;
 
+            $this->sendAbilities();
+            $this->sendAttributes();
+            $this->sendOwnMetadata();
             $this->sendDataPackets([$status, new CreativeContentPacket()]);
 
             $this->state = self::STATE_LOADING;
@@ -744,6 +838,13 @@ class NetworkSession{
         }
 
         $player->move(new Vector3($packet->x, $packet->y - $player->getEyeHeight(), $packet->z), $packet->yaw, $packet->pitch);
+
+
+        if($packet->hasFlag(PlayerAuthInputPacket::FLAG_START_FLYING)){
+            $player->onClientFlightToggle(true);
+        }elseif($packet->hasFlag(PlayerAuthInputPacket::FLAG_STOP_FLYING)){
+            $player->onClientFlightToggle(false);
+        }
 
         $this->updateChunkQueue(false);
     }

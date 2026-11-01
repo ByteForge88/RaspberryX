@@ -30,4 +30,60 @@ enum GameMode : int{
     public function getName() : string{
         return strtolower($this->name);
     }
+
+
+    /**
+     * Language key of the mode's name, e.g. "gamemode.creative".
+     */
+    public function getTranslationKey() : string{
+        return "gamemode." . $this->getName();
+    }
+
+    public function allowsFlying() : bool{
+        return $this === self::CREATIVE || $this === self::SPECTATOR;
+    }
+
+    /**
+     * Spectators always fly and cannot land.
+     */
+    public function forcesFlying() : bool{
+        return $this === self::SPECTATOR;
+    }
+
+    public function hasCollision() : bool{
+        return $this !== self::SPECTATOR;
+    }
+
+    public function isInvulnerable() : bool{
+        return $this === self::CREATIVE || $this === self::SPECTATOR;
+    }
+
+    /**
+     * Blocks break instantly and items are not used up.
+     */
+    public function hasInstantBuild() : bool{
+        return $this === self::CREATIVE;
+    }
+
+    /**
+     * Placing and breaking blocks,
+     * adventure and spectator cannot.
+     */
+    public function allowsBuilding() : bool{
+        return $this === self::SURVIVAL || $this === self::CREATIVE;
+    }
+
+    /**
+     * Using doors, opening containers and attacking, spectators cannot.
+     */
+    public function allowsInteraction() : bool{
+        return $this !== self::SPECTATOR;
+    }
+
+    /**
+     * Seen by players who are not spectators themselves.
+     */
+    public function isVisible() : bool{
+        return $this !== self::SPECTATOR;
+    }
 }

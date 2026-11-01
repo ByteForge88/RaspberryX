@@ -122,12 +122,19 @@ abstract class Entity{
      * Shows this entity to a player.
      */
     public function spawnTo(Player $player) : void{
-        if($player === $this || $this->closed || isset($this->viewers[$player->getId()])){
+        if($player === $this || $this->closed || isset($this->viewers[$player->getId()]) || !$this->isVisibleTo($player)){
             return;
         }
 
         $this->viewers[$player->getId()] = $player;
         $player->getNetworkSession()->spawnEntity($this);
+    }
+
+    /**
+     * Whether $player may see this entity at all, spawnTo() does nothing when it may not.
+     */
+    public function isVisibleTo(Player $player) : bool{
+        return true;
     }
 
     /**

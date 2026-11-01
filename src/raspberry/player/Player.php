@@ -38,10 +38,13 @@ class Player extends Human implements CommandSender{
 
     private bool $spawned = false;
 
+    private bool $flying = false;
+
     public function __construct(World $world, Vector3 $position, NetworkSession $session, AuthenticatedLogin $identity, GameMode $gameMode, Skin $skin){
         $this->session = $session;
         $this->identity = $identity;
         $this->gameMode = $gameMode;
+        $this->flying = $gameMode->forcesFlying();
 
         parent::__construct($world, $position, $skin, Uuid::fromXuid($identity->xuid));
     }
@@ -80,10 +83,89 @@ class Player extends Human implements CommandSender{
     }
 
     /**
-     * TODO: tell the client (SetPlayerGameTypePacket) once gamemode changes at runtime are supported
+     * Changes the game mode, tells the client and shows or hides the player for others (spectators
+     * are only seen by other spectators).
      */
     public function setGameMode(GameMode $gameMode) : void{
+        if($gameMode === $this->gameMode){
+            return;
+        }
+
         $this->gameMode = $gameMode;
+        $this->flying = $gameMode->forcesFlying() || ($this->flying && $gameMode->allowsFlying());
+
+        if($this->spawned){
+            $this->session->sendGameMode();
+            $this->updateVisibility();
+        }
+    }
+
+    public function isFlying() : bool{
+        return $this->flying;
+    }
+
+    /**
+     * Starts or stops flying. Only works in a game mode that allows flying, and spectators cannot stop.
+     *
+     * @return bool false when the game mode does not allow it
+     */
+    public function setFlying(bool $flying) : bool{
+        if(($flying && !$this->gameMode->allowsFlying()) || (!$flying && $this->gameMode->forcesFlying())){
+            return false;
+        }
+
+        $this->flying = $flying;
+
+        if($this->spawned){
+            $this->session->sendAbilities();
+        }
+
+        return true;
+    }
+
+    /**
+     * @internal
+     */
+    public function onClientFlightToggle(bool $flying) : void{
+        if(($flying && !$this->gameMode->allowsFlying()) || (!$flying && $this->gameMode->forcesFlying())){
+            $this->session->sendAbilities(); //not allowed: put the client back
+            return;
+        }
+
+        $this->flying = $flying;
+    }
+
+    public function isVisibleTo(Player $player) : bool{
+        return $this->gameMode->isVisible() || !$player->getGameMode()->isVisible();
+    }
+
+    /**
+     * Shows or hides this player and the players around them after a game mode change.
+     */
+    public function updateVisibility() : void{
+        foreach($this->session->getServer()->getInGamePlayers() as $other){
+            if($other === $this || $other->getWorld() !== $this->world){
+                continue;
+            }
+
+            if($this->isVisibleTo($other)){
+                $this->spawnTo($other);
+            }else{
+                $this->despawnFrom($other);
+            }
+
+            if($other->isVisibleTo($this)){
+                $other->spawnTo($this);
+            }else{
+                $other->despawnFrom($this);
+            }
+        }
+    }
+
+    protected function onAttributesChanged() : void{
+        if($this->spawned){
+            $this->session->sendAttributes();
+        }
     }
 
     /**
@@ -246,6 +328,7 @@ class Player extends Human implements CommandSender{
         }
 
         $this->session->sendAvailableCommands();
+        $this->session->sendAbilities();
     }
 
     public function getPermissionLevel() : PermissionLevel{

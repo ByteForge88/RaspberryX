@@ -10,6 +10,9 @@ use raspberry\utils\Uuid;
 
 use raspberry\world\World;
 
+use function max;
+use function min;
+
 /**
  * TODO: inventory, hunger, experience
  */
@@ -23,6 +26,20 @@ class Human extends Living{
     protected Uuid $uuid;
 
     protected Skin $skin;
+
+    public const MAX_FOOD = 20;
+
+    /** saturation can never be higher than the food level */
+    public const DEFAULT_SATURATION = 5.0;
+
+    /** exhaustion builds up from actions; at 4 it uses up saturation or food (once hunger is implemented) */
+    public const MAX_EXHAUSTION = 4.0;
+
+    protected int $food = self::MAX_FOOD;
+
+    protected float $saturation = self::DEFAULT_SATURATION;
+
+    protected float $exhaustion = 0.0;
 
     public function __construct(World $world, Vector3 $position, Skin $skin, ?Uuid $uuid = null){
         $this->skin = $skin;
@@ -45,6 +62,34 @@ class Human extends Living{
 
     public function getSkin() : Skin{
         return $this->skin;
+    }
+
+    public function getFood() : int{
+        return $this->food;
+    }
+
+    public function setFood(int $food) : void{
+        $this->food = max(0, min($food, self::MAX_FOOD));
+        $this->saturation = min($this->saturation, $this->food);
+        $this->onAttributesChanged();
+    }
+
+    public function getSaturation() : float{
+        return $this->saturation;
+    }
+
+    public function setSaturation(float $saturation) : void{
+        $this->saturation = max(0.0, min($saturation, $this->food));
+        $this->onAttributesChanged();
+    }
+
+    public function getExhaustion() : float{
+        return $this->exhaustion;
+    }
+
+    public function setExhaustion(float $exhaustion) : void{
+        $this->exhaustion = max(0.0, min($exhaustion, self::MAX_EXHAUSTION));
+        $this->onAttributesChanged();
     }
 
     /**

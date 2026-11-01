@@ -41,6 +41,10 @@ use raspberry\network\mcpe\protocol\ToastRequestPacket;
 use raspberry\network\mcpe\protocol\AvailableCommandsPacket;
 use raspberry\network\mcpe\protocol\CommandRequestPacket;
 use raspberry\network\mcpe\protocol\UpdateSoftEnumPacket;
+use raspberry\network\mcpe\protocol\SetPlayerGameTypePacket;
+use raspberry\network\mcpe\protocol\UpdateAbilitiesPacket;
+use raspberry\network\mcpe\protocol\UpdateAttributesPacket;
+use raspberry\network\mcpe\protocol\SetActorDataPacket;
 use raspberry\network\nethernet\NetherNetIdentity;
 use raspberry\network\nethernet\NetherNetTransport;
 
@@ -49,6 +53,7 @@ use raspberry\command\CommandMap;
 use raspberry\command\CommandSender;
 use raspberry\command\ConsoleCommandSender;
 use raspberry\command\defaults\DeopCommand;
+use raspberry\command\defaults\GamemodeCommand;
 use raspberry\command\defaults\HelpCommand;
 use raspberry\command\defaults\KickCommand;
 use raspberry\command\defaults\ListCommand;
@@ -608,7 +613,11 @@ class Server{
             ToastRequestPacket::class,
             AvailableCommandsPacket::class,
             CommandRequestPacket::class,
-            UpdateSoftEnumPacket::class
+            UpdateSoftEnumPacket::class,
+            SetPlayerGameTypePacket::class,
+            UpdateAbilitiesPacket::class,
+            UpdateAttributesPacket::class,
+            SetActorDataPacket::class
         ] as $packet){
             $this->packetRegistry->register($packet);
         }
@@ -627,6 +636,7 @@ class Server{
             "title" => "op",
             "op" => "op",
             "deop" => "op",
+            "gamemode" => "op",
             "save-all" => "op",
             "stop" => "op"
         ] as $command => $default){
@@ -649,6 +659,7 @@ class Server{
             new TitleCommand(),
             new OpCommand(),
             new DeopCommand(),
+            new GamemodeCommand(),
             new SaveAllCommand(),
             new StopCommand(),
             new VersionCommand()
