@@ -22,6 +22,7 @@ class PlayerAuthInputPacket implements Packet{
     public const FLAG_STOP_GLIDING = 33;
     public const FLAG_START_FLYING = 42;
     public const FLAG_STOP_FLYING = 43;
+    public const FLAG_VERTICAL_COLLISION = 50;
 
     public const FLAG_COUNT = 66;
 

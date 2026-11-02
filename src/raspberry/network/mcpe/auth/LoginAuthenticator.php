@@ -7,6 +7,8 @@ namespace raspberry\network\mcpe\auth;
 use raspberry\network\mcpe\protocol\LoginPacket;
 use raspberry\network\mcpe\protocol\ProtocolInfo;
 
+use raspberry\network\nethernet\NetherNetIdentity;
+
 use Firebase\JWT\JWK;
 use Firebase\JWT\JWT;
 use Firebase\JWT\Key;
@@ -227,6 +229,7 @@ class LoginAuthenticator{
 
     private static function verifyJwt(string $jwt, Key $key, string $label) : stdClass{
         try{
+            JWT::$leeway = NetherNetIdentity::CLOCK_LEEWAY;
             return JWT::decode($jwt, $key);
         }catch(Throwable $error){
             throw new UnexpectedValueException($label . " signature or validity check failed", 0, $error);

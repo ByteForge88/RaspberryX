@@ -118,6 +118,26 @@ abstract class Entity{
         return true;
     }
 
+    public function teleport(Vector3 $position, ?float $yaw = null, ?float $pitch = null, ?World $world = null) : void{
+        if($this->closed){
+            throw new LogicException("Cannot teleport a closed entity");
+        }
+
+        if($world !== null && $world !== $this->world){
+            $this->despawnFromAll();
+            $this->world->removeEntity($this);
+            $this->world = $world;
+            $world->addEntity($this);
+        }
+
+        $this->setPosition($position);
+        $this->setRotation($yaw ?? $this->yaw, $pitch ?? $this->pitch);
+
+        foreach($this->viewers as $viewer){
+            $viewer->getNetworkSession()->moveEntity($this, true);
+        }
+    }
+
     /**
      * Shows this entity to a player.
      */

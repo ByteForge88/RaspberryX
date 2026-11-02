@@ -184,11 +184,11 @@ class World{
         $this->loadChunk($x >> 4, $z >> 4)->setBlock($x & 15, $y, $z & 15, $block);
     }
 
-    /**
-     * Where new players appear: above the highest block at 0, 0 (centre of the block).
-     * TODO: store a custom spawn in the world metadata
-     */
     public function getSpawnPosition() : Vector3{
+        if($this->metadata->spawn !== null){
+            return $this->metadata->spawn;
+        }
+
         $chunk = $this->loadChunk(0, 0);
 
         for($y = Chunk::MAX_Y; $y >= Chunk::MIN_Y; --$y){
@@ -200,15 +200,20 @@ class World{
         return new Vector3(0.5, Chunk::MIN_Y, 0.5);
     }
 
+    public function setSpawnPosition(Vector3 $position) : void{
+        $this->metadata->spawn = $position;
+        $this->provider->saveMetadata($this->metadata);
+    }
+
     /**
-     * @internal called by Entity
+     * @internal
      */
     public function addEntity(Entity $entity) : void{
         $this->entities[$entity->getId()] = $entity;
     }
 
     /**
-     * @internal called by Entity::close()
+     * @internal
      */
     public function removeEntity(Entity $entity) : void{
         unset($this->entities[$entity->getId()]);

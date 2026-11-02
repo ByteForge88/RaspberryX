@@ -65,6 +65,8 @@ class NetherNetIdentity{
 
     private const KEYS_URL = "https://authorization.franchise.minecraft-services.net/.well-known/keys";
 
+    public const CLOCK_LEEWAY = 60;
+
     private const JSON_FLAGS = JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR;
 
     private readonly string $privateKey;
@@ -292,6 +294,7 @@ class NetherNetIdentity{
             throw new UnexpectedValueException("Invalid identity assertion");
         }
 
+        JWT::$leeway = self::CLOCK_LEEWAY;
         $claims = JWT::decode($assertion["token"], $this->trustedKeys);
 
         $audiences = is_string($claims->aud ?? null) ? [$claims->aud] : ($claims->aud ?? []);

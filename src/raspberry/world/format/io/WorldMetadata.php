@@ -4,15 +4,16 @@ declare(strict_types=1);
 
 namespace raspberry\world\format\io;
 
+use raspberry\math\Vector3;
+
 use UnexpectedValueException;
 
+use function count;
+use function is_array;
+use function is_float;
 use function is_int;
 use function is_string;
 
-/**
- * Settings fixed when a world is created. They are saved with the world, so changing
- * server.properties later does not change how an existing world generates new chunks.
- */
 class WorldMetadata{
 
     public const FORMAT_VERSION = 1;
@@ -25,6 +26,8 @@ class WorldMetadata{
         public string $blockDataVersion
     ){}
 
+    public ?Vector3 $spawn = null;
+
     /**
      * @return array<string, string|int>
      */
@@ -36,7 +39,7 @@ class WorldMetadata{
             "generatorSettings" => $this->generatorSettings,
             "createdAt" => $this->createdAt,
             "blockDataVersion" => $this->blockDataVersion
-        ];
+        ] + ($this->spawn === null ? [] : ["spawn" => [$this->spawn->x, $this->spawn->y, $this->spawn->z]]);
     }
 
     /**
@@ -59,6 +62,22 @@ class WorldMetadata{
             throw new UnexpectedValueException("World metadata is missing 'createdAt'");
         }
 
-        return new self($data["name"], $data["generator"], $data["generatorSettings"], $data["createdAt"], $data["blockDataVersion"]);
+        $metadata = new self($data["name"], $data["generator"], $data["generatorSettings"], $data["createdAt"], $data["blockDataVersion"]);
+
+        if(isset($data["spawn"])){
+            $spawn = $data["spawn"];
+
+            if(!is_array($spawn) || count($spawn) !== 3 || !self::isNumber($spawn[0] ?? null) || !self::isNumber($spawn[1] ?? null) || !self::isNumber($spawn[2] ?? null)){
+                throw new UnexpectedValueException("World metadata 'spawn' must be [x, y, z]");
+            }
+
+            $metadata->spawn = new Vector3((float) $spawn[0], (float) $spawn[1], (float) $spawn[2]);
+        }
+
+        return $metadata;
+    }
+
+    private static function isNumber(mixed $value) : bool{
+        return is_int($value) || is_float($value);
     }
 }

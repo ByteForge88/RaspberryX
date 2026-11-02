@@ -33,6 +33,11 @@ use raspberry\network\mcpe\protocol\TextPacket;
 use raspberry\network\mcpe\protocol\CommandRequestPacket;
 use raspberry\network\mcpe\protocol\SetPlayerGameTypePacket;
 use raspberry\network\mcpe\protocol\SetActorDataPacket;
+use raspberry\network\mcpe\protocol\ActorEventPacket;
+use raspberry\network\mcpe\protocol\DeathInfoPacket;
+use raspberry\network\mcpe\protocol\MovePlayerPacket;
+use raspberry\network\mcpe\protocol\RespawnPacket;
+use raspberry\network\mcpe\protocol\SetSpawnPositionPacket;
 use raspberry\network\mcpe\protocol\UpdateAbilitiesPacket;
 use raspberry\network\mcpe\protocol\UpdateAttributesPacket;
 use raspberry\network\mcpe\protocol\types\AbilityData;
@@ -58,6 +63,8 @@ use raspberry\player\Player;
 
 use raspberry\Server;
 
+use raspberry\nbt\NbtException;
+
 use raspberry\world\generator\GeneratorFactory;
 
 use stdClass;
@@ -75,6 +82,7 @@ use function strlen;
 use function usort;
 use function preg_match_all;
 use function preg_replace;
+use function round;
 use function trim;
 
 class NetworkSession{
@@ -102,6 +110,9 @@ class NetworkSession{
     /** longest chat message accepted, in characters (the vanilla client allows about this much) */
     public const CHAT_MAX_LENGTH = 512;
 
+    /** how long to wait for a client to arrive after a teleport before sending it again (5 seconds) */
+    private const TELEPORT_RESEND_TICKS = 100;
+
     /** chunks sent per tick, so a large view distance does not stall the server */
     private const CHUNKS_PER_TICK = 16;
 
@@ -118,7 +129,7 @@ class NetworkSession{
 
     private PacketCompression $compression;
 
-    /** name for log messages; the verified username once logged in */
+    /** name for log messages, the verified username once logged in */
     private ?string $displayName = null;
 
     private ?AuthenticatedLogin $identity = null;
@@ -127,7 +138,7 @@ class NetworkSession{
 
     private ?Player $player = null;
 
-    /** true once the player finished joining; stays true while disconnecting so leaving is still handled */
+    /** true once the player finished joining, stays true while disconnecting so leaving is still handled */
     private bool $joined = false;
 
     private int $chunkRadius = 0;
@@ -137,6 +148,11 @@ class NetworkSession{
 
     /** @var list<array{int, int}> chunks still to send, nearest first */
     private array $chunkQueue = [];
+
+    /** where the client was teleported to, its movement is ignored until it arrives there */
+    private ?Vector3 $pendingTeleport = null;
+
+    private int $pendingTeleportTick = 0;
 
     private ?int $lastChunkX = null;
     private ?int $lastChunkZ = null;
@@ -282,6 +298,10 @@ class NetworkSession{
                 }
                 return;
 
+            case ProtocolPacketIds::RESPAWN_PACKET:
+                $this->handleRespawn($this->decode($buffer, RespawnPacket::class));
+                return;
+
             case ProtocolPacketIds::COMMAND_REQUEST_PACKET:
                 $this->handleCommandRequest($this->decode($buffer, CommandRequestPacket::class));
                 return;
@@ -364,6 +384,14 @@ class NetworkSession{
         if($this->resourcePacks !== null && $this->resourcePacks->isExpired($now)){
             $this->disconnect($this->server->getLanguage()->translate("disconnect.timeout"), "Resource-pack negotiation timed out");
             return;
+        }
+
+        if($this->pendingTeleport !== null && $currentTick - $this->pendingTeleportTick > self::TELEPORT_RESEND_TICKS){
+            $this->sendTeleport();
+        }
+
+        if($this->joined && $this->player !== null){
+            $this->player->tick($currentTick);
         }
 
         $this->sendQueuedChunks();
@@ -570,10 +598,92 @@ class NetworkSession{
         $this->sendDataPacket(RemoveActorPacket::create($entity->getId()));
     }
 
-    public function moveEntity(Entity $entity) : void{
+    /**
+     * @param bool $teleport
+     */
+    public function moveEntity(Entity $entity, bool $teleport = false) : void{
         $eyes = $entity->getEyePosition();
 
-        $this->sendDataPacket(MoveActorAbsolutePacket::create($entity->getId(), $eyes->x, $eyes->y, $eyes->z, $entity->getPitch(), $entity->getYaw(), $entity->getYaw()));
+        $this->sendDataPacket(MoveActorAbsolutePacket::create($entity->getId(), $eyes->x, $eyes->y, $eyes->z, $entity->getPitch(), $entity->getYaw(), $entity->getYaw(), $teleport ? MoveActorAbsolutePacket::FLAG_TELEPORT : 0));
+    }
+
+    public function sendActorEvent(Entity $entity, int $event, int $data = 0) : void{
+        $this->sendDataPacket(ActorEventPacket::create($entity->getId(), $event, $data));
+    }
+
+    public function onTeleport(bool $worldChanged) : void{
+        if($worldChanged){
+            $this->sentChunks = [];
+            $this->chunkQueue = [];
+            $this->sendSpawnPositions();
+        }
+
+        $this->sendTeleport();
+        $this->updateChunkQueue(true);
+    }
+
+    private function sendTeleport() : void{
+        $player = $this->player;
+
+        if($player === null){
+            return;
+        }
+
+        $eyes = $player->getEyePosition();
+
+        $this->pendingTeleport = $player->getPosition();
+        $this->pendingTeleportTick = $this->server->getCurrentTick();
+
+        $this->sendDataPacket(MovePlayerPacket::teleport($player->getId(), $eyes->x, $eyes->y, $eyes->z, $player->getPitch(), $player->getYaw(), MovePlayerPacket::TELEPORT_CAUSE_UNKNOWN, $this->server->getCurrentTick()));
+    }
+
+    public function sendSpawnPositions() : void{
+        $player = $this->player;
+
+        if($player === null){
+            return;
+        }
+
+        $worldSpawn = $player->getWorld()->getSpawnPosition();
+        [, $playerSpawn] = $player->getSpawnLocation();
+
+        $this->sendDataPackets([
+            SetSpawnPositionPacket::create(SetSpawnPositionPacket::TYPE_WORLD_SPAWN, $worldSpawn->getFloorX(), $worldSpawn->getFloorY(), $worldSpawn->getFloorZ()),
+            SetSpawnPositionPacket::create(SetSpawnPositionPacket::TYPE_PLAYER_SPAWN, $playerSpawn->getFloorX(), $playerSpawn->getFloorY(), $playerSpawn->getFloorZ())
+        ]);
+    }
+
+    /**
+     * @param list<string> $parameters
+     */
+    public function onDeath(string $cause, array $parameters) : void{
+        $player = $this->player;
+
+        if($player === null){
+            return;
+        }
+
+        [, $spawn] = $player->getSpawnLocation();
+
+        $this->sendDataPackets([
+            DeathInfoPacket::create($cause, $parameters),
+            RespawnPacket::create($spawn->x, $spawn->y + $player->getEyeHeight(), $spawn->z, RespawnPacket::STATE_SEARCHING_FOR_SPAWN, $player->getId())
+        ]);
+    }
+
+    public function onRespawn() : void{
+        $player = $this->player;
+
+        if($player === null){
+            return;
+        }
+
+        $eyes = $player->getEyePosition();
+
+        $this->sendDataPacket(RespawnPacket::create($eyes->x, $eyes->y, $eyes->z, RespawnPacket::STATE_READY_TO_SPAWN, $player->getId()));
+        $this->sendAttributes();
+        $this->sendAbilities();
+        $this->sendOwnMetadata();
     }
 
     private static function createHumanMetadata(Human $human) : EntityMetadata{
@@ -602,6 +712,20 @@ class NetworkSession{
         $metadata->setByte(EntityMetadata::KEY_EFFECT_AMBIENCE, 0);
         $metadata->setByte(EntityMetadata::KEY_COLOR_INDEX, 0);
         return $metadata;
+    }
+
+    private function handleRespawn(RespawnPacket $packet) : void{
+        $player = $this->player;
+
+        if($player === null || $this->state !== self::STATE_IN_GAME || $packet->state !== RespawnPacket::STATE_CLIENT_READY_TO_SPAWN){
+            return;
+        }
+
+        if($packet->actorRuntimeId !== $player->getId()){
+            throw new UnexpectedValueException("Respawn packet names entity {$packet->actorRuntimeId}, expected {$player->getId()}");
+        }
+
+        $player->respawn();
     }
 
     private function handleCommandRequest(CommandRequestPacket $packet) : void{
@@ -752,8 +876,24 @@ class NetworkSession{
     private function startGame() : void{
         $identity = $this->identity ?? throw new UnexpectedValueException("Cannot start the game before login");
 
-        $world = $this->server->getWorldManager()->getDefaultWorld();
-        $spawn = $world->getSpawnPosition();
+        $worldManager = $this->server->getWorldManager();
+        $world = $worldManager->getDefaultWorld();
+        $position = $world->getSpawnPosition();
+        $yaw = 0.0;
+        $pitch = 0.0;
+        $data = null;
+
+        try{
+            $data = $this->server->getPlayerDataStorage()->load($identity->xuid);
+        }catch(NbtException $error){
+            $this->server->getLogger()->warning($this->server->getLanguage()->translate("player.data.broken", ["player" => $identity->username, "reason" => $error->getMessage()]));
+        }
+
+        $location = $data === null ? null : Player::getSavedLocation($data, $worldManager);
+
+        if($location !== null){
+            [$world, $position, $yaw, $pitch] = $location;
+        }
 
         try{
             $skin = SkinAdapter::fromClientData($identity->clientData);
@@ -762,9 +902,15 @@ class NetworkSession{
             $skin = SkinAdapter::defaultSkin();
         }
 
-        $this->player = new Player($world, $spawn, $this, $identity, $this->server->getDefaultGameMode(), $skin);
+        $this->player = new Player($world, $position, $this, $identity, $this->server->getDefaultGameMode(), $skin);
+        $this->player->setRotation($yaw, $pitch);
+
+        if($data !== null){
+            $this->player->loadData($data);
+        }
 
         $eyes = $this->player->getEyePosition();
+        $spawn = $world->getSpawnPosition();
 
         $startGame = new StartGamePacket();
         $startGame->actorUniqueId = $this->player->getId();
@@ -774,6 +920,9 @@ class NetworkSession{
         $startGame->x = $eyes->x;
         $startGame->y = $eyes->y;
         $startGame->z = $eyes->z;
+        $startGame->difficulty = $this->server->getDifficulty()->value;
+        $startGame->yaw = $yaw;
+        $startGame->pitch = $pitch;
         $startGame->spawnX = $spawn->getFloorX();
         $startGame->spawnY = $spawn->getFloorY();
         $startGame->spawnZ = $spawn->getFloorZ();
@@ -805,6 +954,7 @@ class NetworkSession{
             $this->sendAbilities();
             $this->sendAttributes();
             $this->sendOwnMetadata();
+            $this->sendSpawnPositions();
             $this->sendDataPackets([$status, new CreativeContentPacket()]);
 
             $this->state = self::STATE_LOADING;
@@ -833,17 +983,46 @@ class NetworkSession{
     private function handlePlayerAuthInput(PlayerAuthInputPacket $packet) : void{
         $player = $this->player;
 
-        if($player === null || $player->isClosed()){
+        if($player === null || $player->isClosed() || $player->isDead()){
             return;
         }
 
-        $player->move(new Vector3($packet->x, $packet->y - $player->getEyeHeight(), $packet->z), $packet->yaw, $packet->pitch);
+        $position = new Vector3($packet->x, round($packet->y - $player->getEyeHeight(), 4), $packet->z);
 
+        if($this->pendingTeleport !== null){
+            if($position->distance($this->pendingTeleport) > 1.0){
+                return;
+            }
+
+            $this->pendingTeleport = null;
+        }
 
         if($packet->hasFlag(PlayerAuthInputPacket::FLAG_START_FLYING)){
             $player->onClientFlightToggle(true);
         }elseif($packet->hasFlag(PlayerAuthInputPacket::FLAG_STOP_FLYING)){
             $player->onClientFlightToggle(false);
+        }
+
+        if($packet->hasFlag(PlayerAuthInputPacket::FLAG_START_SPRINTING)){
+            $player->setSprinting(true);
+        }elseif($packet->hasFlag(PlayerAuthInputPacket::FLAG_STOP_SPRINTING)){
+            $player->setSprinting(false);
+        }
+
+        if($packet->hasFlag(PlayerAuthInputPacket::FLAG_START_SWIMMING)){
+            $player->setSwimming(true);
+        }elseif($packet->hasFlag(PlayerAuthInputPacket::FLAG_STOP_SWIMMING)){
+            $player->setSwimming(false);
+        }
+
+        $from = $player->getPosition();
+        $player->move($position, $packet->yaw, $packet->pitch);
+
+        $onGround = $packet->hasFlag(PlayerAuthInputPacket::FLAG_VERTICAL_COLLISION) && $position->y <= $from->y;
+        $player->onClientMove($from, $onGround, $packet->hasFlag(PlayerAuthInputPacket::FLAG_START_JUMPING));
+
+        if($player->isDead()){
+            return;
         }
 
         $this->updateChunkQueue(false);

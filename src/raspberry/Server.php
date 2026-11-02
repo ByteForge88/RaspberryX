@@ -45,6 +45,11 @@ use raspberry\network\mcpe\protocol\SetPlayerGameTypePacket;
 use raspberry\network\mcpe\protocol\UpdateAbilitiesPacket;
 use raspberry\network\mcpe\protocol\UpdateAttributesPacket;
 use raspberry\network\mcpe\protocol\SetActorDataPacket;
+use raspberry\network\mcpe\protocol\ActorEventPacket;
+use raspberry\network\mcpe\protocol\DeathInfoPacket;
+use raspberry\network\mcpe\protocol\MovePlayerPacket;
+use raspberry\network\mcpe\protocol\RespawnPacket;
+use raspberry\network\mcpe\protocol\SetSpawnPositionPacket;
 use raspberry\network\nethernet\NetherNetIdentity;
 use raspberry\network\nethernet\NetherNetTransport;
 
@@ -59,6 +64,9 @@ use raspberry\command\defaults\KickCommand;
 use raspberry\command\defaults\ListCommand;
 use raspberry\command\defaults\OpCommand;
 use raspberry\command\defaults\SaveAllCommand;
+use raspberry\command\defaults\SetWorldSpawnCommand;
+use raspberry\command\defaults\SpawnpointCommand;
+use raspberry\command\defaults\TeleportCommand;
 use raspberry\command\defaults\SayCommand;
 use raspberry\command\defaults\StopCommand;
 use raspberry\command\defaults\TellCommand;
@@ -72,7 +80,9 @@ use raspberry\permission\PermissionManager;
 
 use raspberry\player\GameMode;
 use raspberry\player\Player;
+use raspberry\player\PlayerDataStorage;
 
+use raspberry\world\Difficulty;
 use raspberry\world\WorldManager;
 use raspberry\world\generator\FlatGenerator;
 use raspberry\world\generator\GeneratorFactory;
@@ -126,6 +136,7 @@ class Server{
         "server-port" => 19132,
         "max-players" => 20,
         "gamemode" => "survival",
+        "difficulty" => "normal",
         "view-distance" => 8,
         "world-name" => "world",
         "world-generator" => GeneratorFactory::FLAT,
@@ -158,6 +169,8 @@ class Server{
     private int $viewDistance = 8;
     private GameMode $defaultGameMode = GameMode::SURVIVAL;
 
+    private Difficulty $difficulty = Difficulty::NORMAL;
+
     private PacketRegistry $packetRegistry;
     private PacketTranslator $packetTranslator;
     private PacketBatch $packetBatch;
@@ -180,6 +193,8 @@ class Server{
     private PermissionManager $permissionManager;
 
     private OperatorList $operatorList;
+
+    private PlayerDataStorage $playerDataStorage;
 
     private CommandMap $commandMap;
 
@@ -243,6 +258,7 @@ class Server{
 
         $this->permissionManager = new PermissionManager();
         $this->operatorList = new OperatorList(Path::join($this->dataPath, "ops.json"));
+        $this->playerDataStorage = new PlayerDataStorage(Path::join($this->dataPath, "players"));
         $this->registerPermissions();
 
         $this->commandMap = new CommandMap($this);
@@ -252,6 +268,31 @@ class Server{
 
     public function getPermissionManager() : PermissionManager{
         return $this->permissionManager;
+    }
+
+    public function getPlayerDataStorage() : PlayerDataStorage{
+        return $this->playerDataStorage;
+    }
+
+    public function savePlayer(Player $player) : void{
+        try{
+            $this->playerDataStorage->save($player->getXuid(), $player->saveData());
+        }catch(Throwable $exception){
+            $this->logger->error($this->language->translate("player.data.saveFailed", ["player" => $player->getName(), "reason" => $exception->getMessage()]));
+        }
+    }
+
+    /**
+     * @return int
+     */
+    public function savePlayers() : int{
+        $players = $this->getInGamePlayers();
+
+        foreach($players as $player){
+            $this->savePlayer($player);
+        }
+
+        return count($players);
     }
 
     public function getOperatorList() : OperatorList{
@@ -376,6 +417,10 @@ class Server{
         return $this->defaultGameMode;
     }
 
+    public function getDifficulty() : Difficulty{
+        return $this->difficulty;
+    }
+
     /**
      * @return array<int, NetworkSession>
      */
@@ -479,6 +524,7 @@ class Server{
      * Called by NetworkSession when an in-game player disconnects, before the player is closed.
      */
     public function onPlayerQuit(Player $player) : void{
+        $this->savePlayer($player);
         $player->despawnFromAll();
         $this->broadcastTranslation(TextFormat::YELLOW . "%multiplayer.player.left", [$player->getName()], $player);
 
@@ -487,6 +533,16 @@ class Server{
                 $other->getNetworkSession()->sendPlayerListRemove([$player]);
             }
         }
+    }
+
+    /**
+     * Called by Player when they die. $cause is the translation key of the death message.
+     *
+     * @param list<string> $parameters the player's name, then the attacker's when there is one
+     */
+    public function onPlayerDeath(Player $player, string $cause, array $parameters) : void{
+        $this->logger->info($this->language->translate($cause, ["player" => $parameters[0], "attacker" => $parameters[1] ?? ""]));
+        $this->broadcastTranslation("%" . $cause, $parameters);
     }
 
     /**
@@ -617,7 +673,12 @@ class Server{
             SetPlayerGameTypePacket::class,
             UpdateAbilitiesPacket::class,
             UpdateAttributesPacket::class,
-            SetActorDataPacket::class
+            SetActorDataPacket::class,
+            MovePlayerPacket::class,
+            RespawnPacket::class,
+            SetSpawnPositionPacket::class,
+            ActorEventPacket::class,
+            DeathInfoPacket::class
         ] as $packet){
             $this->packetRegistry->register($packet);
         }
@@ -637,6 +698,9 @@ class Server{
             "op" => "op",
             "deop" => "op",
             "gamemode" => "op",
+            "teleport" => "op",
+            "setworldspawn" => "op",
+            "spawnpoint" => "op",
             "save-all" => "op",
             "stop" => "op"
         ] as $command => $default){
@@ -660,6 +724,9 @@ class Server{
             new OpCommand(),
             new DeopCommand(),
             new GamemodeCommand(),
+            new TeleportCommand(),
+            new SetWorldSpawnCommand(),
+            new SpawnpointCommand(),
             new SaveAllCommand(),
             new StopCommand(),
             new VersionCommand()
@@ -676,6 +743,7 @@ class Server{
         $serverPort = $this->properties->getInt("server-port");
         $maxPlayers = $this->properties->getInt("max-players");
         $gameMode = GameMode::fromString($this->properties->getString("gamemode"));
+        $difficulty = Difficulty::fromString($this->properties->getString("difficulty"));
         $viewDistance = $this->properties->getInt("view-distance");
         $worldName = $this->properties->getString("world-name");
         $worldGenerator = $this->properties->getString("world-generator");
@@ -703,6 +771,10 @@ class Server{
             throw new UnexpectedValueException("gamemode must be survival, creative, adventure or spectator");
         }
 
+        if($difficulty === null){
+            throw new UnexpectedValueException("difficulty must be peaceful, easy, normal or hard");
+        }
+
         if($viewDistance < 2 || $viewDistance > 32){
             throw new UnexpectedValueException("view-distance must be between 2 and 32 chunks");
         }
@@ -722,6 +794,7 @@ class Server{
         $this->serverName = $serverName;
         $this->maxPlayers = $maxPlayers;
         $this->defaultGameMode = $gameMode;
+        $this->difficulty = $difficulty;
         $this->viewDistance = $viewDistance;
         $this->autoSaveTicks = $autoSaveInterval * self::TICKS_PER_SECOND;
 
@@ -805,10 +878,6 @@ class Server{
         }
     }
 
-    /**
-     * Loads the default world from disk, or creates it with the generator from server.properties.
-     * An existing world always keeps the generator it was created with.
-     */
     private function loadDefaultWorld(string $worldName, string $generatorName, string $generatorSettings, int $spawnChunkRadius) : void{
         if($this->worldManager->hasDefaultWorld()){
             return;
@@ -834,7 +903,7 @@ class Server{
         $result = $world->loadChunksAround(0, 0, $spawnChunkRadius);
 
         if($result["generated"] > 0){
-            $world->save();//keep newly generated spawn chunks even if startup fails later
+            $world->save();
         }
 
         $this->logger->info($this->language->translate("server.world.spawn", [
@@ -856,7 +925,7 @@ class Server{
         if($close){
             $this->logger->info($message);
         }else{
-            $this->logger->debug($message);//auto-save: only visible with debug-logging
+            $this->logger->debug($message);
         }
 
         return $saved;
@@ -926,13 +995,13 @@ class Server{
 
         if($this->autoSaveTicks > 0 && $this->currentTick % $this->autoSaveTicks === 0){
             $this->saveWorlds(false);
+            $this->savePlayers();
         }
     }
 
-    /**
-     * Tells every client the server is stopping and gives the transport one poll to send it.
-     */
     private function disconnectAll() : void{
+        $this->savePlayers();
+
         if($this->sessions === []){
             return;
         }

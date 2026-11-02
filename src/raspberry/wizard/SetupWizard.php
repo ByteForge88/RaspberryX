@@ -54,7 +54,7 @@ class SetupWizard{
         }
 
         $this->say("");
-        $this->say("[*] " . Server::NAME . " " . Server::VERSION);
+        $this->say("\e[1m" . "--== " . "\e[3m" . "\e[38;2;154;92;198m" . Server::NAME . " " . Server::VERSION . "\e[0m"  . "\e[1m" . " =--");
         $this->say("");
 
         $values["language"] = $this->askLanguage();

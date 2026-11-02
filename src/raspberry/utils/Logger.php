@@ -86,7 +86,7 @@ final class Logger{
     }
 
     /**
-     * $message may contain Minecraft colour codes (TextFormat): they are shown as colours in the
+     * $message may contain Minecraft color codes (TextFormat): they are shown as colors in the
      * console when it supports them, and removed everywhere else.
      */
     public function log(string $level, string $message) : void{

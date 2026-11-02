@@ -96,7 +96,8 @@ abstract class TextFormat{
     }
 
     /**
-     * Turns color and format codes into terminal escape codes; codes a terminal cannot show are removed.
+     * Turns color and format codes into terminal escape codes.
+     * Codes a terminal cannot show are removed.
      */
     public static function toAnsi(string $text) : string{
         return preg_replace_callback('/\x{a7}(.)/su', fn(array $match) : string => self::ANSI[strtolower($match[1])] ?? "", $text) ?? $text;

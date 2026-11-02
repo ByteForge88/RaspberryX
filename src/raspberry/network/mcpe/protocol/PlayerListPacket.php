@@ -59,7 +59,7 @@ class PlayerListPacket implements Packet{
             $writer->writeBool(false); //teacher (Education Edition)
             $writer->writeBool(false); //host
             $writer->writeBool(false); //sub-client
-            $writer->writeInt(0, false); //name colour (ARGB, big-endian): default
+            $writer->writeInt(0, false); //name color (ARGB, big-endian): default
         }
     }
 

@@ -140,7 +140,8 @@ class CommandArgumentParser{
             Packet::ARG_TYPE_COMMAND => self::notEmpty(ltrim($reader->readRemaining(), "/")),
             Packet::ARG_TYPE_JSON => self::toJson($reader->readBracketed("{[")),
             Packet::ARG_TYPE_BLOCK_STATES => self::toBlockStates($reader->readBracketed("[")),
-            default => $reader->readWord() //value, filepath, string
+            Packet::ARG_TYPE_VALUE => self::matching($reader->readWord(), '/^(~|~?[+-]?(\d+(\.\d*)?|\.\d+))$/D'),
+            default => $reader->readWord() //filepath, string
         };
     }
 
@@ -232,7 +233,7 @@ class CommandArgumentParser{
                 }elseif($block){
                     $values[] = (float) self::toInt($part);
                 }else{
-                    //like vanilla, a whole x or z is the centre of the block: 10 becomes 10.5
+                    //like vanilla, a whole x or z is the center of the block: 10 becomes 10.5
                     $values[] = self::toNumber($part, false) + ($axis !== 1 && preg_match('/^[+-]?\d+$/D', $part) === 1 ? 0.5 : 0.0);
                 }
             }

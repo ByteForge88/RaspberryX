@@ -139,7 +139,7 @@ class StartGamePacket implements Packet{
         $writer->writeBool(false); //start with map
         $writer->writeByte($this->playerPermissions);
         $writer->writeInt($this->serverChunkTickRadius);
-        $writer->writeBool(false); //locked behaviour pack
+        $writer->writeBool(false); //locked behavior pack
         $writer->writeBool(false); //locked texture pack
         $writer->writeBool(false); //from locked world template
         $writer->writeBool(false); //MSA gamer tags only

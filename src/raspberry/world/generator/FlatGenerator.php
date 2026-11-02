@@ -5,22 +5,24 @@ declare(strict_types=1);
 namespace raspberry\world\generator;
 
 use InvalidArgumentException;
+
 use raspberry\block\BlockState;
 use raspberry\block\BlockStateRegistry;
+
 use raspberry\world\biome\BiomeIds;
 use raspberry\world\Chunk;
+
 use function count;
 use function explode;
 use function preg_match;
 use function str_contains;
 use function trim;
 
-/**
- * Same layers in every chunk, stacked from the bottom of the world (Y -64) upwards.
- */
 class FlatGenerator implements Generator{
 
     public const DEFAULT_PRESET = "minecraft:bedrock,2*minecraft:dirt,minecraft:grass_block";
+
+    public const BOTTOM_Y = 0;
 
     /** @var list<BlockState> one entry per Y level, bottom first */
     private array $column = [];
@@ -45,7 +47,7 @@ class FlatGenerator implements Generator{
             }
         }
 
-        $maxHeight = Chunk::MAX_Y - Chunk::MIN_Y + 1;
+        $maxHeight = Chunk::MAX_Y - self::BOTTOM_Y + 1;
 
         if(count($this->column) > $maxHeight){
             throw new InvalidArgumentException("Flat layers are " . count($this->column) . " blocks tall, the world is only {$maxHeight}");
@@ -99,7 +101,7 @@ class FlatGenerator implements Generator{
      * Y of the top layer. Players stand at getSurfaceY() + 1.
      */
     public function getSurfaceY() : int{
-        return Chunk::MIN_Y + count($this->column) - 1;
+        return self::BOTTOM_Y + count($this->column) - 1;
     }
 
     public function generateChunk(Chunk $chunk) : void{
@@ -111,7 +113,7 @@ class FlatGenerator implements Generator{
 
         for($x = 0; $x < Chunk::WIDTH; ++$x){
             for($z = 0; $z < Chunk::WIDTH; ++$z){
-                $y = Chunk::MIN_Y;
+                $y = self::BOTTOM_Y;
 
                 foreach($this->column as $block){
                     $chunk->setBlock($x, $y, $z, $block);
