@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace raspberry;
 
 use raspberry\network\mcpe\auth\LoginAuthenticator;
+use raspberry\network\mcpe\convert\ItemTranslator;
 use raspberry\network\mcpe\convert\BlockTranslator;
 use raspberry\network\mcpe\convert\ItemTypeDictionary;
 use raspberry\network\mcpe\NetworkSession;
@@ -50,6 +51,19 @@ use raspberry\network\mcpe\protocol\DeathInfoPacket;
 use raspberry\network\mcpe\protocol\MovePlayerPacket;
 use raspberry\network\mcpe\protocol\RespawnPacket;
 use raspberry\network\mcpe\protocol\SetSpawnPositionPacket;
+use raspberry\network\mcpe\protocol\InventoryContentPacket;
+use raspberry\network\mcpe\protocol\InventorySlotPacket;
+use raspberry\network\mcpe\protocol\MobEquipmentPacket;
+use raspberry\network\mcpe\protocol\MobArmorEquipmentPacket;
+use raspberry\network\mcpe\protocol\PlayerHotbarPacket;
+use raspberry\network\mcpe\protocol\ContainerOpenPacket;
+use raspberry\network\mcpe\protocol\ContainerClosePacket;
+use raspberry\network\mcpe\protocol\InteractPacket;
+use raspberry\network\mcpe\protocol\ItemStackRequestPacket;
+use raspberry\network\mcpe\protocol\ItemStackResponsePacket;
+use raspberry\network\mcpe\protocol\InventoryTransactionPacket;
+use raspberry\network\mcpe\protocol\AddItemActorPacket;
+use raspberry\network\mcpe\protocol\TakeItemActorPacket;
 use raspberry\network\nethernet\NetherNetIdentity;
 use raspberry\network\nethernet\NetherNetTransport;
 
@@ -57,6 +71,7 @@ use raspberry\command\CommandEnum;
 use raspberry\command\CommandMap;
 use raspberry\command\CommandSender;
 use raspberry\command\ConsoleCommandSender;
+
 use raspberry\command\defaults\DeopCommand;
 use raspberry\command\defaults\GamemodeCommand;
 use raspberry\command\defaults\HelpCommand;
@@ -72,6 +87,8 @@ use raspberry\command\defaults\StopCommand;
 use raspberry\command\defaults\TellCommand;
 use raspberry\command\defaults\TitleCommand;
 use raspberry\command\defaults\VersionCommand;
+use raspberry\command\defaults\ClearCommand;
+use raspberry\command\defaults\GiveCommand;
 
 use raspberry\console\ConsoleReader;
 
@@ -81,6 +98,10 @@ use raspberry\permission\PermissionManager;
 use raspberry\player\GameMode;
 use raspberry\player\Player;
 use raspberry\player\PlayerDataStorage;
+
+use raspberry\inventory\CreativeInventory;
+
+use raspberry\item\Item;
 
 use raspberry\world\Difficulty;
 use raspberry\world\WorldManager;
@@ -143,6 +164,7 @@ class Server{
         "flat-layers" => FlatGenerator::DEFAULT_PRESET,
         "spawn-chunk-radius" => 4,
         "auto-save-interval" => 300,
+        "keep-inventory" => false,
         "debug-logging" => false
     ];
 
@@ -171,6 +193,8 @@ class Server{
 
     private Difficulty $difficulty = Difficulty::NORMAL;
 
+    private bool $keepInventory = false;
+
     private PacketRegistry $packetRegistry;
     private PacketTranslator $packetTranslator;
     private PacketBatch $packetBatch;
@@ -184,6 +208,13 @@ class Server{
     private BlockTranslator $blockTranslator;
 
     private ItemTypeDictionary $itemTypeDictionary;
+
+    private ItemTranslator $itemTranslator;
+
+    private CreativeContentPacket $creativeContent;
+
+    /** @var list<Item> the creative items in the order of the creative content */
+    private array $creativeItems = [];
 
     private ?NetherNetTransport $transport = null;
 
@@ -246,6 +277,8 @@ class Server{
         $this->blockTranslator = new BlockTranslator();
 
         $this->itemTypeDictionary = new ItemTypeDictionary();
+        $this->itemTranslator = new ItemTranslator($this->itemTypeDictionary, $this->blockStateRegistry, $this->blockTranslator);
+        $this->creativeContent = $this->itemTranslator->buildCreativeContent(new CreativeInventory(), $this->creativeItems);
 
         $this->worldManager = new WorldManager(
             Path::join($this->dataPath, "worlds"),
@@ -370,6 +403,19 @@ class Server{
         return $this->itemTypeDictionary;
     }
 
+    public function getItemTranslator() : ItemTranslator{
+        return $this->itemTranslator;
+    }
+
+    public function getCreativeContent() : CreativeContentPacket{
+        return $this->creativeContent;
+    }
+
+    public function getCreativeItem(int $networkId) : ?Item{
+        $item = $this->creativeItems[$networkId - 1] ?? null;
+        return $item === null ? null : clone $item;
+    }
+
     public function getWorldManager() : WorldManager{
         return $this->worldManager;
     }
@@ -419,6 +465,13 @@ class Server{
 
     public function getDifficulty() : Difficulty{
         return $this->difficulty;
+    }
+
+    /**
+     * Whether players keep their items when they die.
+     */
+    public function isKeepInventory() : bool{
+        return $this->keepInventory;
     }
 
     /**
@@ -524,6 +577,7 @@ class Server{
      * Called by NetworkSession when an in-game player disconnects, before the player is closed.
      */
     public function onPlayerQuit(Player $player) : void{
+        $player->moveUIItemsToInventory();
         $this->savePlayer($player);
         $player->despawnFromAll();
         $this->broadcastTranslation(TextFormat::YELLOW . "%multiplayer.player.left", [$player->getName()], $player);
@@ -678,7 +732,20 @@ class Server{
             RespawnPacket::class,
             SetSpawnPositionPacket::class,
             ActorEventPacket::class,
-            DeathInfoPacket::class
+            DeathInfoPacket::class,
+            InventoryContentPacket::class,
+            InventorySlotPacket::class,
+            MobEquipmentPacket::class,
+            MobArmorEquipmentPacket::class,
+            PlayerHotbarPacket::class,
+            ContainerOpenPacket::class,
+            ContainerClosePacket::class,
+            InteractPacket::class,
+            ItemStackRequestPacket::class,
+            ItemStackResponsePacket::class,
+            InventoryTransactionPacket::class,
+            AddItemActorPacket::class,
+            TakeItemActorPacket::class
         ] as $packet){
             $this->packetRegistry->register($packet);
         }
@@ -701,6 +768,8 @@ class Server{
             "teleport" => "op",
             "setworldspawn" => "op",
             "spawnpoint" => "op",
+            "give" => "op",
+            "clear" => "op",
             "save-all" => "op",
             "stop" => "op"
         ] as $command => $default){
@@ -727,6 +796,8 @@ class Server{
             new TeleportCommand(),
             new SetWorldSpawnCommand(),
             new SpawnpointCommand(),
+            new GiveCommand(),
+            new ClearCommand(),
             new SaveAllCommand(),
             new StopCommand(),
             new VersionCommand()
@@ -750,6 +821,7 @@ class Server{
         $flatLayers = $this->properties->getString("flat-layers");
         $spawnChunkRadius = $this->properties->getInt("spawn-chunk-radius");
         $autoSaveInterval = $this->properties->getInt("auto-save-interval");
+        $keepInventory = $this->properties->getBool("keep-inventory");
 
         if($serverName === ""){
             throw new UnexpectedValueException("server-name cannot be empty");
@@ -796,6 +868,7 @@ class Server{
         $this->defaultGameMode = $gameMode;
         $this->difficulty = $difficulty;
         $this->viewDistance = $viewDistance;
+        $this->keepInventory = $keepInventory;
         $this->autoSaveTicks = $autoSaveInterval * self::TICKS_PER_SECOND;
 
         $this->logger->info($this->language->translate("server.starting", [
@@ -991,6 +1064,10 @@ class Server{
 
         foreach($this->sessions as $session){
             $session->tick($this->currentTick, $now);
+        }
+
+        foreach($this->worldManager->getWorlds() as $world){
+            $world->tick($this->currentTick);
         }
 
         if($this->autoSaveTicks > 0 && $this->currentTick % $this->autoSaveTicks === 0){

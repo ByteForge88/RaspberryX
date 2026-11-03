@@ -6,7 +6,16 @@ namespace raspberry\network\mcpe;
 
 use raspberry\network\encoding\BinaryReader;
 use raspberry\network\mcpe\protocol\ChunkRadiusUpdatedPacket;
-use raspberry\network\mcpe\protocol\CreativeContentPacket;
+use raspberry\network\mcpe\protocol\ContainerClosePacket;
+use raspberry\network\mcpe\protocol\ContainerOpenPacket;
+use raspberry\network\mcpe\protocol\InteractPacket;
+use raspberry\network\mcpe\protocol\InventoryContentPacket;
+use raspberry\network\mcpe\protocol\ItemStackRequestPacket;
+use raspberry\network\mcpe\protocol\InventoryTransactionPacket;
+use raspberry\network\mcpe\protocol\AddItemActorPacket;
+use raspberry\network\mcpe\protocol\MobArmorEquipmentPacket;
+use raspberry\network\mcpe\protocol\MobEquipmentPacket;
+use raspberry\network\mcpe\protocol\types\ItemInstance;
 use raspberry\network\mcpe\protocol\DisconnectPacket;
 use raspberry\network\mcpe\protocol\ItemRegistryPacket;
 use raspberry\network\mcpe\protocol\JigsawStructureDataPacket;
@@ -45,6 +54,8 @@ use raspberry\network\mcpe\protocol\types\AbilityLayer;
 use raspberry\network\mcpe\protocol\types\Attribute;
 use raspberry\network\mcpe\protocol\types\EntityMetadata;
 use raspberry\network\mcpe\protocol\types\PlayerListEntry;
+use raspberry\network\mcpe\protocol\types\inventory\ContainerIds;
+use raspberry\network\mcpe\protocol\types\inventory\TransactionAction;
 use raspberry\network\mcpe\auth\AuthenticatedLogin;
 use raspberry\network\mcpe\compression\PacketCompression;
 use raspberry\network\mcpe\resourcepack\ResourcePackNegotiation;
@@ -54,6 +65,11 @@ use raspberry\network\mcpe\convert\CommandDataAdapter;
 
 use raspberry\entity\Entity;
 use raspberry\entity\Human;
+use raspberry\entity\object\ItemEntity;
+
+use raspberry\inventory\PlayerInventory;
+
+use raspberry\item\Item;
 
 use InvalidArgumentException;
 
@@ -137,6 +153,13 @@ class NetworkSession{
     private ?ResourcePackNegotiation $resourcePacks = null;
 
     private ?Player $player = null;
+
+    private ?InventoryManager $inventoryManager = null;
+
+    private ?ItemStackRequestHandler $itemStackRequestHandler = null;
+
+    /** whether the client has its inventory screen open */
+    private bool $inventoryOpen = false;
 
     /** true once the player finished joining, stays true while disconnecting so leaving is still handled */
     private bool $joined = false;
@@ -300,6 +323,30 @@ class NetworkSession{
 
             case ProtocolPacketIds::RESPAWN_PACKET:
                 $this->handleRespawn($this->decode($buffer, RespawnPacket::class));
+                return;
+
+            case ProtocolPacketIds::MOB_EQUIPMENT_PACKET:
+                $this->handleMobEquipment($this->decode($buffer, MobEquipmentPacket::class));
+                return;
+
+            case ProtocolPacketIds::INTERACT_PACKET:
+                $this->handleInteract($this->decode($buffer, InteractPacket::class));
+                return;
+
+            case ProtocolPacketIds::ITEM_STACK_REQUEST_PACKET:
+                if($this->state === self::STATE_IN_GAME){
+                    $this->itemStackRequestHandler?->handle($this->decode($buffer, ItemStackRequestPacket::class));
+                }
+                return;
+
+            case ProtocolPacketIds::INVENTORY_TRANSACTION_PACKET:
+                if($this->state === self::STATE_IN_GAME){
+                    $this->handleInventoryTransaction($this->decode($buffer, InventoryTransactionPacket::class));
+                }
+                return;
+
+            case ProtocolPacketIds::CONTAINER_CLOSE_PACKET:
+                $this->handleContainerClose($this->decode($buffer, ContainerClosePacket::class));
                 return;
 
             case ProtocolPacketIds::COMMAND_REQUEST_PACKET:
@@ -568,6 +615,11 @@ class NetworkSession{
      * Makes an entity appear for this client. Called by Entity::spawnTo().
      */
     public function spawnEntity(Entity $entity) : void{
+        if($entity instanceof ItemEntity){
+            $this->spawnItemEntity($entity);
+            return;
+        }
+
         if(!$entity instanceof Human){
             return; //TODO: AddActorPacket for other entities
         }
@@ -589,7 +641,42 @@ class NetworkSession{
         if($entity instanceof Player){
             $packet->gameMode = $entity->getGameMode()->value;
             $packet->buildPlatform = $entity->getDeviceOs();
+            $packet->heldItem = $this->toItemInstance($entity->getInventory()->getItemInHand());
         }
+
+        $this->sendDataPacket($packet);
+
+        if($entity instanceof Player){
+            $this->sendArmor($entity);
+
+            if(!$entity->getOffHandInventory()->isSlotEmpty(0)){
+                $this->sendOffHandItem($entity);
+            }
+        }
+    }
+
+    private function spawnItemEntity(ItemEntity $entity) : void{
+        $position = $entity->getPosition();
+        $motion = $entity->getMotion();
+
+        $metadata = new EntityMetadata();
+        $metadata->setFlag(EntityMetadata::FLAG_HAS_GRAVITY);
+        $metadata->setFlag(EntityMetadata::FLAG_HAS_COLLISION);
+        $metadata->setLong(EntityMetadata::KEY_FLAGS_TWO, 0);
+        $metadata->setFloat(EntityMetadata::KEY_WIDTH, ItemEntity::SIZE);
+        $metadata->setFloat(EntityMetadata::KEY_HEIGHT, ItemEntity::SIZE);
+        $metadata->setFloat(EntityMetadata::KEY_SCALE, 1.0);
+
+        $packet = new AddItemActorPacket();
+        $packet->actorRuntimeId = $entity->getId();
+        $packet->item = $this->toItemInstance($entity->getItem());
+        $packet->x = $position->x;
+        $packet->y = $position->y;
+        $packet->z = $position->z;
+        $packet->motionX = $motion->x;
+        $packet->motionY = $motion->y;
+        $packet->motionZ = $motion->z;
+        $packet->metadata = $metadata;
 
         $this->sendDataPacket($packet);
     }
@@ -598,13 +685,22 @@ class NetworkSession{
         $this->sendDataPacket(RemoveActorPacket::create($entity->getId()));
     }
 
-    /**
-     * @param bool $teleport
-     */
     public function moveEntity(Entity $entity, bool $teleport = false) : void{
-        $eyes = $entity->getEyePosition();
+        $position = $entity->getPosition();
+        $flags = $teleport ? MoveActorAbsolutePacket::FLAG_TELEPORT : 0;
 
-        $this->sendDataPacket(MoveActorAbsolutePacket::create($entity->getId(), $eyes->x, $eyes->y, $eyes->z, $entity->getPitch(), $entity->getYaw(), $entity->getYaw(), $teleport ? MoveActorAbsolutePacket::FLAG_TELEPORT : 0));
+        if($entity instanceof ItemEntity && $entity->isOnGround()){
+            $flags |= MoveActorAbsolutePacket::FLAG_ON_GROUND;
+        }
+
+        $this->sendDataPacket(MoveActorAbsolutePacket::create($entity->getId(), $position->x, $position->y + $entity->getNetworkOffset(), $position->z, $entity->getPitch(), $entity->getYaw(), $entity->getYaw(), $flags));
+    }
+
+    /**
+     * Whether the client has been sent this chunk (and so can see entities in it).
+     */
+    public function hasChunk(int $chunkX, int $chunkZ) : bool{
+        return isset($this->sentChunks[$chunkX . ":" . $chunkZ]);
     }
 
     public function sendActorEvent(Entity $entity, int $event, int $data = 0) : void{
@@ -712,6 +808,151 @@ class NetworkSession{
         $metadata->setByte(EntityMetadata::KEY_EFFECT_AMBIENCE, 0);
         $metadata->setByte(EntityMetadata::KEY_COLOR_INDEX, 0);
         return $metadata;
+    }
+
+    private function handleMobEquipment(MobEquipmentPacket $packet) : void{
+        $player = $this->player;
+
+        if($player === null || $this->state !== self::STATE_IN_GAME || $packet->actorRuntimeId !== $player->getId()){
+            return;
+        }
+
+        if($packet->windowId !== InventoryContentPacket::WINDOW_INVENTORY || $packet->hotbarSlot >= PlayerInventory::HOTBAR_SIZE){
+            return;
+        }
+
+        $player->getInventory()->setHeldSlot($packet->hotbarSlot);
+    }
+
+    private function handleInteract(InteractPacket $packet) : void{
+        $player = $this->player;
+
+        if($player === null || $this->state !== self::STATE_IN_GAME || $packet->action !== InteractPacket::ACTION_OPEN_INVENTORY || $packet->targetActorRuntimeId !== $player->getId()){
+            return;
+        }
+
+        if($this->inventoryOpen){
+            return;
+        }
+
+        $this->inventoryOpen = true;
+        $position = $player->getPosition();
+
+        $this->sendDataPacket(ContainerOpenPacket::create(InventoryContentPacket::WINDOW_INVENTORY, ContainerOpenPacket::TYPE_INVENTORY, $position->getFloorX(), $position->getFloorY(), $position->getFloorZ(), -1));
+    }
+
+    private function handleContainerClose(ContainerClosePacket $packet) : void{
+        if($this->player === null || $this->state !== self::STATE_IN_GAME){
+            return;
+        }
+
+        if($packet->windowId === InventoryContentPacket::WINDOW_INVENTORY){
+            $this->inventoryOpen = false;
+        }
+
+        $this->player->moveUIItemsToInventory();
+
+        $this->sendDataPacket(ContainerClosePacket::create($packet->windowId, $packet->windowId === InventoryContentPacket::WINDOW_INVENTORY ? 0 : $packet->type, false));
+    }
+
+    private function handleInventoryTransaction(InventoryTransactionPacket $packet) : void{
+        $player = $this->player;
+        $manager = $this->inventoryManager;
+
+        if($player === null || $manager === null){
+            return;
+        }
+
+        if($packet->type === InventoryTransactionPacket::TYPE_NORMAL){
+            try{
+                $this->handleHotbarDrop($player, $packet->actions);
+            }catch(UnexpectedValueException $exception){
+                $this->server->getLogger()->debug("Rejected item drop of {$player->getName()}: " . $exception->getMessage());
+                $manager->sendAll();
+            }
+        }elseif($packet->type === InventoryTransactionPacket::TYPE_MISMATCH){
+            $manager->sendAll();
+        }
+
+        foreach($packet->legacySlots as $containerId => $slots){
+            foreach($slots as $slot){
+                if($containerId === ContainerIds::OFFHAND){
+                    $manager->sendSlot($player->getOffHandInventory(), 0);
+                }elseif($slot < PlayerInventory::SIZE && ($containerId === ContainerIds::INVENTORY || $containerId === ContainerIds::HOTBAR || $containerId === ContainerIds::COMBINED_HOTBAR_AND_INVENTORY)){
+                    $manager->sendSlot($player->getInventory(), $slot);
+                }
+            }
+        }
+    }
+
+    /**
+     * @param list<TransactionAction> $actions
+     *
+     * @throws UnexpectedValueException
+     */
+    private function handleHotbarDrop(Player $player, array $actions) : void{
+        if(count($actions) !== 2){
+            throw new UnexpectedValueException("Expected 2 actions, got " . count($actions));
+        }
+
+        $slot = null;
+        $count = 0;
+        $expected = null;
+
+        foreach($actions as $action){
+            if($action->sourceType === TransactionAction::SOURCE_WORLD && $action->slot === 0 && $action->oldItem->isEmpty()){
+                $count = $action->newItem->count;
+            }elseif($action->sourceType === TransactionAction::SOURCE_CONTAINER && $action->windowId === InventoryContentPacket::WINDOW_INVENTORY && !$action->oldItem->isEmpty()){
+                $slot = $action->slot;
+                $expected = $action->oldItem;
+            }else{
+                throw new UnexpectedValueException("Unexpected action (source {$action->sourceType}, slot {$action->slot})");
+            }
+        }
+
+        if($slot === null || $expected === null || $slot >= PlayerInventory::SIZE){
+            throw new UnexpectedValueException("No inventory slot to drop from");
+        }
+
+        $item = $player->getInventory()->getItem($slot);
+        $actual = $this->server->getItemTranslator()->toNetwork($item);
+
+        if($count < 1 || $count > $item->getCount()){
+            throw new UnexpectedValueException("Cannot drop {$count} items from a slot holding " . $item->getCount());
+        }
+
+        if($actual->networkId !== $expected->networkId || $actual->meta !== $expected->meta){
+            throw new UnexpectedValueException("The slot holds a different item");
+        }
+
+        $player->getInventory()->setItem($slot, (clone $item)->setCount($item->getCount() - $count));
+        $player->dropItem((clone $item)->setCount($count));
+    }
+
+    public function sendHeldItem(Player $holder) : void{
+        $inventory = $holder->getInventory();
+
+        $this->sendDataPacket(MobEquipmentPacket::create($holder->getId(), $this->toItemInstance($inventory->getItemInHand()), $inventory->getHeldSlot(), InventoryContentPacket::WINDOW_INVENTORY));
+    }
+
+    public function sendOffHandItem(Player $holder) : void{
+        $this->sendDataPacket(MobEquipmentPacket::create($holder->getId(), $this->toItemInstance($holder->getOffHandInventory()->getItem(0)), 0, InventoryContentPacket::WINDOW_OFFHAND));
+    }
+
+    public function sendArmor(Player $wearer) : void{
+        $armor = $wearer->getArmorInventory();
+
+        $this->sendDataPacket(MobArmorEquipmentPacket::create(
+            $wearer->getId(),
+            $this->toItemInstance($armor->getHelmet()),
+            $this->toItemInstance($armor->getChestplate()),
+            $this->toItemInstance($armor->getLeggings()),
+            $this->toItemInstance($armor->getBoots())
+        ));
+    }
+
+    public function toItemInstance(Item $item) : ItemInstance{
+        return new ItemInstance(0, $this->server->getItemTranslator()->toNetwork($item));
     }
 
     private function handleRespawn(RespawnPacket $packet) : void{
@@ -909,6 +1150,9 @@ class NetworkSession{
             $this->player->loadData($data);
         }
 
+        $this->inventoryManager = new InventoryManager($this, $this->player);
+        $this->itemStackRequestHandler = new ItemStackRequestHandler($this, $this->player, $this->inventoryManager);
+
         $eyes = $this->player->getEyePosition();
         $spawn = $world->getSpawnPosition();
 
@@ -921,6 +1165,7 @@ class NetworkSession{
         $startGame->y = $eyes->y;
         $startGame->z = $eyes->z;
         $startGame->difficulty = $this->server->getDifficulty()->value;
+        $startGame->serverAuthoritativeInventory = true;
         $startGame->yaw = $yaw;
         $startGame->pitch = $pitch;
         $startGame->spawnX = $spawn->getFloorX();
@@ -955,7 +1200,8 @@ class NetworkSession{
             $this->sendAttributes();
             $this->sendOwnMetadata();
             $this->sendSpawnPositions();
-            $this->sendDataPackets([$status, new CreativeContentPacket()]);
+            $this->inventoryManager?->sendAll();
+            $this->sendDataPackets([$status, $this->server->getCreativeContent()]);
 
             $this->state = self::STATE_LOADING;
         }

@@ -61,7 +61,22 @@ class NbtSerializer{
      */
     public function read(string $data, ?string &$rootName = null) : CompoundTag{
         $reader = new BinaryReader($data);
+        $root = $this->readFrom($reader, $rootName);
 
+        if(!$reader->isFinished()){
+            throw new NbtException("Unexpected data after the root tag");
+        }
+
+        return $root;
+    }
+
+    /**
+     * Reads one root compound from $reader, leaving it just after the compound. For NBT that is
+     * followed by other data, like the NBT inside an item in a packet.
+     *
+     * @throws NbtException
+     */
+    public function readFrom(BinaryReader $reader, ?string &$rootName = null) : CompoundTag{
         try{
             $type = $reader->readByte();
 
@@ -75,10 +90,6 @@ class NbtSerializer{
             throw $exception;
         }catch(Throwable $exception){
             throw new NbtException("Invalid NBT: " . $exception->getMessage(), 0, $exception);
-        }
-
-        if(!$reader->isFinished()){
-            throw new NbtException("Unexpected data after the root tag");
         }
 
         /** @var CompoundTag $root */

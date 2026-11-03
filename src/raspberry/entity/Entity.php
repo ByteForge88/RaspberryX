@@ -16,7 +16,7 @@ use LogicException;
  * Anything that exists in a world and can move: players, mobs, dropped items, arrows...
  *
  * Every entity gets a runtime ID that is unique while the server runs. Bedrock also has a
- * "unique ID"; RaspberryX uses the same number for both.
+ * "unique ID", RaspberryX uses the same number for both.
  */
 abstract class Entity{
 
@@ -68,6 +68,20 @@ abstract class Entity{
      */
     public function getEyeHeight() : float{
         return 0.0;
+    }
+
+    /**
+     * How far above the feet the client places the entity's position: the eyes for players.
+     */
+    public function getNetworkOffset() : float{
+        return $this->getEyeHeight();
+    }
+
+    /**
+     * Called every server tick by the world (players are ticked by their session).
+     */
+    public function tick(int $currentTick) : void{
+
     }
 
     public function getEyePosition() : Vector3{
@@ -155,6 +169,25 @@ abstract class Entity{
      */
     public function isVisibleTo(Player $player) : bool{
         return true;
+    }
+
+    protected function updateViewers() : void{
+        $chunkX = $this->position->getChunkX();
+        $chunkZ = $this->position->getChunkZ();
+
+        foreach($this->viewers as $viewer){
+            if(!$viewer->isOnline()){
+                $this->despawnFrom($viewer, false);
+            }elseif($viewer->getWorld() !== $this->world || !$viewer->getNetworkSession()->hasChunk($chunkX, $chunkZ)){
+                $this->despawnFrom($viewer);
+            }
+        }
+
+        foreach($this->world->getPlayers() as $player){
+            if($player->isSpawned() && $player->getNetworkSession()->hasChunk($chunkX, $chunkZ)){
+                $this->spawnTo($player);
+            }
+        }
     }
 
     /**

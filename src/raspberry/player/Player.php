@@ -7,11 +7,21 @@ namespace raspberry\player;
 use raspberry\entity\Human;
 use raspberry\entity\Skin;
 use raspberry\entity\damage\DamageSource;
+use raspberry\entity\object\ItemEntity;
+
+use raspberry\inventory\ArmorInventory;
+use raspberry\inventory\Inventory;
+use raspberry\inventory\PlayerInventory;
+
+use raspberry\item\Item;
+use raspberry\item\ItemSerializer;
+use raspberry\item\enchantment\Enchantment;
 
 use raspberry\nbt\tag\CompoundTag;
 use raspberry\nbt\tag\DoubleTag;
 use raspberry\nbt\tag\FloatTag;
 use raspberry\nbt\tag\ListTag;
+use raspberry\nbt\NbtException;
 
 use raspberry\block\BlockIds;
 
@@ -37,6 +47,8 @@ use raspberry\world\World;
 use raspberry\world\WorldManager;
 
 use function ceil;
+use function cos;
+use function deg2rad;
 use function floor;
 use function is_int;
 use function max;
@@ -57,6 +69,13 @@ class Player extends Human implements CommandSender{
 
     /** falls up to this many blocks do no damage */
     public const SAFE_FALL_DISTANCE = 3.0;
+
+    public const ENDER_CHEST_SIZE = 27;
+
+    /** the UI inventory holds the item on the cursor and what the creative menu or crafting makes */
+    public const UI_SIZE = 54;
+    public const UI_CURSOR = 0;
+    public const UI_CREATED_OUTPUT = 50;
 
     private NetworkSession $session;
 
@@ -90,12 +109,27 @@ class Player extends Human implements CommandSender{
     /** when the player first joined */
     private int $firstPlayed;
 
+    private PlayerInventory $inventory;
+
+    private ArmorInventory $armorInventory;
+
+    private Inventory $offHandInventory;
+
+    private Inventory $enderInventory;
+
+    private Inventory $uiInventory;
+
     public function __construct(World $world, Vector3 $position, NetworkSession $session, AuthenticatedLogin $identity, GameMode $gameMode, Skin $skin){
         $this->session = $session;
         $this->identity = $identity;
         $this->gameMode = $gameMode;
         $this->flying = $gameMode->forcesFlying();
         $this->firstPlayed = (int) (microtime(true) * 1000);
+        $this->inventory = new PlayerInventory();
+        $this->armorInventory = new ArmorInventory();
+        $this->offHandInventory = new Inventory(1);
+        $this->enderInventory = new Inventory(self::ENDER_CHEST_SIZE);
+        $this->uiInventory = new Inventory(self::UI_SIZE);
 
         parent::__construct($world, $position, $skin, Uuid::fromXuid($identity->xuid));
     }
@@ -142,6 +176,17 @@ class Player extends Human implements CommandSender{
         $this->firstPlayed = $data->getLong("FirstPlayed", $this->firstPlayed);
         $this->foodTickTimer = max(1, min($data->getInt("FoodTickTimer", 1), 80));
         $this->fallDistance = max(0.0, $data->getFloat("FallDistance", 0.0));
+
+        $this->inventory->setContents(self::readItems($data->getListTag("Inventory"), true, PlayerInventory::SIZE));
+        $this->armorInventory->setContents(self::readItems($data->getListTag("Armor"), false, 4));
+        $this->offHandInventory->setContents(self::readItems($data->getListTag("Offhand"), false, 1));
+        $this->enderInventory->setContents(self::readItems($data->getListTag("EnderChestInventory"), true, self::ENDER_CHEST_SIZE));
+
+        $heldSlot = $data->getInt("SelectedInventorySlot", 0);
+
+        if($heldSlot >= 0 && $heldSlot < PlayerInventory::HOTBAR_SIZE){
+            $this->inventory->setHeldSlot($heldSlot);
+        }
     }
 
     public function saveData() : CompoundTag{
@@ -164,10 +209,12 @@ class Player extends Human implements CommandSender{
             ->setFloat("FoodExhaustionLevel", $this->dead ? 0.0 : $this->exhaustion)
             ->setInt("FoodTickTimer", $this->dead ? 1 : $this->foodTickTimer)
             ->setFloat("FallDistance", $this->dead ? 0.0 : $this->fallDistance)
-            //filled in by the inventory (step 11c) and effects once they exist
-            ->setInt("SelectedInventorySlot", 0)
-            ->setTag("Inventory", new ListTag([], CompoundTag::TAG_COMPOUND))
-            ->setTag("EnderChestInventory", new ListTag([], CompoundTag::TAG_COMPOUND))
+            ->setInt("SelectedInventorySlot", $this->inventory->getHeldSlot())
+            ->setTag("Inventory", self::writeItems($this->inventory, true))
+            ->setTag("Armor", self::writeItems($this->armorInventory, false))
+            ->setTag("Offhand", self::writeItems($this->offHandInventory, false))
+            ->setTag("EnderChestInventory", self::writeItems($this->enderInventory, true))
+            //filled in once effects exist
             ->setTag("ActiveEffects", new ListTag([], CompoundTag::TAG_COMPOUND));
 
         if($this->spawnPosition !== null && $this->spawnWorldName !== null){
@@ -194,12 +241,128 @@ class Player extends Human implements CommandSender{
 
     public function getDeviceOs() : int{
         $deviceOs = $this->identity->clientData->DeviceOS ?? -1;
-
         return is_int($deviceOs) ? $deviceOs : -1;
     }
 
     public function getIdentity() : AuthenticatedLogin{
         return $this->identity;
+    }
+
+    private static function writeItems(Inventory $inventory, bool $withSlots) : ListTag{
+        $list = new ListTag([], CompoundTag::TAG_COMPOUND);
+
+        foreach($inventory->getContents(!$withSlots) as $slot => $item){
+            $list->push(ItemSerializer::serialize($item, $withSlots ? $slot : null));
+        }
+
+        return $list;
+    }
+
+    /**
+     * @return array<int, Item>
+     */
+    private static function readItems(?ListTag $list, bool $withSlots, int $size) : array{
+        $items = [];
+
+        foreach($list?->getValue() ?? [] as $index => $entry){
+            if(!$entry instanceof CompoundTag){
+                continue;
+            }
+
+            try{
+                $slot = $withSlots ? ($entry->getByte("Slot", -1) ?? -1) : $index;
+                $item = ItemSerializer::deserialize($entry);
+            }catch(NbtException){
+                continue;
+            }
+
+            if($slot >= 0 && $slot < $size && !$item->isNull()){
+                $items[$slot] = $item;
+            }
+        }
+
+        return $items;
+    }
+
+    public function getInventory() : PlayerInventory{
+        return $this->inventory;
+    }
+
+    public function getArmorInventory() : ArmorInventory{
+        return $this->armorInventory;
+    }
+
+    public function getOffHandInventory() : Inventory{
+        return $this->offHandInventory;
+    }
+
+    public function getEnderInventory() : Inventory{
+        return $this->enderInventory;
+    }
+
+    public function getUIInventory() : Inventory{
+        return $this->uiInventory;
+    }
+
+    public function moveUIItemsToInventory() : void{
+        foreach($this->uiInventory->getContents() as $slot => $item){
+            $this->uiInventory->clear($slot);
+
+            foreach($this->inventory->addItem($item) as $leftover){
+                $this->dropItem($leftover);
+            }
+        }
+    }
+
+    public function dropItem(Item $item) : ?ItemEntity{
+        $yaw = deg2rad($this->yaw);
+        $pitch = deg2rad($this->pitch);
+        $speed = 0.3;
+
+        $motion = new Vector3(-sin($yaw) * cos($pitch) * $speed, -sin($pitch) * $speed + 0.1, cos($yaw) * cos($pitch) * $speed);
+
+        return $this->world->dropItem($this->getEyePosition()->add(0, -0.3, 0), $item, $motion, ItemEntity::THROWN_PICKUP_DELAY);
+    }
+
+    public function dropInventory() : void{
+        $this->moveUIItemsToInventory();
+
+        $items = [];
+
+        foreach([$this->inventory, $this->armorInventory, $this->offHandInventory] as $inventory){
+            $items = [...$items, ...$inventory->getContents()];
+            $inventory->clearAll();
+        }
+
+        foreach($items as $item){
+            if(!$item->hasEnchantment(Enchantment::VANISHING)){
+                $this->world->dropItem($this->position, $item);
+            }
+        }
+    }
+
+    /**
+     * Shows the item in the player's hand to everyone who can see them.
+     */
+    public function broadcastHeldItem() : void{
+        foreach($this->viewers as $viewer){
+            $viewer->getNetworkSession()->sendHeldItem($this);
+        }
+    }
+
+    public function broadcastOffHandItem() : void{
+        foreach($this->viewers as $viewer){
+            $viewer->getNetworkSession()->sendOffHandItem($this);
+        }
+    }
+
+    /**
+     * Shows the player's armor to everyone who can see them.
+     */
+    public function broadcastArmor() : void{
+        foreach($this->viewers as $viewer){
+            $viewer->getNetworkSession()->sendArmor($this);
+        }
     }
 
     public function getNetworkSession() : NetworkSession{
@@ -375,6 +538,10 @@ class Player extends Human implements CommandSender{
 
         $this->deathCause = null;
         $this->dead = true;
+
+        if(!$this->session->getServer()->isKeepInventory()){
+            $this->dropInventory();
+        }
 
         foreach($this->viewers as $viewer){
             $viewer->getNetworkSession()->sendActorEvent($this, ActorEventPacket::DEATH);

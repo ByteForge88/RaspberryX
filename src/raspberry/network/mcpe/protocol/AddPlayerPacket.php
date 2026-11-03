@@ -8,6 +8,8 @@ use raspberry\network\encoding\BinaryReader;
 use raspberry\network\encoding\BinaryWriter;
 
 use raspberry\network\mcpe\protocol\types\EntityMetadata;
+use raspberry\network\mcpe\protocol\types\ItemInstance;
+use raspberry\network\mcpe\serializer\ItemStackSerializer;
 
 use raspberry\utils\Uuid;
 
@@ -15,9 +17,6 @@ use UnexpectedValueException;
 
 use function str_repeat;
 
-/**
- * Server -> client: makes another player appear. Send the player's PlayerListPacket entry first.
- */
 class AddPlayerPacket implements Packet{
 
     /** every ability bit (1 << 20) - 1: other players' abilities are only used for display */
@@ -40,6 +39,8 @@ class AddPlayerPacket implements Packet{
     public float $yaw = 0.0;
     public float $headYaw = 0.0;
 
+    public ItemInstance $heldItem;
+
     public int $gameMode = 0;
 
     public EntityMetadata $metadata;
@@ -49,6 +50,7 @@ class AddPlayerPacket implements Packet{
     public function __construct(){
         $this->uuid = new Uuid(str_repeat("\x00", 16));
         $this->metadata = new EntityMetadata();
+        $this->heldItem = ItemInstance::empty();
     }
 
     public static function getPacketId() : int{
@@ -70,13 +72,7 @@ class AddPlayerPacket implements Packet{
         $writer->writeFloat($this->yaw);
         $writer->writeFloat($this->headYaw);
 
-        //held item: empty
-        $writer->writeShort(0); //network ID
-        $writer->writeUnsignedShort(0); //count
-        $writer->writeUnsignedVarInt(0); //metadata
-        $writer->writeBool(false); //no stack network ID
-        $writer->writeUnsignedVarInt(0); //block runtime ID
-        $writer->writeUnsignedVarInt(0); //extra data
+        ItemStackSerializer::writeInstance($writer, $this->heldItem->stack, $this->heldItem->stackNetworkId);
 
         $writer->writeVarInt($this->gameMode);
         $this->metadata->write($writer);

@@ -12,12 +12,18 @@ use raspberry\world\format\io\WorldProvider;
 use raspberry\world\generator\Generator;
 
 use raspberry\entity\Entity;
+use raspberry\entity\object\ItemEntity;
+
+use raspberry\item\Item;
+
+use raspberry\player\Player;
 
 use raspberry\math\Vector3;
 
 use InvalidArgumentException;
 
 use function count;
+use function mt_rand;
 
 class World{
 
@@ -32,6 +38,9 @@ class World{
 
     /** @var array<int, Entity> keyed by runtime ID */
     private array $entities = [];
+
+    /** @var array<int, Player> keyed by runtime ID */
+    private array $players = [];
 
     private bool $closed = false;
 
@@ -210,13 +219,17 @@ class World{
      */
     public function addEntity(Entity $entity) : void{
         $this->entities[$entity->getId()] = $entity;
+
+        if($entity instanceof Player){
+            $this->players[$entity->getId()] = $entity;
+        }
     }
 
     /**
      * @internal
      */
     public function removeEntity(Entity $entity) : void{
-        unset($this->entities[$entity->getId()]);
+        unset($this->entities[$entity->getId()], $this->players[$entity->getId()]);
     }
 
     public function getEntity(int $runtimeId) : ?Entity{
@@ -228,6 +241,37 @@ class World{
      */
     public function getEntities() : array{
         return $this->entities;
+    }
+
+    /**
+     * @return array<int, Player>
+     */
+    public function getPlayers() : array{
+        return $this->players;
+    }
+
+    /**
+     * Ticks every entity except players (their session ticks them).
+     */
+    public function tick(int $currentTick) : void{
+        foreach($this->entities as $entity){
+            if(!$entity instanceof Player && !$entity->isClosed()){
+                $entity->tick($currentTick);
+            }
+        }
+    }
+
+    /**
+     * Drops an item at $position, flying off in a random direction unless $motion is given.
+     */
+    public function dropItem(Vector3 $position, Item $item, ?Vector3 $motion = null, int $pickupDelay = ItemEntity::DEFAULT_PICKUP_DELAY) : ?ItemEntity{
+        if($item->isNull()){
+            return null;
+        }
+
+        $motion ??= new Vector3(mt_rand(-100, 100) / 1000, 0.2, mt_rand(-100, 100) / 1000);
+
+        return new ItemEntity($this, $position, $item, $motion, $pickupDelay);
     }
 
     public function getChunkCount() : int{

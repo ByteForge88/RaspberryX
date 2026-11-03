@@ -4,9 +4,16 @@ declare(strict_types=1);
 
 namespace raspberry\command;
 
+use raspberry\item\ItemIds;
+
+use ReflectionClass;
 use InvalidArgumentException;
 
+use function array_values;
+use function sort;
+use function str_starts_with;
 use function strtolower;
+use function substr;
 
 class CommandEnum{
 
@@ -40,6 +47,24 @@ class CommandEnum{
         return new self(self::BOOLEAN, ["true", "false"]);
     }
 
+
+    /**
+     * Every vanilla item name without "minecraft:"
+     */
+    public static function items() : self{
+        $names = [];
+
+        foreach((new ReflectionClass(ItemIds::class))->getConstants() as $id){
+            if($id !== ItemIds::AIR){
+                $names[] = substr($id, 10);
+            }
+        }
+
+        sort($names);
+
+        return new self("Item", array_values($names));
+    }
+
     public function getName() : string{
         return $this->name;
     }
@@ -68,9 +93,14 @@ class CommandEnum{
 
     /**
      * Returns the value as written in the enum, ignoring case, or null when it is not one of them.
+     * "minecraft:diamond" also matches the value "diamond", like vanilla item and block names.
      */
     public function match(string $input) : ?string{
         $input = strtolower($input);
+
+        if(str_starts_with($input, "minecraft:")){
+            $input = substr($input, 10);
+        }
 
         foreach($this->values as $value){
             if(strtolower($value) === $input){
