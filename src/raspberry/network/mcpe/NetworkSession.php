@@ -1166,6 +1166,7 @@ class NetworkSession{
         $startGame->z = $eyes->z;
         $startGame->difficulty = $this->server->getDifficulty()->value;
         $startGame->serverAuthoritativeInventory = true;
+        $startGame->gameRules = ["recipesunlock" => true];
         $startGame->yaw = $yaw;
         $startGame->pitch = $pitch;
         $startGame->spawnX = $spawn->getFloorX();
@@ -1201,7 +1202,8 @@ class NetworkSession{
             $this->sendOwnMetadata();
             $this->sendSpawnPositions();
             $this->inventoryManager?->sendAll();
-            $this->sendDataPackets([$status, $this->server->getCreativeContent()]);
+            $this->sendDataPackets([$status, $this->server->getCreativeContent(), $this->server->getCraftingData()]);
+            $this->player?->getRecipeBook()->sendAll();
 
             $this->state = self::STATE_LOADING;
         }

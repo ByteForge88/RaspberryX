@@ -64,6 +64,8 @@ use raspberry\network\mcpe\protocol\ItemStackResponsePacket;
 use raspberry\network\mcpe\protocol\InventoryTransactionPacket;
 use raspberry\network\mcpe\protocol\AddItemActorPacket;
 use raspberry\network\mcpe\protocol\TakeItemActorPacket;
+use raspberry\network\mcpe\protocol\CraftingDataPacket;
+use raspberry\network\mcpe\protocol\UnlockedRecipesPacket;
 use raspberry\network\nethernet\NetherNetIdentity;
 use raspberry\network\nethernet\NetherNetTransport;
 
@@ -99,6 +101,7 @@ use raspberry\player\GameMode;
 use raspberry\player\Player;
 use raspberry\player\PlayerDataStorage;
 
+use raspberry\crafting\CraftingManager;
 use raspberry\inventory\CreativeInventory;
 
 use raspberry\item\Item;
@@ -213,6 +216,10 @@ class Server{
 
     private CreativeContentPacket $creativeContent;
 
+    private CraftingManager $craftingManager;
+
+    private CraftingDataPacket $craftingData;
+
     /** @var list<Item> the creative items in the order of the creative content */
     private array $creativeItems = [];
 
@@ -279,6 +286,8 @@ class Server{
         $this->itemTypeDictionary = new ItemTypeDictionary();
         $this->itemTranslator = new ItemTranslator($this->itemTypeDictionary, $this->blockStateRegistry, $this->blockTranslator);
         $this->creativeContent = $this->itemTranslator->buildCreativeContent(new CreativeInventory(), $this->creativeItems);
+        $this->craftingManager = new CraftingManager();
+        $this->craftingData = $this->itemTranslator->buildCraftingData($this->craftingManager);
 
         $this->worldManager = new WorldManager(
             Path::join($this->dataPath, "worlds"),
@@ -409,6 +418,14 @@ class Server{
 
     public function getCreativeContent() : CreativeContentPacket{
         return $this->creativeContent;
+    }
+
+    public function getCraftingManager() : CraftingManager{
+        return $this->craftingManager;
+    }
+
+    public function getCraftingData() : CraftingDataPacket{
+        return $this->craftingData;
     }
 
     public function getCreativeItem(int $networkId) : ?Item{
@@ -745,7 +762,9 @@ class Server{
             ItemStackResponsePacket::class,
             InventoryTransactionPacket::class,
             AddItemActorPacket::class,
-            TakeItemActorPacket::class
+            TakeItemActorPacket::class,
+            CraftingDataPacket::class,
+            UnlockedRecipesPacket::class
         ] as $packet){
             $this->packetRegistry->register($packet);
         }

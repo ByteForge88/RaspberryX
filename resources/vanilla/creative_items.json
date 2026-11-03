@@ -1,5 +1,5 @@
 {
-  "version": "1.26.50.4",
+  "version": "1.26.60.5",
   "items": [
     ["construction", "minecraft:respawn_anchor", 0],
     ["construction", "minecraft:polished_andesite", 0],
@@ -243,6 +243,7 @@
     ["construction", "minecraft:weathered_cut_copper", 0],
     ["construction", "minecraft:heavy_core", 0],
     ["construction", "minecraft:crafter", 0],
+    ["construction", "minecraft:ice_crystal", 0],
     ["construction", "minecraft:golden_dandelion", 0],
     ["construction", "minecraft:ancient_debris", 0],
     ["construction", "minecraft:chiseled_deepslate", 0],
@@ -353,6 +354,7 @@
     ["construction", "minecraft:creaking_heart", 0],
     ["construction", "minecraft:tripwire_hook", 0],
     ["construction", "minecraft:hopper", 0],
+    ["construction", "minecraft:icicle", 0],
     ["construction", "minecraft:jukebox", 0],
     ["construction", "minecraft:ladder", 0],
     ["construction", "minecraft:redstone_lamp", 0],
@@ -1218,6 +1220,7 @@
     ["items", "minecraft:enchanted_golden_apple", 0],
     ["items", "minecraft:golden_apple", 0],
     ["items", "minecraft:clay_ball", 0],
+    ["items", "minecraft:ice_ball", 0],
     ["items", "minecraft:slime_ball", 0],
     ["items", "minecraft:banner", 0],
     ["items", "minecraft:banner", 1],
@@ -1390,6 +1393,7 @@
     ["items", "minecraft:evoker_spawn_egg", 0],
     ["items", "minecraft:fox_spawn_egg", 0],
     ["items", "minecraft:frog_spawn_egg", 0],
+    ["items", "minecraft:frostbite_spawn_egg", 0],
     ["items", "minecraft:ghast_spawn_egg", 0],
     ["items", "minecraft:glow_squid_spawn_egg", 0],
     ["items", "minecraft:goat_spawn_egg", 0],

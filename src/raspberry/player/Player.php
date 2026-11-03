@@ -21,6 +21,7 @@ use raspberry\nbt\tag\CompoundTag;
 use raspberry\nbt\tag\DoubleTag;
 use raspberry\nbt\tag\FloatTag;
 use raspberry\nbt\tag\ListTag;
+use raspberry\nbt\tag\StringTag;
 use raspberry\nbt\NbtException;
 
 use raspberry\block\BlockIds;
@@ -46,6 +47,8 @@ use raspberry\world\Chunk;
 use raspberry\world\World;
 use raspberry\world\WorldManager;
 
+use function array_map;
+use function sin;
 use function ceil;
 use function cos;
 use function deg2rad;
@@ -76,6 +79,10 @@ class Player extends Human implements CommandSender{
     public const UI_SIZE = 54;
     public const UI_CURSOR = 0;
     public const UI_CREATED_OUTPUT = 50;
+
+    /** first slot of the 2x2 crafting grid of the inventory screen, and of the crafting table's 3x3 grid */
+    public const UI_CRAFTING_SMALL = 28;
+    public const UI_CRAFTING_LARGE = 32;
 
     private NetworkSession $session;
 
@@ -119,6 +126,8 @@ class Player extends Human implements CommandSender{
 
     private Inventory $uiInventory;
 
+    private RecipeBook $recipeBook;
+
     public function __construct(World $world, Vector3 $position, NetworkSession $session, AuthenticatedLogin $identity, GameMode $gameMode, Skin $skin){
         $this->session = $session;
         $this->identity = $identity;
@@ -130,6 +139,11 @@ class Player extends Human implements CommandSender{
         $this->offHandInventory = new Inventory(1);
         $this->enderInventory = new Inventory(self::ENDER_CHEST_SIZE);
         $this->uiInventory = new Inventory(self::UI_SIZE);
+        $this->recipeBook = new RecipeBook($this, $session->getServer()->getCraftingManager());
+
+        foreach([$this->inventory, $this->armorInventory, $this->offHandInventory, $this->uiInventory] as $inventory){
+            $inventory->addListener($this->recipeBook);
+        }
 
         parent::__construct($world, $position, $skin, Uuid::fromXuid($identity->xuid));
     }
@@ -182,6 +196,12 @@ class Player extends Human implements CommandSender{
         $this->offHandInventory->setContents(self::readItems($data->getListTag("Offhand"), false, 1));
         $this->enderInventory->setContents(self::readItems($data->getListTag("EnderChestInventory"), true, self::ENDER_CHEST_SIZE));
 
+        $recipes = $data->getListTag("UnlockedRecipes");
+
+        if($recipes !== null && $recipes->getTagType() === StringTag::TAG_STRING){
+            $this->recipeBook->load($recipes->getAllValues());
+        }
+
         $heldSlot = $data->getInt("SelectedInventorySlot", 0);
 
         if($heldSlot >= 0 && $heldSlot < PlayerInventory::HOTBAR_SIZE){
@@ -214,6 +234,7 @@ class Player extends Human implements CommandSender{
             ->setTag("Armor", self::writeItems($this->armorInventory, false))
             ->setTag("Offhand", self::writeItems($this->offHandInventory, false))
             ->setTag("EnderChestInventory", self::writeItems($this->enderInventory, true))
+            ->setTag("UnlockedRecipes", new ListTag(array_map(fn(string $id) => new StringTag($id), $this->recipeBook->getUnlocked()), StringTag::TAG_STRING))
             //filled in once effects exist
             ->setTag("ActiveEffects", new ListTag([], CompoundTag::TAG_COMPOUND));
 
@@ -298,6 +319,10 @@ class Player extends Human implements CommandSender{
 
     public function getEnderInventory() : Inventory{
         return $this->enderInventory;
+    }
+
+    public function getRecipeBook() : RecipeBook{
+        return $this->recipeBook;
     }
 
     public function getUIInventory() : Inventory{
@@ -560,6 +585,8 @@ class Player extends Human implements CommandSender{
             $this->tickHunger($this->session->getServer()->getDifficulty());
         }
 
+        $this->recipeBook->tick($currentTick);
+
         if($this->position->y < Chunk::MIN_Y - self::VOID_DEPTH && $currentTick - $this->lastVoidDamageTick >= self::VOID_DAMAGE_TICKS){
             $this->lastVoidDamageTick = $currentTick;
             $this->damage(new DamageSource(DamageSource::CAUSE_VOID, self::VOID_DAMAGE));
@@ -570,7 +597,7 @@ class Player extends Human implements CommandSender{
      * @internal
      *
      * @param bool $onGround the client stopped against something below it
-     * @param bool $jumped the client started a jump this tick
+     * @param bool $jumped   the client started a jump this tick
      */
     public function onClientMove(Vector3 $from, bool $onGround, bool $jumped) : void{
         $dx = $this->position->x - $from->x;
@@ -614,7 +641,7 @@ class Player extends Human implements CommandSender{
     /**
      * Water at the feet or the head breaks a fall.
      */
-    private function isInWater() : bool{
+    public function isInWater() : bool{
         $x = $this->position->getFloorX();
         $z = $this->position->getFloorZ();
 

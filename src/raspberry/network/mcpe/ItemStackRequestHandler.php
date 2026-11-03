@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace raspberry\network\mcpe;
 
+use raspberry\crafting\CraftingRecipe;
+
 use raspberry\inventory\Inventory;
 use raspberry\inventory\ArmorInventory;
 use raspberry\inventory\PlayerInventory;
@@ -29,6 +31,7 @@ use UnexpectedValueException;
 use function array_key_first;
 use function count;
 use function in_array;
+use function min;
 use function preg_match;
 use function spl_object_id;
 
@@ -62,8 +65,20 @@ class ItemStackRequestHandler{
     /** @var array<int, array<string, int>> */
     private array $requestStacks = [];
 
-    /** @var list<Item> */
+    /** @var list<Item> items the running request drops, thrown once it succeeded */
     private array $drops = [];
+
+    /** what the running request made (crafted or taken from the creative menu), not in any slot yet */
+    private ?Item $created = null;
+
+    /** how many of $created are left; can be more than a stack after shift-click crafting */
+    private int $createdCount = 0;
+
+    /** @var list<array{Item, int}> outputs of a recipe with more than one, waiting for a create action */
+    private array $pendingResults = [];
+
+    /** the 3x3 grid of a crafting table instead of the 2x2 grid of the inventory (step 12) */
+    private bool $largeGrid = false;
 
     public function __construct(NetworkSession $session, Player $player, InventoryManager $inventoryManager){
         $this->session = $session;
@@ -92,6 +107,9 @@ class ItemStackRequestHandler{
         $this->requestId = $request->requestId;
         $this->changes = [];
         $this->drops = [];
+        $this->created = null;
+        $this->createdCount = 0;
+        $this->pendingResults = [];
         $this->requestStacks[$request->requestId] = [];
 
         while(count($this->requestStacks) > self::REMEMBERED_REQUESTS){
@@ -113,7 +131,8 @@ class ItemStackRequestHandler{
             $response = new ItemStackResponse(ItemStackResponse::STATUS_ERROR, $request->requestId);
         }finally{
             //whatever was made for the request and not taken out of the output slot is gone
-            $this->player->getUIInventory()->clear(Player::UI_CREATED_OUTPUT);
+            $this->created = null;
+            $this->pendingResults = [];
             $this->inventoryManager->setQuiet(false);
         }
 
@@ -140,22 +159,27 @@ class ItemStackRequestHandler{
             StackRequestAction::SWAP => $this->swap($this->slot($action->source), $this->slot($action->destination)),
             StackRequestAction::DESTROY => $this->destroy($this->slot($action->source), $action->count),
             StackRequestAction::CRAFT_CREATIVE => $this->craftCreative($action->creativeItemId),
-            StackRequestAction::CRAFT_RESULTS_DEPRECATED => null,
+            StackRequestAction::CRAFT_RECIPE => $this->craftRecipe($action->recipeNetworkId, $action->timesCrafted, false),
+            StackRequestAction::CRAFT_RECIPE_AUTO => $this->craftRecipe($action->recipeNetworkId, $action->timesCrafted, true),
+            StackRequestAction::CREATE => $this->create($action->resultsSlot),
+            //the server already took the ingredients and knows the results
+            StackRequestAction::CONSUME, StackRequestAction::CRAFT_RESULTS_DEPRECATED => null,
             StackRequestAction::DROP => $this->drop($this->slot($action->source), $action->count),
             default => throw new UnexpectedValueException("Inventory action {$action->type} is not supported")
         };
     }
 
     private function transfer(StackRequestSlot $from, StackRequestSlot $to, int $count) : void{
-        $source = $this->getItem($from);
+        if($to->containerId === ContainerIds::CREATED_OUTPUT){
+            throw new UnexpectedValueException("Items cannot be put into the created output slot");
+        }
+
+        $fromCreated = $from->containerId === ContainerIds::CREATED_OUTPUT;
+        $source = $fromCreated ? $this->takeCreated($count) : $this->getItem($from);
         $destination = $this->getItem($to);
 
         if($count < 1 || $source->isNull() || $source->getCount() < $count){
             throw new UnexpectedValueException("Cannot take {$count} items from a slot holding " . $source->getCount());
-        }
-
-        if($to->containerId === ContainerIds::CREATED_OUTPUT){
-            throw new UnexpectedValueException("Items cannot be put into the created output slot");
         }
 
         if(!$destination->isNull() && !$destination->canStackWith($source)){
@@ -169,11 +193,19 @@ class ItemStackRequestHandler{
             throw new UnexpectedValueException("The stack would hold more than " . $moved->getMaxStackSize());
         }
 
-        $this->setItem($from, (clone $source)->setCount($source->getCount() - $count));
+        if(!$fromCreated){
+            $this->setItem($from, (clone $source)->setCount($source->getCount() - $count));
+        }
+
         $this->setItem($to, $moved);
     }
 
     private function drop(StackRequestSlot $slot, int $count) : void{
+        if($slot->containerId === ContainerIds::CREATED_OUTPUT){
+            $this->drops[] = $this->takeCreated($count);
+            return;
+        }
+
         $item = $this->getItem($slot);
 
         if($count < 1 || $item->getCount() < $count){
@@ -204,6 +236,11 @@ class ItemStackRequestHandler{
             throw new UnexpectedValueException("Only creative players can delete items");
         }
 
+        if($slot->containerId === ContainerIds::CREATED_OUTPUT){
+            $this->takeCreated($count);
+            return;
+        }
+
         $item = $this->getItem($slot);
 
         if($count < 1 || $item->getCount() < $count){
@@ -219,10 +256,128 @@ class ItemStackRequestHandler{
         }
 
         $item = Server::getInstance()->getCreativeItem($creativeItemId) ?? throw new UnexpectedValueException("There is no creative item {$creativeItemId}");
-        $item = (clone $item)->setCount($item->getMaxStackSize());
 
-        $output = new StackRequestSlot(ContainerIds::CREATED_OUTPUT, null, Player::UI_CREATED_OUTPUT, 0);
-        $this->setItem($output, $item);
+        $this->created = $item->setCount(1);
+        $this->createdCount = $item->getMaxStackSize();
+    }
+
+    private function craftRecipe(int $networkId, int $times, bool $auto) : void{
+        $recipe = Server::getInstance()->getCraftingManager()->getCraftingRecipe($networkId) ?? throw new UnexpectedValueException("There is no crafting recipe {$networkId}");
+
+        if($recipe->getBlock() !== CraftingRecipe::BLOCK_CRAFTING_TABLE){
+            throw new UnexpectedValueException("Recipe {$recipe->getId()} needs a " . $recipe->getBlock());
+        }
+
+        if($times < 1){
+            throw new UnexpectedValueException("A recipe must be crafted at least once");
+        }
+
+        if($auto){
+            if(!$this->player->getRecipeBook()->isUnlocked($recipe)){
+                throw new UnexpectedValueException("Recipe {$recipe->getId()} is not unlocked");
+            }
+
+            $this->consumeAnywhere($recipe, $times);
+        }else{
+            $this->consumeGrid($recipe, $times);
+        }
+
+        foreach($recipe->getOutput() as $item){
+            $this->pendingResults[] = [$item, $item->getCount() * $times];
+        }
+
+        //with one output it goes straight to the created output slot, with more the client picks
+        if(count($this->pendingResults) === 1){
+            $this->create(0);
+        }
+    }
+
+    /**
+     * Moves one output of the crafted recipe to the created output slot.
+     */
+    private function create(int $resultsSlot) : void{
+        [$item, $count] = $this->pendingResults[$resultsSlot] ?? throw new UnexpectedValueException("There is no crafting result {$resultsSlot}");
+        unset($this->pendingResults[$resultsSlot]);
+
+        $this->created = $item->setCount(1);
+        $this->createdCount = $count;
+    }
+
+    private function consumeGrid(CraftingRecipe $recipe, int $times) : void{
+        [$offset, $size] = $this->getCraftingGrid();
+        $ui = $this->player->getUIInventory();
+        $grid = [];
+
+        for($index = 0; $index < $size * $size; ++$index){
+            $grid[] = $ui->getItem($offset + $index);
+        }
+
+        $matched = $recipe->match($grid, $size, $times) ?? throw new UnexpectedValueException("The crafting grid does not hold recipe {$recipe->getId()} x{$times}");
+
+        foreach($matched as $index => $ingredient){
+            $item = $grid[$index];
+            $this->setItem(new StackRequestSlot(ContainerIds::CRAFTING_INPUT, null, $offset + $index, 0), $item->setCount($item->getCount() - $ingredient->getCount() * $times));
+        }
+    }
+
+    /**
+     * Takes every ingredient from the crafting grid first, then from the inventory.
+     */
+    private function consumeAnywhere(CraftingRecipe $recipe, int $times) : void{
+        [$offset, $size] = $this->getCraftingGrid();
+        $slots = [];
+
+        for($index = 0; $index < $size * $size; ++$index){
+            $slots[] = new StackRequestSlot(ContainerIds::CRAFTING_INPUT, null, $offset + $index, 0);
+        }
+
+        for($index = 0; $index < PlayerInventory::SIZE; ++$index){
+            $slots[] = new StackRequestSlot(ContainerIds::COMBINED_HOTBAR_AND_INVENTORY, null, $index, 0);
+        }
+
+        foreach($recipe->getIngredients() as $ingredient){
+            $needed = $ingredient->getCount() * $times;
+
+            foreach($slots as $slot){
+                $item = $this->getItem($slot);
+
+                if(!$ingredient->matches($item)){
+                    continue;
+                }
+
+                $taken = min($needed, $item->getCount());
+                $this->setItem($slot, $item->setCount($item->getCount() - $taken));
+                $needed -= $taken;
+
+                if($needed === 0){
+                    break;
+                }
+            }
+
+            if($needed > 0){
+                throw new UnexpectedValueException("Not enough items for recipe {$recipe->getId()} x{$times}");
+            }
+        }
+    }
+
+    /**
+     * Takes items out of the created output slot.
+     */
+    private function takeCreated(int $count) : Item{
+        if($this->created === null || $count < 1 || $count > $this->createdCount){
+            throw new UnexpectedValueException("Cannot take {$count} items from the created output, it holds {$this->createdCount}");
+        }
+
+        $this->createdCount -= $count;
+
+        return (clone $this->created)->setCount($count);
+    }
+
+    /**
+     * @return array{int, int} first UI slot of the crafting grid, and its width
+     */
+    private function getCraftingGrid() : array{
+        return $this->largeGrid ? [Player::UI_CRAFTING_LARGE, 3] : [Player::UI_CRAFTING_SMALL, 2];
     }
 
     private function checkFits(StackRequestSlot $slot, Item $item) : void{
@@ -261,16 +416,26 @@ class ItemStackRequestHandler{
             ContainerIds::ARMOR => $slot->slot < 4 ? [$player->getArmorInventory(), $slot->slot] : null,
             ContainerIds::OFFHAND => $slot->slot <= 1 ? [$player->getOffHandInventory(), 0] : null,
             ContainerIds::CURSOR => $slot->slot === Player::UI_CURSOR ? [$player->getUIInventory(), Player::UI_CURSOR] : null,
-            ContainerIds::CREATED_OUTPUT => $slot->slot === Player::UI_CREATED_OUTPUT ? [$player->getUIInventory(), Player::UI_CREATED_OUTPUT] : null,
+            ContainerIds::CRAFTING_INPUT => $this->isCraftingSlot($slot->slot) ? [$player->getUIInventory(), $slot->slot] : null,
             default => null
         };
 
         return $resolved ?? throw new UnexpectedValueException("Container {$slot->containerId} slot {$slot->slot} cannot be used");
     }
 
+    private function isCraftingSlot(int $slot) : bool{
+        [$offset, $size] = $this->getCraftingGrid();
+
+        return $slot >= $offset && $slot < $offset + $size * $size;
+    }
+
     private function slot(?StackRequestSlot $slot) : StackRequestSlot{
         if($slot === null){
             throw new UnexpectedValueException("Missing slot");
+        }
+
+        if($slot->containerId === ContainerIds::CREATED_OUTPUT){
+            return $slot;
         }
 
         [$inventory, $index] = $this->resolve($slot);
@@ -323,10 +488,6 @@ class ItemStackRequestHandler{
         $containers = [];
 
         foreach($this->changes as [$inventory, $index, , , $containerId, $clientSlot]){
-            if($containerId === ContainerIds::CREATED_OUTPUT){
-                continue; //emptied after every request
-            }
-
             $item = $inventory->getItem($index);
 
             $containers[$containerId][] = [

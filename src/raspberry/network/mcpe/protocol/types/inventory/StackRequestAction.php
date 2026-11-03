@@ -36,6 +36,12 @@ class StackRequestAction{
 
     public int $creativeItemId = 0;
 
+    public int $recipeNetworkId = 0;
+
+    public int $timesCrafted = 0;
+
+    public int $resultsSlot = 0;
+
     public function __construct(int $type){
         $this->type = $type;
     }

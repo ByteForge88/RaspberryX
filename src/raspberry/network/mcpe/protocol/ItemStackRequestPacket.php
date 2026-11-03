@@ -83,7 +83,7 @@ class ItemStackRequestPacket implements Packet{
                 break;
 
             case StackRequestAction::CREATE:
-                $reader->readByte(); //results slot
+                $action->resultsSlot = $reader->readByte();
                 break;
 
             case StackRequestAction::LAB_TABLE_COMBINE:
@@ -102,13 +102,13 @@ class ItemStackRequestPacket implements Packet{
                 break;
 
             case StackRequestAction::CRAFT_RECIPE:
-                $reader->readUnsignedVarInt();
-                $reader->readByte();
+                $action->recipeNetworkId = $reader->readUnsignedVarInt();
+                $action->timesCrafted = $reader->readByte();
                 break;
 
             case StackRequestAction::CRAFT_RECIPE_AUTO:
-                $reader->readUnsignedVarInt();
-                $reader->readByte();
+                $action->recipeNetworkId = $reader->readUnsignedVarInt();
+                $action->timesCrafted = $reader->readByte();
 
                 for($i = 0, $count = self::readCount($reader, self::MAX_LIST); $i < $count; ++$i){
                     self::skipDescriptor($reader);

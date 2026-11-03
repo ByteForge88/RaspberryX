@@ -1,5 +1,5 @@
 {
-  "version": "1.26.50.4",
+  "version": "1.26.60.5",
   "names": {
     "minecraft:acacia_boat": "Acacia Boat",
     "minecraft:acacia_button": "Acacia Button",
@@ -543,6 +543,7 @@
     "minecraft:dirt": "Dirt",
     "minecraft:dirt_with_roots": "Rooted Dirt",
     "minecraft:disc_fragment_5": "Disc Fragment",
+    "minecraft:disc_press": "Disc Press",
     "minecraft:dispenser": "Dispenser",
     "minecraft:dolphin_spawn_egg": "Dolphin Spawn Egg",
     "minecraft:donkey_spawn_egg": "Donkey Spawn Egg",
@@ -757,6 +758,7 @@
     "minecraft:friend_pottery_sherd": "Friend Pottery Sherd",
     "minecraft:frog_spawn": "Frogspawn",
     "minecraft:frog_spawn_egg": "Frog Spawn Egg",
+    "minecraft:frostbite_spawn_egg": "Frostbite Spawn Egg",
     "minecraft:frosted_ice": "Frosted Ice",
     "minecraft:furnace": "Furnace",
     "minecraft:ghast_spawn_egg": "Ghast Spawn Egg",
@@ -910,6 +912,9 @@
     "minecraft:howl_pottery_sherd": "Howl Pottery Sherd",
     "minecraft:husk_spawn_egg": "Husk Spawn Egg",
     "minecraft:ice": "Ice",
+    "minecraft:ice_ball": "Ice Ball",
+    "minecraft:ice_crystal": "Ice Crystal",
+    "minecraft:icicle": "Icicle",
     "minecraft:infested_chiseled_stone_bricks": "Infested Chiseled Stone Bricks",
     "minecraft:infested_cobblestone": "Infested Cobblestone",
     "minecraft:infested_cracked_stone_bricks": "Infested Cracked Stone Bricks",
