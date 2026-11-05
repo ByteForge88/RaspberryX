@@ -63,6 +63,7 @@ use function is_int;
 use function intdiv;
 use function max;
 use function min;
+use function mt_rand;
 use function microtime;
 use function sqrt;
 
@@ -97,6 +98,23 @@ class Player extends Human implements CommandSender{
     public const UI_CRAFTING_SMALL = 28;
     public const UI_CRAFTING_LARGE = 32;
 
+    /** the input slots of the work blocks */
+    public const UI_ANVIL_INPUT = 1;
+    public const UI_ANVIL_MATERIAL = 2;
+    public const UI_STONECUTTER_INPUT = 3;
+    public const UI_LOOM_INPUT = 9;
+    public const UI_LOOM_DYE = 10;
+    public const UI_LOOM_PATTERN = 11;
+    public const UI_CARTOGRAPHY_INPUT = 12;
+    public const UI_CARTOGRAPHY_ADDITIONAL = 13;
+    public const UI_ENCHANTING_INPUT = 14;
+    public const UI_ENCHANTING_LAPIS = 15;
+    public const UI_GRINDSTONE_INPUT = 16;
+    public const UI_GRINDSTONE_ADDITIONAL = 17;
+    public const UI_SMITHING_INPUT = 51;
+    public const UI_SMITHING_MATERIAL = 52;
+    public const UI_SMITHING_TEMPLATE = 53;
+
     private NetworkSession $session;
 
     private AuthenticatedLogin $identity;
@@ -126,6 +144,9 @@ class Player extends Human implements CommandSender{
 
     /** how far to the next level, 0 to 1 */
     private float $xpProgress = 0.0;
+
+    /** picks the enchanting table's offers, changes after every enchant */
+    private int $enchantmentSeed = 0;
 
     /** translation key of the death message for the next death, e.g. "death.attack.outOfWorld" */
     private ?string $deathCause = null;
@@ -208,6 +229,7 @@ class Player extends Human implements CommandSender{
         $this->exhaustion = max(0.0, min($data->getFloat("FoodExhaustionLevel", 0.0), self::MAX_EXHAUSTION));
         $this->xpProgress = max(0.0, min($data->getFloat("XpP", 0.0) ?? 0.0, 1.0));
         $this->xpLevel = max(0, min($data->getInt("XpLevel", 0) ?? 0, self::MAX_XP_LEVEL));
+        $this->enchantmentSeed = $data->getInt("EnchantmentSeed") ?? mt_rand();
 
         if($this->health <= 0){
             $this->resetVitals();
@@ -262,6 +284,7 @@ class Player extends Human implements CommandSender{
             ->setFloat("FoodExhaustionLevel", $this->dead ? 0.0 : $this->exhaustion)
             ->setFloat("XpP", $this->xpProgress)
             ->setInt("XpLevel", $this->xpLevel)
+            ->setInt("EnchantmentSeed", $this->enchantmentSeed)
             ->setInt("FoodTickTimer", $this->dead ? 1 : $this->foodTickTimer)
             ->setFloat("FallDistance", $this->dead ? 0.0 : $this->fallDistance)
             ->setInt("SelectedInventorySlot", $this->inventory->getHeldSlot())
@@ -421,6 +444,22 @@ class Player extends Human implements CommandSender{
         }
 
         $this->session->sendAttributes();
+    }
+
+    /**
+     * Takes levels for an enchant or an anvil, keeping the progress to the next level.
+     */
+    public function takeXpLevels(int $levels) : void{
+        $this->xpLevel = max(0, $this->xpLevel - $levels);
+        $this->session->sendAttributes();
+    }
+
+    public function getEnchantmentSeed() : int{
+        return $this->enchantmentSeed;
+    }
+
+    public function resetEnchantmentSeed() : void{
+        $this->enchantmentSeed = mt_rand();
     }
 
     public function moveUIItemsToInventory() : void{

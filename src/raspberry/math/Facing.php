@@ -21,6 +21,8 @@ class Facing{
 
     public const HORIZONTAL = [self::NORTH, self::SOUTH, self::WEST, self::EAST];
 
+    public const ALL = [self::DOWN, self::UP, self::NORTH, self::SOUTH, self::WEST, self::EAST];
+
     private const NAMES = ["down", "up", "north", "south", "west", "east"];
 
     private const OFFSETS = [[0, -1, 0], [0, 1, 0], [0, 0, -1], [0, 0, 1], [-1, 0, 0], [1, 0, 0]];

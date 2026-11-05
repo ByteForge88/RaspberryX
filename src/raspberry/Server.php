@@ -10,7 +10,6 @@ use raspberry\network\mcpe\convert\BlockTranslator;
 use raspberry\network\mcpe\convert\ItemTypeDictionary;
 use raspberry\network\mcpe\NetworkSession;
 use raspberry\network\mcpe\protocol\ChunkRadiusUpdatedPacket;
-use raspberry\network\mcpe\protocol\ContainerSetDataPacket;
 use raspberry\network\mcpe\protocol\CreativeContentPacket;
 use raspberry\network\mcpe\protocol\DisconnectPacket;
 use raspberry\network\mcpe\protocol\ItemRegistryPacket;
@@ -22,7 +21,6 @@ use raspberry\network\mcpe\protocol\NetworkSettingsPacket;
 use raspberry\network\mcpe\protocol\PacketBatch;
 use raspberry\network\mcpe\protocol\PacketRegistry;
 use raspberry\network\mcpe\protocol\PacketTranslator;
-use raspberry\network\mcpe\protocol\PlayerAuthInputPacket;
 use raspberry\network\mcpe\protocol\PlayStatusPacket;
 use raspberry\network\mcpe\protocol\ProtocolInfo;
 use raspberry\network\mcpe\protocol\RequestChunkRadiusPacket;
@@ -57,9 +55,12 @@ use raspberry\network\mcpe\protocol\InventoryContentPacket;
 use raspberry\network\mcpe\protocol\InventorySlotPacket;
 use raspberry\network\mcpe\protocol\MobEquipmentPacket;
 use raspberry\network\mcpe\protocol\MobArmorEquipmentPacket;
-use raspberry\network\mcpe\protocol\PlayerHotbarPacket;
 use raspberry\network\mcpe\protocol\ContainerOpenPacket;
 use raspberry\network\mcpe\protocol\ContainerClosePacket;
+use raspberry\network\mcpe\protocol\ContainerSetDataPacket;
+use raspberry\network\mcpe\protocol\PlayerHotbarPacket;
+use raspberry\network\mcpe\protocol\PlayerEnchantOptionsPacket;
+use raspberry\network\mcpe\protocol\PlayerAuthInputPacket;
 use raspberry\network\mcpe\protocol\InteractPacket;
 use raspberry\network\mcpe\protocol\ItemStackRequestPacket;
 use raspberry\network\mcpe\protocol\ItemStackResponsePacket;
@@ -766,6 +767,7 @@ class Server{
             PlayerHotbarPacket::class,
             ContainerOpenPacket::class,
             ContainerClosePacket::class,
+            ContainerSetDataPacket::class,
             InteractPacket::class,
             ItemStackRequestPacket::class,
             ItemStackResponsePacket::class,
@@ -782,7 +784,7 @@ class Server{
             OpenSignPacket::class,
             BlockEventPacket::class,
             SpawnParticleEffectPacket::class,
-            ContainerSetDataPacket::class
+            PlayerEnchantOptionsPacket::class
         ] as $packet){
             $this->packetRegistry->register($packet);
         }

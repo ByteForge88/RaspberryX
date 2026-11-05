@@ -200,6 +200,24 @@ class BlockPlacer{
             return true;
         }
 
+        if(preg_match('/^minecraft:(powered|unpowered)_repeater$/D', $name) === 1){
+            $this->player->getWorld()->setBlock($x, $y, $z, $block->withProperty(BlockProperties::REPEATER_DELAY, ((int) $block->getProperty(BlockProperties::REPEATER_DELAY) + 1) % 4));
+            return true;
+        }
+
+        if(preg_match('/^minecraft:(powered|unpowered)_comparator$/D', $name) === 1){
+            $subtract = $block->getProperty(BlockProperties::OUTPUT_SUBTRACT_BIT) !== true;
+            $this->player->getWorld()->setBlock($x, $y, $z, $block->withProperty(BlockProperties::OUTPUT_SUBTRACT_BIT, $subtract));
+            $this->playSound($subtract ? LevelSoundEvent::POWER_ON : LevelSoundEvent::POWER_OFF, $x, $y, $z, null);
+            return true;
+        }
+
+        if($name === BlockIds::DAYLIGHT_DETECTOR || $name === BlockIds::DAYLIGHT_DETECTOR_INVERTED){
+            $other = $this->player->getNetworkSession()->getServer()->getBlockStateRegistry()->getDefaultState($name === BlockIds::DAYLIGHT_DETECTOR ? BlockIds::DAYLIGHT_DETECTOR_INVERTED : BlockIds::DAYLIGHT_DETECTOR);
+            $this->player->getWorld()->setBlock($x, $y, $z, $other);
+            return true;
+        }
+
         if($name === BlockIds::LEVER){
             $block = $block->withProperty(BlockProperties::OPEN_BIT, $block->getProperty(BlockProperties::OPEN_BIT) !== true);
             $this->player->getWorld()->setBlock($x, $y, $z, $block);

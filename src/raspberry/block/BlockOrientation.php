@@ -94,6 +94,7 @@ class BlockOrientation{
             preg_match('/_door$/', $name) === 1 => Facing::rotateRight($facing),
             preg_match('/fence_gate$|^straw_bed$/', $name) === 1 => $facing,
             preg_match('/anvil$/', $name) === 1 => Facing::rotateLeft($facing),
+            preg_match('/_(repeater|comparator)$/', $name) === 1 => $facing,
             default => Facing::opposite($facing)
         };
     }

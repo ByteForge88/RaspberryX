@@ -42,6 +42,12 @@ class StackRequestAction{
 
     public int $resultsSlot = 0;
 
+    /** anvil: which filter string is the new name, -1 for none */
+    public int $filterStringIndex = -1;
+
+    /** loom: the banner pattern ID */
+    public string $pattern = "";
+
     public function __construct(int $type){
         $this->type = $type;
     }

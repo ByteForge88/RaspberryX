@@ -84,10 +84,16 @@ class ItemStackRequestHandler{
     /** the 3x3 grid of a crafting table instead of the 2x2 grid of the inventory */
     private bool $largeGrid = false;
 
+    /** @var list<string> text sent with the running request */
+    private array $filterStrings = [];
+
+    private WorkBlockRequests $workBlocks;
+
     public function __construct(NetworkSession $session, Player $player, InventoryManager $inventoryManager){
         $this->session = $session;
         $this->player = $player;
         $this->inventoryManager = $inventoryManager;
+        $this->workBlocks = new WorkBlockRequests($this, $session, $player);
     }
 
     /**
@@ -119,6 +125,23 @@ class ItemStackRequestHandler{
         if($rejected){
             $this->inventoryManager->sendAll();
         }
+
+        $this->workBlocks->updateEnchantOffers();
+    }
+
+    /**
+     * Changes a work block slot (anvil, loom...) as part of the running request.
+     */
+    public function setUIItem(int $containerId, int $uiSlot, Item $item) : void{
+        $this->setItem(new StackRequestSlot($containerId, null, $uiSlot, 0), $item);
+    }
+
+    /**
+     * Puts what a work block made into the created output slot.
+     */
+    public function createResult(Item $item) : void{
+        $this->created = (clone $item)->setCount(1);
+        $this->createdCount = $item->getCount();
     }
 
     private function handleRequest(ItemStackRequest $request) : ItemStackResponse{
@@ -129,6 +152,7 @@ class ItemStackRequestHandler{
         $this->createdCount = 0;
         $this->pendingResults = [];
         $this->requestStacks[$request->requestId] = [];
+        $this->filterStrings = $request->filterStrings;
 
         while(count($this->requestStacks) > self::REMEMBERED_REQUESTS){
             unset($this->requestStacks[array_key_first($this->requestStacks)]);
@@ -143,8 +167,10 @@ class ItemStackRequestHandler{
 
             $response = new ItemStackResponse(ItemStackResponse::STATUS_OK, $request->requestId, $this->buildChanges());
             $this->collectFurnaceExperience($request);
+            $this->workBlocks->onRequestDone(true);
         }catch(UnexpectedValueException $exception){
             $this->undo();
+            $this->workBlocks->onRequestDone(false);
             $this->drops = [];
             $this->session->getServer()->getLogger()->debug("Rejected inventory request {$request->requestId} of {$this->player->getName()}: " . $exception->getMessage());
             $response = new ItemStackResponse(ItemStackResponse::STATUS_ERROR, $request->requestId);
@@ -173,6 +199,10 @@ class ItemStackRequestHandler{
      * @throws UnexpectedValueException
      */
     private function handleAction(StackRequestAction $action) : void{
+        if($this->workBlocks->handleAction($action, $this->filterStrings)){
+            return;
+        }
+
         match($action->type){
             StackRequestAction::TAKE, StackRequestAction::PLACE => $this->transfer($this->slot($action->source), $this->slot($action->destination), $action->count),
             StackRequestAction::SWAP => $this->swap($this->slot($action->source), $this->slot($action->destination)),
@@ -284,7 +314,7 @@ class ItemStackRequestHandler{
     private function craftRecipe(int $networkId, int $times, bool $auto) : void{
         $recipe = Server::getInstance()->getCraftingManager()->getCraftingRecipe($networkId) ?? throw new UnexpectedValueException("There is no crafting recipe {$networkId}");
 
-        if($recipe->getBlock() !== CraftingRecipe::BLOCK_CRAFTING_TABLE){
+        if($recipe->getBlock() !== $this->workBlocks->getRecipeBlock()){
             throw new UnexpectedValueException("Recipe {$recipe->getId()} needs a " . $recipe->getBlock());
         }
 
@@ -292,7 +322,9 @@ class ItemStackRequestHandler{
             throw new UnexpectedValueException("A recipe must be crafted at least once");
         }
 
-        if($auto){
+        if($recipe->getBlock() !== CraftingRecipe::BLOCK_CRAFTING_TABLE){
+            $this->consumeWorkBlock($recipe, $times);
+        }elseif($auto){
             if(!$this->player->getRecipeBook()->isUnlocked($recipe)){
                 throw new UnexpectedValueException("Recipe {$recipe->getId()} is not unlocked");
             }
@@ -337,6 +369,36 @@ class ItemStackRequestHandler{
         foreach($matched as $index => $ingredient){
             $item = $grid[$index];
             $this->setItem(new StackRequestSlot(ContainerIds::CRAFTING_INPUT, null, $offset + $index, 0), $item->setCount($item->getCount() - $ingredient->getCount() * $times));
+        }
+    }
+
+    /**
+     * Takes the ingredients of a stonecutter or cartography table recipe from its input slots.
+     */
+    private function consumeWorkBlock(CraftingRecipe $recipe, int $times) : void{
+        $slots = $this->workBlocks->getRecipeSlots();
+        $left = $slots;
+
+        foreach($recipe->getIngredients() as $ingredient){
+            $needed = $ingredient->getCount() * $times;
+
+            foreach($left as $key => [$containerId, $uiSlot]){
+                $item = $this->player->getUIInventory()->getItem($uiSlot);
+
+                if($ingredient->matches($item) && $item->getCount() >= $needed){
+                    $this->setUIItem($containerId, $uiSlot, (clone $item)->setCount($item->getCount() - $needed));
+                    unset($left[$key]);
+                    continue 2;
+                }
+            }
+
+            throw new UnexpectedValueException("The input slots do not hold recipe {$recipe->getId()} x{$times}");
+        }
+
+        foreach($left as [, $uiSlot]){
+            if(!$this->player->getUIInventory()->getItem($uiSlot)->isNull()){
+                throw new UnexpectedValueException("Recipe {$recipe->getId()} does not use the item in slot {$uiSlot}");
+            }
         }
     }
 
@@ -500,10 +562,19 @@ class ItemStackRequestHandler{
             ContainerIds::BREWING_STAND_INPUT,
             ContainerIds::BREWING_STAND_RESULT,
             ContainerIds::BREWING_STAND_FUEL => $this->inventoryManager->getWindow()?->resolve($slot->containerId, $slot->slot),
-            default => null
+            default => $this->resolveWorkBlock($slot)
         };
 
         return $resolved ?? throw new UnexpectedValueException("Container {$slot->containerId} slot {$slot->slot} cannot be used");
+    }
+
+    /**
+     * @return array{Inventory, int}|null
+     */
+    private function resolveWorkBlock(StackRequestSlot $slot) : ?array{
+        $uiSlot = $this->workBlocks->resolveSlot($slot->containerId, $slot->slot);
+
+        return $uiSlot === null ? null : [$this->player->getUIInventory(), $uiSlot];
     }
 
     private function isCraftingSlot(int $slot) : bool{

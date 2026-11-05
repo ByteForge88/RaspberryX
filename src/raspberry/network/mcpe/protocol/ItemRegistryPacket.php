@@ -6,7 +6,6 @@ namespace raspberry\network\mcpe\protocol;
 
 use raspberry\network\encoding\BinaryReader;
 use raspberry\network\encoding\BinaryWriter;
-use raspberry\network\mcpe\serializer\NetworkNbtWriter;
 
 use UnexpectedValueException;
 
@@ -19,11 +18,11 @@ class ItemRegistryPacket implements Packet{
     public const VERSION_DATA_DRIVEN = 1;
     public const VERSION_NONE = 2;
 
-    /** @var array<string, int> item name => runtime ID */
+    /** @var list<array{string, int, bool, int, string}> */
     public array $items = [];
 
     /**
-     * @param array<string, int> $items
+     * @param list<array{string, int, bool, int, string}> $items
      */
     public static function create(array $items) : self{
         $packet = new self();
@@ -36,16 +35,14 @@ class ItemRegistryPacket implements Packet{
     }
 
     public function encodePayload(BinaryWriter $writer) : void{
-        $emptyNbt = NetworkNbtWriter::emptyCompound();
-
         $writer->writeUnsignedVarInt(count($this->items));
 
-        foreach($this->items as $name => $runtimeId){
+        foreach($this->items as [$name, $runtimeId, $componentBased, $version, $components]){
             $writer->writeString($name);
             $writer->writeShort($runtimeId);
-            $writer->writeBool(false);
-            $writer->writeVarInt(self::VERSION_NONE);
-            $writer->writeBytes($emptyNbt);
+            $writer->writeBool($componentBased);
+            $writer->writeVarInt($version);
+            $writer->writeBytes($components);
         }
     }
 

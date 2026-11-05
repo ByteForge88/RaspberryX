@@ -9,6 +9,8 @@ use raspberry\block\BlockState;
 use raspberry\block\entity\BlockEntity;
 use raspberry\block\entity\BlockEntityFactory;
 use raspberry\block\entity\TickableBlockEntity;
+use raspberry\block\entity\ContainerBlockEntity;
+use raspberry\block\redstone\RedstoneUpdater;
 
 use raspberry\world\format\io\WorldMetadata;
 use raspberry\world\format\io\WorldProvider;
@@ -58,10 +60,13 @@ class World{
     /** @var array<int, array{int, Closure() : void}> */
     private array $scheduledUpdates = [];
 
+    private RedstoneUpdater $redstoneUpdater;
+
     public function __construct(WorldMetadata $metadata, Generator $generator, WorldProvider $provider){
         $this->metadata = $metadata;
         $this->generator = $generator;
         $this->provider = $provider;
+        $this->redstoneUpdater = new RedstoneUpdater($this);
     }
 
     public function getName() : string{
@@ -205,7 +210,8 @@ class World{
 
     public function setBlock(int $x, int $y, int $z, BlockState $block) : void{
         $chunk = $this->loadChunk($x >> 4, $z >> 4);
-        $old = $chunk->getBlock($x & 15, $y, $z & 15)->getName();
+        $oldState = $chunk->getBlock($x & 15, $y, $z & 15);
+        $old = $oldState->getName();
 
         if($old !== $block->getName() && BlockEntityFactory::getSaveId($old) !== BlockEntityFactory::getSaveId($block->getName())){
             $chunk->removeBlockEntity($x & 15, $y, $z & 15);
@@ -216,6 +222,18 @@ class World{
         foreach($this->getPlayersViewing($x >> 4, $z >> 4) as $player){
             $player->getNetworkSession()->sendBlock($x, $y, $z, $block);
         }
+
+        if(!$oldState->equals($block)){
+            $this->redstoneUpdater->onBlockChanged($x, $y, $z, $oldState, $block);
+        }
+    }
+
+    public function getRedstoneUpdater() : RedstoneUpdater{
+        return $this->redstoneUpdater;
+    }
+
+    public function getCurrentTick() : int{
+        return $this->currentTick;
     }
 
     public function getBlockEntity(int $x, int $y, int $z) : ?BlockEntity{
@@ -348,8 +366,15 @@ class World{
                 if($entity instanceof TickableBlockEntity){
                     $entity->tick($this, $currentTick);
                 }
+
+                //comparators reading a container see its new contents
+                if($entity instanceof ContainerBlockEntity && $entity->takeContentsChanged()){
+                    $this->redstoneUpdater->update($entity->getX(), $entity->getY(), $entity->getZ());
+                }
             }
         }
+
+        $this->redstoneUpdater->tick($currentTick);
 
         foreach($this->scheduledUpdates as $key => [$tick, $update]){
             if($tick <= $currentTick){

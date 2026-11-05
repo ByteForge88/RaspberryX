@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace raspberry\item;
 
+use function in_array;
 use function preg_match;
 use function str_ends_with;
+use function substr;
 
 class ItemProperties{
 
@@ -129,6 +131,78 @@ class ItemProperties{
         }
 
         return 0;
+    }
+
+    /**
+     * What kind of item the enchanting table and anvil see it as: "sword", "helmet", "bow",
+     * "book"... null for items enchantments do not go on.
+     */
+    public static function getEnchantKind(string $name) : ?string{
+        if(preg_match('/^minecraft:[a-z]+_(sword|shovel|pickaxe|axe|hoe|spear|helmet|chestplate|leggings|boots)$/D', $name, $matches) === 1){
+            return self::getMaxDurability($name) > 0 ? $matches[1] : null;
+        }
+
+        return match($name){
+            ItemIds::BOW, ItemIds::CROSSBOW, ItemIds::TRIDENT, ItemIds::FISHING_ROD, ItemIds::MACE, ItemIds::SHEARS, ItemIds::ELYTRA => substr($name, 10),
+            ItemIds::BOOK => "book",
+            ItemIds::CARVED_PUMPKIN, ItemIds::SKELETON_SKULL, ItemIds::WITHER_SKELETON_SKULL, ItemIds::ZOMBIE_HEAD, ItemIds::PLAYER_HEAD,
+            ItemIds::CREEPER_HEAD, ItemIds::DRAGON_HEAD, ItemIds::PIGLIN_HEAD => "head",
+            default => null
+        };
+    }
+
+    /**
+     * How well the enchanting table enchants it, 0 when it cannot.
+     */
+    public static function getEnchantability(string $name) : int{
+        if(preg_match('/^minecraft:([a-z]+)_(sword|shovel|pickaxe|axe|hoe|spear|helmet|chestplate|leggings|boots)$/D', $name, $matches) === 1){
+            $armor = in_array($matches[2], ["helmet", "chestplate", "leggings", "boots"], true);
+
+            return match($matches[1]){
+                "wooden", "leather", "netherite" => 15,
+                "stone" => 5,
+                "copper" => $armor ? 8 : 13,
+                "iron", "turtle" => $armor ? 9 : 14,
+                "chainmail" => 12,
+                "golden" => $armor ? 25 : 22,
+                "diamond" => 10,
+                default => 0
+            };
+        }
+
+        return match($name){
+            ItemIds::MACE => 15,
+            ItemIds::BOW, ItemIds::CROSSBOW, ItemIds::TRIDENT, ItemIds::FISHING_ROD, ItemIds::BOOK => 1,
+            default => 0
+        };
+    }
+
+    /**
+     * The item (or item tag, starting with "#") an anvil repairs it with, null when nothing does.
+     */
+    public static function getRepairMaterial(string $name) : ?string{
+        if(preg_match('/^minecraft:([a-z]+)_(sword|shovel|pickaxe|axe|hoe|spear|helmet|chestplate|leggings|boots)$/D', $name, $matches) === 1){
+            return match($matches[1]){
+                "wooden" => "#minecraft:planks",
+                "stone" => "#minecraft:stone_tool_materials",
+                "copper" => ItemIds::COPPER_INGOT,
+                "iron", "chainmail" => ItemIds::IRON_INGOT,
+                "golden" => ItemIds::GOLD_INGOT,
+                "diamond" => ItemIds::DIAMOND,
+                "netherite" => ItemIds::NETHERITE_INGOT,
+                "leather" => ItemIds::LEATHER,
+                "turtle" => ItemIds::TURTLE_SCUTE,
+                default => null
+            };
+        }
+
+        return match($name){
+            ItemIds::ELYTRA => ItemIds::PHANTOM_MEMBRANE,
+            ItemIds::SHIELD => "#minecraft:planks",
+            ItemIds::MACE => ItemIds::BREEZE_ROD,
+            ItemIds::WOLF_ARMOR => ItemIds::ARMADILLO_SCUTE,
+            default => null
+        };
     }
 
     private static function isUnstackableFamily(string $name) : bool{

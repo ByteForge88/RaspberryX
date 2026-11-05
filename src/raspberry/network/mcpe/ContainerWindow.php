@@ -17,10 +17,17 @@ class ContainerWindow{
     public const TYPE_CONTAINER = 0;
     public const TYPE_WORKBENCH = 1;
     public const TYPE_FURNACE = 2;
+    public const TYPE_ENCHANTMENT = 3;
     public const TYPE_BREWING_STAND = 4;
+    public const TYPE_ANVIL = 5;
     public const TYPE_HOPPER = 8;
+    public const TYPE_LOOM = 24;
+    public const TYPE_GRINDSTONE = 26;
     public const TYPE_BLAST_FURNACE = 27;
     public const TYPE_SMOKER = 28;
+    public const TYPE_STONECUTTER = 29;
+    public const TYPE_CARTOGRAPHY = 30;
+    public const TYPE_SMITHING_TABLE = 33;
 
     private int $windowId;
 

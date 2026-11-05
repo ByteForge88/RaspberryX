@@ -1204,7 +1204,7 @@ class NetworkSession{
             new JigsawStructureDataPacket(),
             new VoxelShapesPacket(),
             $startGame,
-            ItemRegistryPacket::create($this->server->getItemTypeDictionary()->getEntries())
+            ItemRegistryPacket::create($this->server->getItemTypeDictionary()->getRegistryEntries())
         ]);
 
         $this->state = self::STATE_SPAWNING;

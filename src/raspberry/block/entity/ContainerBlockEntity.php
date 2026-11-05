@@ -31,6 +31,9 @@ abstract class ContainerBlockEntity extends BlockEntity implements InventoryList
 
     private ?string $customName = null;
 
+    /** the contents changed since comparators last looked */
+    private bool $contentsChanged = false;
+
     public function __construct(int $x, int $y, int $z, int $size = self::SIZE){
         parent::__construct($x, $y, $z);
 
@@ -72,10 +75,21 @@ abstract class ContainerBlockEntity extends BlockEntity implements InventoryList
 
     public function onSlotChange(Inventory $inventory, int $slot, Item $oldItem) : void{
         $this->setChanged();
+        $this->contentsChanged = true;
     }
 
     public function onContentChange(Inventory $inventory) : void{
         $this->setChanged();
+        $this->contentsChanged = true;
+    }
+
+    /**
+     * Whether the contents changed since this was last asked.
+     */
+    public function takeContentsChanged() : bool{
+        $changed = $this->contentsChanged;
+        $this->contentsChanged = false;
+        return $changed;
     }
 
     /**

@@ -11,7 +11,8 @@ Outputs:
   src/raspberry/block/BlockProperties.php   one constant per block property name
   src/raspberry/item/ItemIds.php            one constant per item name (blocks that can be items included)
   resources/vanilla/item_names.json         the English name of every item, from resource_pack/texts/en_US.lang
-  resources/vanilla/creative_items.json     the creative inventory: every survival item, sorted into its tab
+  resources/vanilla/creative_items.json     the creative inventory in vanilla order and groups (written by hand, only checked)
+  resources/vanilla/item_components.json    what vanilla sends for data driven items (written by hand, only checked)
   resources/vanilla/block_states.json       every block, its properties and allowed values
   resources/vanilla/recipes.json            every recipe from behavior_pack/recipes, old item names upgraded
   resources/vanilla/block_breaking.json     hardness, tool and drops of every block
@@ -80,20 +81,6 @@ LANG_WORD_ALIASES = {"silver": "light_gray", "big": "dark"}
 SMALL_WORDS = {"of", "the", "and", "with", "on", "a", "in", "to"}
 
 CREATIVE_ITEMS_JSON = ROOT / "resources" / "vanilla" / "creative_items.json"
-
-CREATIVE_EXCLUDED = re.compile(r"^(air|allow|deny|border_block|barrier|jigsaw|structure_block|structure_void|command_block|chain_command_block|repeating_command_block|command_block_minecart|light_block_\d+|frosted_ice|stonecutter_block|ender_dragon_spawn_egg|wither_spawn_egg|npc_spawn_egg|agent_spawn_egg)$")
-
-CREATIVE_EQUIPMENT = re.compile(r"_(sword|shovel|pickaxe|axe|hoe|spear|helmet|chestplate|leggings|boots|horse_armor|nautilus_armor|harness)$|^(bow|crossbow|trident|mace|shield|elytra|arrow|wolf_armor|totem_of_undying|fishing_rod|shears|flint_and_steel|carrot_on_a_stick|warped_fungus_on_a_stick|brush|saddle|lead|spyglass|compass|recovery_compass|clock|firework_rocket|wind_charge)$")
-
-CREATIVE_NATURE = re.compile(r"_(log|wood|hyphae|stem|leaves|sapling|propagule|ore|tulip|orchid|coral|coral_block|coral_fan|mushroom|mushroom_block|fungus|roots|nylium|petals|dripleaf|bush|vines|egg)$|^(dirt|coarse_dirt|rooted_dirt|dirt_with_roots|grass_block|podzol|mycelium|mud|clay|gravel|sand|red_sand|snow|snow_layer|ice|packed_ice|blue_ice|netherrack|soul_sand|soul_soil|end_stone|obsidian|crying_obsidian|bedrock|stone|deepslate|tuff|calcite|granite|diorite|andesite|basalt|blackstone|dripstone_block|pointed_dripstone|moss_block|moss_carpet|pale_moss_block|pale_moss_carpet|allium|azure_bluet|cornflower|dandelion|poppy|lily_of_the_valley|oxeye_daisy|wither_rose|peony|lilac|rose_bush|sunflower|fern|large_fern|short_grass|tall_grass|deadbush|seagrass|kelp|vine|cactus|bamboo|sugar_cane|pumpkin|carved_pumpkin|melon_block|hay_block|nether_wart_block|warped_wart_block|shroomlight|bee_nest|sculk|sculk_vein|sculk_catalyst|sculk_shrieker|sculk_sensor|amethyst_block|budding_amethyst|amethyst_cluster|azalea|flowering_azalea|spore_blossom|glow_lichen|sponge|wet_sponge|magma|glowstone|waterlily|frog_spawn|sniffer_egg|torchflower|pitcher_plant|chorus_plant|chorus_flower|crimson_roots|warped_roots|twisting_vines|weeping_vines|mangrove_roots|muddy_mangrove_roots|big_dripleaf|small_dripleaf_block|hanging_roots|cave_vines|honeycomb_block|snow_block|powder_snow|eyeblossom|open_eyeblossom|closed_eyeblossom|firefly_bush|leaf_litter|cactus_flower|resin_clump)$")
-
-CREATIVE_VARIANTS = {
-    "minecraft:bed": range(16),
-    "minecraft:banner": range(16),
-    "minecraft:potion": range(47),
-    "minecraft:splash_potion": range(47),
-    "minecraft:lingering_potion": range(47),
-}
 
 VALUE_OVERRIDES = {
     "minecraft:activator_rail": {"rail_direction": [0, 1, 2, 3, 4, 5]},
@@ -387,39 +374,37 @@ def names_json(version, names):
     return "{\n" + f'  "version": {json.dumps(version)},\n  "names": {{\n' + ",\n".join(entries) + "\n  }\n}\n"
 
 
-def read_creative_items(item_source, block_source):
-    blocks = {entry["name"] for entry in block_source["data_items"]}
-    entries = []
+def check_creative_items(items):
+    """
+    creative_items.json is written by hand (Mojang does not publish the creative layout), this
+    only makes sure every item in it still exists.
+    """
+    with open(CREATIVE_ITEMS_JSON, "r", encoding="utf-8") as handle:
+        data = json.load(handle)
 
-    for entry in item_source["data_items"]:
-        name = entry["name"]
-        path = name.partition(":")[2]
+    count = 0
 
-        if CREATIVE_EXCLUDED.match(path) is not None:
-            continue
+    for group in data["groups"]:
+        entries = group["items"] + ([group["icon"]] if "icon" in group else [])
 
-        if CREATIVE_EQUIPMENT.search(path) is not None:
-            category = "equipment"
-        elif name in blocks:
-            category = "nature" if CREATIVE_NATURE.search(path) is not None else "construction"
-        else:
-            category = "items"
+        for entry in entries:
+            name = entry if isinstance(entry, str) else entry[0]
 
-        family = path.rsplit("_", 1)[-1]
+            if name not in items:
+                fail(f"creative_items.json has an item that does not exist: {name}")
 
-        for meta in CREATIVE_VARIANTS.get(name, [0]):
-            entries.append((category, family, path, meta, name))
+        count += len(group["items"])
 
-    order = ["construction", "nature", "equipment", "items"]
-    entries.sort(key=lambda entry: (order.index(entry[0]), entry[1], entry[2], entry[3]))
-
-    return [(category, name, meta) for category, _, _, meta, name in entries]
+    return count
 
 
-def creative_json(version, entries):
-    lines = [f"    [{json.dumps(category)}, {json.dumps(name)}, {meta}]" for category, name, meta in entries]
+def check_item_components(items):
+    with open(ITEM_COMPONENTS_JSON, "r", encoding="utf-8") as handle:
+        data = json.load(handle)
 
-    return "{\n" + f'  "version": {json.dumps(version)},\n  "items": [\n' + ",\n".join(lines) + "\n  ]\n}\n"
+    for name in data["items"]:
+        if name not in items:
+            fail(f"item_components.json has an item that does not exist: {name}")
 
 
 def items_json(version, items):
@@ -1480,7 +1465,8 @@ def main():
     biomes = read_biomes(biome_source)
     items = read_items(item_source, block_source)
     item_names, guessed_names = read_item_names(item_source, block_source, items, lang)
-    creative_items = read_creative_items(item_source, block_source)
+    creative_items = check_creative_items(items)
+    check_item_components(items)
     item_tags, recipes, skipped_recipes = read_recipes(load_recipe_files(args), items, potion_source)
     breaking, unmatched_blocks = read_block_breaking(blocks, items, load_block_files(args))
     sound_protocol, sound_events = load_sound_events(args)
@@ -1503,7 +1489,6 @@ def main():
     write(BLOCK_STATES_JSON, states_json(args.version, blocks))
     write(ITEM_REGISTRY_JSON, items_json(args.version, items))
     write(ITEM_NAMES_JSON, names_json(args.version, item_names))
-    write(CREATIVE_ITEMS_JSON, creative_json(args.version, creative_items))
     write(RECIPES_JSON, recipes_json(args.version, item_tags, recipes))
     write(BLOCK_BREAKING_JSON, breaking_json(args.version, breaking))
     write(ITEM_BLOCKS_JSON, item_blocks_json(args.version, item_blocks, not_placeable))
@@ -1527,7 +1512,7 @@ def main():
 
     recipe_count = sum(len(entries) for entries in recipes.values())
 
-    print(f"{len(blocks)} blocks, {len(used_properties)} properties, {permutations} block states, {len(biomes)} biomes, {len(items)} items ({guessed_names} names made from the ID), {len(creative_items)} creative items, {recipe_count} recipes ({skipped_recipes} old ones skipped), {len(sound_events)} sound events, {len(particle_effects)} particle effects")
+    print(f"{len(blocks)} blocks, {len(used_properties)} properties, {permutations} block states, {len(biomes)} biomes, {len(items)} items ({guessed_names} names made from the ID), {creative_items} creative items, {recipe_count} recipes ({skipped_recipes} old ones skipped), {len(sound_events)} sound events, {len(particle_effects)} particle effects")
 
     if unmatched_blocks:
         print(f"{len(unmatched_blocks)} blocks have no breaking rule and break at once: {', '.join(unmatched_blocks)}")

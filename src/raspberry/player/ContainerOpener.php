@@ -62,7 +62,16 @@ class ContainerOpener{
             preg_match('/^minecraft:(lit_)?(furnace|blast_furnace|smoker)$/D', $name) === 1 => $this->openFurnace($x, $y, $z, $block),
             $name === BlockIds::BREWING_STAND => $this->openSimple($x, $y, $z, $block, BrewingStand::class, ContainerWindow::TYPE_BREWING_STAND, [ContainerIds::BREWING_STAND_INPUT, ContainerIds::BREWING_STAND_RESULT, ContainerIds::BREWING_STAND_FUEL]),
             $name === BlockIds::HOPPER => $this->openSimple($x, $y, $z, $block, Hopper::class, ContainerWindow::TYPE_HOPPER, [ContainerIds::LEVEL_ENTITY]),
-            default => false
+            default => $this->openWorkBlock($x, $y, $z, match($name){
+                BlockIds::ANVIL, BlockIds::CHIPPED_ANVIL, BlockIds::DAMAGED_ANVIL => ContainerWindow::TYPE_ANVIL,
+                BlockIds::ENCHANTING_TABLE => ContainerWindow::TYPE_ENCHANTMENT,
+                BlockIds::GRINDSTONE => ContainerWindow::TYPE_GRINDSTONE,
+                BlockIds::STONECUTTER_BLOCK => ContainerWindow::TYPE_STONECUTTER,
+                BlockIds::LOOM => ContainerWindow::TYPE_LOOM,
+                BlockIds::SMITHING_TABLE => ContainerWindow::TYPE_SMITHING_TABLE,
+                BlockIds::CARTOGRAPHY_TABLE => ContainerWindow::TYPE_CARTOGRAPHY,
+                default => null
+            })
         };
     }
 
@@ -96,6 +105,22 @@ class ContainerOpener{
             $this->player->moveUIItemsToInventory();
         });
         $session->setLargeCraftingGrid(true);
+
+        return true;
+    }
+
+    /**
+     * Screens whose slots live in the player's UI inventory, what is left in them goes back to
+     * the inventory when the screen closes.
+     */
+    private function openWorkBlock(int $x, int $y, int $z, ?int $type) : bool{
+        if($type === null){
+            return false;
+        }
+
+        $this->player->getNetworkSession()->getInventoryManager()?->openWindow($type, [[$x, $y, $z]], [], [], function() : void{
+            $this->player->moveUIItemsToInventory();
+        });
 
         return true;
     }
@@ -242,12 +267,16 @@ class ContainerOpener{
             $entity->addViewer($this->player);
         }
 
+        $this->updateTrappedChests($positions);
+
         [$x, $y, $z] = $positions[0];
 
-        $manager->openWindow($type, $positions, $slotContainerIds, $inventories, function() use ($entities, $animate, $closeSound, $x, $y, $z) : void{
+        $manager->openWindow($type, $positions, $slotContainerIds, $inventories, function() use ($entities, $animate, $closeSound, $positions, $x, $y, $z) : void{
             foreach($entities as $entity){
                 $entity->removeViewer($this->player);
             }
+
+            $this->updateTrappedChests($positions);
 
             if($entities[0]->getViewers() === []){
                 $this->animate($animate, $closeSound, false, $x, $y, $z);
@@ -260,6 +289,21 @@ class ContainerOpener{
 
         if(!$wasOpen){
             $this->animate($animate, $openSound, true, $x, $y, $z);
+        }
+    }
+
+    /**
+     * A trapped chest gives power while someone has it open.
+     *
+     * @param list<array{int, int, int}> $positions
+     */
+    private function updateTrappedChests(array $positions) : void{
+        $world = $this->player->getWorld();
+
+        foreach($positions as [$x, $y, $z]){
+            if($world->getBlock($x, $y, $z)->getName() === BlockIds::TRAPPED_CHEST){
+                $world->getRedstoneUpdater()->update($x, $y, $z);
+            }
         }
     }
 

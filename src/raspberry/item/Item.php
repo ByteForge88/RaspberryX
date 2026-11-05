@@ -264,6 +264,17 @@ class Item{
         return $this->extraTags;
     }
 
+    /**
+     * A copy as another item, keeping its name, enchantments and other data (a smithing upgrade).
+     */
+    public function withId(string $id) : self{
+        $item = clone $this;
+        $item->id = $id;
+        $item->meta = 0;
+        $item->setDamage($this->damage);
+        return $item;
+    }
+
     public function canStackWith(self $other) : bool{
         return $this->id === $other->id &&
             $this->meta === $other->meta &&

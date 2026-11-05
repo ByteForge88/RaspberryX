@@ -19,6 +19,7 @@ class ItemStackRequestPacket implements Packet{
     private const MAX_REQUESTS = 64;
     private const MAX_ACTIONS = 64;
     private const MAX_LIST = 64;
+    private const MAX_FILTER_STRING = 1024;
 
     /** @var list<ItemStackRequest> */
     public array $requests = [];
@@ -47,13 +48,15 @@ class ItemStackRequestPacket implements Packet{
             $actions[] = self::readAction($reader);
         }
 
+        $filterStrings = [];
+
         for($j = 0, $filterCount = self::readCount($reader, self::MAX_LIST); $j < $filterCount; ++$j){
-            $reader->readString(); //filtered text: not used
+            $filterStrings[] = $reader->readString(self::MAX_FILTER_STRING);
         }
 
         $reader->readInt(); //filter cause
 
-        return new ItemStackRequest($requestId, $actions);
+        return new ItemStackRequest($requestId, $actions, $filterStrings);
     }
 
     private static function readAction(BinaryReader $reader) : StackRequestAction{
@@ -126,17 +129,21 @@ class ItemStackRequestPacket implements Packet{
                 break;
 
             case StackRequestAction::CRAFT_RECIPE_OPTIONAL:
-                $reader->readUnsignedVarInt();
-                $reader->readInt();
+                $action->recipeNetworkId = $reader->readUnsignedVarInt();
+                $action->filterStringIndex = $reader->readInt();
                 break;
 
             case StackRequestAction::CRAFT_GRINDSTONE:
-                $reader->readInt();
-                $reader->readByte();
-                $reader->readVarInt();
+                $action->recipeNetworkId = $reader->readInt();
+                $action->timesCrafted = $reader->readByte();
+                $reader->readVarInt(); //the cost the client shows, the server works it out itself
                 break;
 
             case StackRequestAction::CRAFT_LOOM:
+                $action->pattern = $reader->readString(64);
+                $action->timesCrafted = $reader->readByte();
+                break;
+
             case StackRequestAction::CRAFT_RESERVED:
                 $reader->readString();
                 $reader->readByte();

@@ -42,6 +42,7 @@ class BlockEntityFactory{
             $blockName === "minecraft:smoker" || $blockName === "minecraft:lit_smoker" => Furnace::ID_SMOKER,
             $blockName === "minecraft:brewing_stand" => "BrewingStand",
             $blockName === "minecraft:hopper" => "Hopper",
+            $blockName === "minecraft:powered_comparator" || $blockName === "minecraft:unpowered_comparator" => "Comparator",
             default => null
         };
     }
@@ -78,6 +79,7 @@ class BlockEntityFactory{
             Furnace::ID_FURNACE, Furnace::ID_BLAST_FURNACE, Furnace::ID_SMOKER => new Furnace($x, $y, $z, $id),
             "BrewingStand" => new BrewingStand($x, $y, $z),
             "Hopper" => new Hopper($x, $y, $z),
+            "Comparator" => new Comparator($x, $y, $z),
             default => null
         };
     }

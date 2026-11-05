@@ -71,22 +71,25 @@ class ItemTranslator{
     public function buildCreativeContent(CreativeInventory $creative, ?array &$items = null) : CreativeContentPacket{
         $items = [];
         $packet = new CreativeContentPacket();
-        $groups = [];
 
-        foreach($creative->getEntries() as [$category, $item]){
-            $stack = $this->toNetwork($item);
+        foreach($creative->getGroups() as [$category, $name, $icon, $groupItems]){
+            $index = null;
 
-            if($stack->isEmpty()){
-                continue;
+            foreach($groupItems as $item){
+                $stack = $this->toNetwork($item);
+
+                if($stack->isEmpty()){
+                    continue;
+                }
+
+                if($index === null){
+                    $index = count($packet->groups);
+                    $packet->groups[] = [$category, $name, $icon === null ? ItemStack::empty() : $this->toNetwork($icon)];
+                }
+
+                $packet->items[] = [$stack, $index];
+                $items[] = $item;
             }
-
-            if(!isset($groups[$category])){
-                $groups[$category] = count($packet->groups);
-                $packet->groups[] = [$category, "", ItemStack::empty()];
-            }
-
-            $packet->items[] = [$stack, $groups[$category]];
-            $items[] = $item;
         }
 
         return $packet;
