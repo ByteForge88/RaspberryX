@@ -87,10 +87,17 @@ class ItemStackRequestHandler{
     }
 
     public function handle(ItemStackRequestPacket $packet) : void{
+        $this->handleRequests($packet->requests);
+    }
+
+    /**
+     * @param list<ItemStackRequest> $requests
+     */
+    public function handleRequests(array $requests) : void{
         $responses = [];
         $rejected = false;
 
-        foreach($packet->requests as $request){
+        foreach($requests as $request){
             $response = $this->handleRequest($request);
             $rejected = $rejected || $response->status !== ItemStackResponse::STATUS_OK;
             $responses[] = $response;
@@ -164,6 +171,7 @@ class ItemStackRequestHandler{
             StackRequestAction::CREATE => $this->create($action->resultsSlot),
             //the server already took the ingredients and knows the results
             StackRequestAction::CONSUME, StackRequestAction::CRAFT_RESULTS_DEPRECATED => null,
+            StackRequestAction::MINE_BLOCK => $this->setItem($action->source ?? throw new UnexpectedValueException("Missing slot"), $this->getItem($action->source)),
             StackRequestAction::DROP => $this->drop($this->slot($action->source), $action->count),
             default => throw new UnexpectedValueException("Inventory action {$action->type} is not supported")
         };

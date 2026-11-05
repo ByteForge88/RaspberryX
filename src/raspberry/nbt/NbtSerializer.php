@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace raspberry\nbt;
 
+use raspberry\nbt\tag\Tag;
 use raspberry\nbt\tag\ByteArrayTag;
 use raspberry\nbt\tag\ByteTag;
 use raspberry\nbt\tag\CompoundTag;
@@ -16,7 +17,6 @@ use raspberry\nbt\tag\LongArrayTag;
 use raspberry\nbt\tag\LongTag;
 use raspberry\nbt\tag\ShortTag;
 use raspberry\nbt\tag\StringTag;
-use raspberry\nbt\tag\Tag;
 
 use raspberry\network\encoding\BinaryReader;
 use raspberry\network\encoding\BinaryWriter;
@@ -33,8 +33,11 @@ class NbtSerializer{
 
     private bool $littleEndian;
 
-    public function __construct(bool $littleEndian){
+    private bool $network;
+
+    public function __construct(bool $littleEndian, bool $network = false){
         $this->littleEndian = $littleEndian;
+        $this->network = $network;
     }
 
     public static function littleEndian() : self{
@@ -43,6 +46,10 @@ class NbtSerializer{
 
     public static function bigEndian() : self{
         return new self(false);
+    }
+
+    public static function network() : self{
+        return new self(true, true);
     }
 
     public function write(CompoundTag $root, string $rootName = "") : string{
@@ -106,8 +113,8 @@ class NbtSerializer{
         match(true){
             $tag instanceof ByteTag => $writer->writeByte($value & 0xff),
             $tag instanceof ShortTag => $writer->writeShort($value, $this->littleEndian),
-            $tag instanceof IntTag => $writer->writeInt($value, $this->littleEndian),
-            $tag instanceof LongTag => $writer->writeLong($value, $this->littleEndian),
+            $tag instanceof IntTag => $this->writeIntValue($writer, $value),
+            $tag instanceof LongTag => $this->network ? $writer->writeVarLong($value) : $writer->writeLong($value, $this->littleEndian),
             $tag instanceof FloatTag => $writer->writeFloat($value, $this->littleEndian),
             $tag instanceof DoubleTag => $writer->writeDouble($value, $this->littleEndian),
             $tag instanceof StringTag => $this->writeString($writer, $value),
@@ -132,7 +139,7 @@ class NbtSerializer{
 
     private function writeList(BinaryWriter $writer, ListTag $list, int $depth) : void{
         $writer->writeByte($list->getTagType());
-        $writer->writeInt($list->count(), $this->littleEndian);
+        $this->writeIntValue($writer, $list->count());
 
         foreach($list->getValue() as $tag){
             $this->writePayload($writer, $tag, $depth + 1);
@@ -144,23 +151,31 @@ class NbtSerializer{
             throw new NbtException("String is longer than " . StringTag::MAX_LENGTH . " bytes");
         }
 
-        $writer->writeUnsignedShort(strlen($value), $this->littleEndian);
+        $this->network ? $writer->writeUnsignedVarInt(strlen($value)) : $writer->writeUnsignedShort(strlen($value), $this->littleEndian);
         $writer->writeBytes($value);
     }
 
     private function writeByteArray(BinaryWriter $writer, string $value) : void{
-        $writer->writeInt(strlen($value), $this->littleEndian);
+        $this->writeIntValue($writer, strlen($value));
         $writer->writeBytes($value);
+    }
+
+    private function writeIntValue(BinaryWriter $writer, int $value) : void{
+        $this->network ? $writer->writeVarInt($value) : $writer->writeInt($value, $this->littleEndian);
+    }
+
+    private function readIntValue(BinaryReader $reader) : int{
+        return $this->network ? $reader->readVarInt() : $reader->readInt($this->littleEndian);
     }
 
     /**
      * @param list<int> $values
      */
     private function writeNumberArray(BinaryWriter $writer, array $values, bool $long) : void{
-        $writer->writeInt(count($values), $this->littleEndian);
+        $this->writeIntValue($writer, count($values));
 
         foreach($values as $value){
-            $long ? $writer->writeLong($value, $this->littleEndian) : $writer->writeInt($value, $this->littleEndian);
+            $long ? $writer->writeLong($value, $this->littleEndian) : $this->writeIntValue($writer, $value);
         }
     }
 
@@ -172,8 +187,8 @@ class NbtSerializer{
         return match($type){
             Tag::TAG_BYTE => new ByteTag(($byte = $reader->readByte()) > 127 ? $byte - 256 : $byte),
             Tag::TAG_SHORT => new ShortTag($reader->readShort($this->littleEndian)),
-            Tag::TAG_INT => new IntTag($reader->readInt($this->littleEndian)),
-            Tag::TAG_LONG => new LongTag($reader->readLong($this->littleEndian)),
+            Tag::TAG_INT => new IntTag($this->readIntValue($reader)),
+            Tag::TAG_LONG => new LongTag($this->network ? $reader->readVarLong() : $reader->readLong($this->littleEndian)),
             Tag::TAG_FLOAT => new FloatTag($reader->readFloat($this->littleEndian)),
             Tag::TAG_DOUBLE => new DoubleTag($reader->readDouble($this->littleEndian)),
             Tag::TAG_STRING => new StringTag($this->readString($reader)),
@@ -210,7 +225,13 @@ class NbtSerializer{
     }
 
     private function readString(BinaryReader $reader) : string{
-        return $reader->readBytes($reader->readUnsignedShort($this->littleEndian));
+        $length = $this->network ? $reader->readUnsignedVarInt() : $reader->readUnsignedShort($this->littleEndian);
+
+        if($length > StringTag::MAX_LENGTH || $length > $reader->remaining()){
+            throw new NbtException("Invalid string length {$length}");
+        }
+
+        return $reader->readBytes($length);
     }
 
     /**
@@ -220,14 +241,14 @@ class NbtSerializer{
         $values = [];
 
         for($i = 0, $count = $this->readLength($reader); $i < $count; ++$i){
-            $values[] = $long ? $reader->readLong($this->littleEndian) : $reader->readInt($this->littleEndian);
+            $values[] = $long ? $reader->readLong($this->littleEndian) : $this->readIntValue($reader);
         }
 
         return $values;
     }
 
     private function readLength(BinaryReader $reader) : int{
-        $length = $reader->readInt($this->littleEndian);
+        $length = $this->readIntValue($reader);
 
         if($length < 0 || $length > $reader->remaining()){
             throw new NbtException("Invalid length {$length}");

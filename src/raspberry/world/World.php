@@ -6,6 +6,7 @@ namespace raspberry\world;
 
 use raspberry\block\BlockIds;
 use raspberry\block\BlockState;
+use raspberry\block\entity\BlockEntity;
 
 use raspberry\world\format\io\WorldMetadata;
 use raspberry\world\format\io\WorldProvider;
@@ -20,6 +21,10 @@ use raspberry\player\Player;
 
 use raspberry\math\Vector3;
 
+use raspberry\network\mcpe\protocol\Packet;
+use raspberry\network\mcpe\protocol\BlockActorDataPacket;
+
+use Closure;
 use InvalidArgumentException;
 
 use function count;
@@ -43,6 +48,11 @@ class World{
     private array $players = [];
 
     private bool $closed = false;
+
+    private int $currentTick = 0;
+
+    /** @var array<int, array{int, Closure() : void}> */
+    private array $scheduledUpdates = [];
 
     public function __construct(WorldMetadata $metadata, Generator $generator, WorldProvider $provider){
         $this->metadata = $metadata;
@@ -190,7 +200,71 @@ class World{
     }
 
     public function setBlock(int $x, int $y, int $z, BlockState $block) : void{
-        $this->loadChunk($x >> 4, $z >> 4)->setBlock($x & 15, $y, $z & 15, $block);
+        $chunk = $this->loadChunk($x >> 4, $z >> 4);
+
+        if($chunk->getBlock($x & 15, $y, $z & 15)->getName() !== $block->getName()){
+            $chunk->removeBlockEntity($x & 15, $y, $z & 15);
+        }
+
+        $chunk->setBlock($x & 15, $y, $z & 15, $block);
+
+        foreach($this->getPlayersViewing($x >> 4, $z >> 4) as $player){
+            $player->getNetworkSession()->sendBlock($x, $y, $z, $block);
+        }
+    }
+
+    public function getBlockEntity(int $x, int $y, int $z) : ?BlockEntity{
+        return $this->loadChunk($x >> 4, $z >> 4)->getBlockEntity($x & 15, $y, $z & 15);
+    }
+
+    /**
+     * Adds a block entity (after its block was set) and sends it to the players who see it.
+     */
+    public function addBlockEntity(BlockEntity $entity) : void{
+        $this->loadChunk($entity->getX() >> 4, $entity->getZ() >> 4)->addBlockEntity($entity);
+        $this->sendBlockEntity($entity);
+    }
+
+    /**
+     * Sends a block entity's data to the players who see it, after it changed.
+     */
+    public function sendBlockEntity(BlockEntity $entity) : void{
+        $this->broadcastPacket($entity->getX(), $entity->getZ(), BlockActorDataPacket::create($entity->getX(), $entity->getY(), $entity->getZ(), $entity->getSpawnData()));
+    }
+
+    /**
+     * The players who have been sent this chunk.
+     *
+     * @return list<Player>
+     */
+    public function getPlayersViewing(int $chunkX, int $chunkZ) : array{
+        $viewers = [];
+
+        foreach($this->players as $player){
+            if($player->getNetworkSession()->hasChunk($chunkX, $chunkZ)){
+                $viewers[] = $player;
+            }
+        }
+
+        return $viewers;
+    }
+
+    /**
+     * Sends a packet to the players who can see this block column, except $except.
+     */
+    public function broadcastPacket(int $x, int $z, Packet $packet, ?Player $except = null) : void{
+        foreach($this->getPlayersViewing($x >> 4, $z >> 4) as $player){
+            if($player !== $except){
+                $player->getNetworkSession()->sendDataPacket($packet);
+            }
+        }
+    }
+
+    /**
+     * @param Closure() : void $update
+     */
+    public function scheduleUpdate(int $delay, Closure $update) : void{
+        $this->scheduledUpdates[] = [$this->currentTick + $delay, $update];
     }
 
     public function getSpawnPosition() : Vector3{
@@ -251,9 +325,18 @@ class World{
     }
 
     /**
-     * Ticks every entity except players (their session ticks them).
+     * Runs scheduled updates and ticks every entity except players (their session ticks them).
      */
     public function tick(int $currentTick) : void{
+        $this->currentTick = $currentTick;
+
+        foreach($this->scheduledUpdates as $key => [$tick, $update]){
+            if($tick <= $currentTick){
+                unset($this->scheduledUpdates[$key]);
+                $update();
+            }
+        }
+
         foreach($this->entities as $entity){
             if(!$entity instanceof Player && !$entity->isClosed()){
                 $entity->tick($currentTick);

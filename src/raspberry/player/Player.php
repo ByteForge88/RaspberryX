@@ -33,6 +33,7 @@ use raspberry\math\Vector3;
 use raspberry\network\mcpe\auth\AuthenticatedLogin;
 use raspberry\network\mcpe\NetworkSession;
 use raspberry\network\mcpe\protocol\ActorEventPacket;
+use raspberry\network\mcpe\protocol\AnimatePacket;
 use raspberry\network\mcpe\protocol\SetTitlePacket;
 use raspberry\network\mcpe\protocol\TextPacket;
 use raspberry\network\mcpe\protocol\ToastRequestPacket;
@@ -100,6 +101,8 @@ class Player extends Human implements CommandSender{
 
     private bool $sprinting = false;
 
+    private bool $sneaking = false;
+
     /** blocks fallen since the player last stood on something */
     private float $fallDistance = 0.0;
 
@@ -128,6 +131,10 @@ class Player extends Human implements CommandSender{
 
     private RecipeBook $recipeBook;
 
+    private BlockBreaker $blockBreaker;
+
+    private BlockPlacer $blockPlacer;
+
     public function __construct(World $world, Vector3 $position, NetworkSession $session, AuthenticatedLogin $identity, GameMode $gameMode, Skin $skin){
         $this->session = $session;
         $this->identity = $identity;
@@ -140,6 +147,8 @@ class Player extends Human implements CommandSender{
         $this->enderInventory = new Inventory(self::ENDER_CHEST_SIZE);
         $this->uiInventory = new Inventory(self::UI_SIZE);
         $this->recipeBook = new RecipeBook($this, $session->getServer()->getCraftingManager());
+        $this->blockBreaker = new BlockBreaker($this);
+        $this->blockPlacer = new BlockPlacer($this);
 
         foreach([$this->inventory, $this->armorInventory, $this->offHandInventory, $this->uiInventory] as $inventory){
             $inventory->addListener($this->recipeBook);
@@ -325,6 +334,14 @@ class Player extends Human implements CommandSender{
         return $this->recipeBook;
     }
 
+    public function getBlockBreaker() : BlockBreaker{
+        return $this->blockBreaker;
+    }
+
+    public function getBlockPlacer() : BlockPlacer{
+        return $this->blockPlacer;
+    }
+
     public function getUIInventory() : Inventory{
         return $this->uiInventory;
     }
@@ -372,6 +389,14 @@ class Player extends Human implements CommandSender{
     public function broadcastHeldItem() : void{
         foreach($this->viewers as $viewer){
             $viewer->getNetworkSession()->sendHeldItem($this);
+        }
+    }
+
+    public function swingArm(string $source) : void{
+        $packet = AnimatePacket::create(AnimatePacket::ACTION_SWING_ARM, $this->getId(), $source);
+
+        foreach($this->viewers as $viewer){
+            $viewer->getNetworkSession()->sendDataPacket($packet);
         }
     }
 
@@ -669,6 +694,17 @@ class Player extends Human implements CommandSender{
      */
     public function setSprinting(bool $sprinting) : void{
         $this->sprinting = $sprinting;
+    }
+
+    public function isSneaking() : bool{
+        return $this->sneaking;
+    }
+
+    /**
+     * @internal
+     */
+    public function setSneaking(bool $sneaking) : void{
+        $this->sneaking = $sneaking;
     }
 
     public function isSwimming() : bool{

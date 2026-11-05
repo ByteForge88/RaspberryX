@@ -6,6 +6,7 @@ namespace raspberry\network\mcpe;
 
 use raspberry\network\encoding\BinaryReader;
 use raspberry\network\mcpe\protocol\ChunkRadiusUpdatedPacket;
+use raspberry\network\mcpe\protocol\BlockActorDataPacket;
 use raspberry\network\mcpe\protocol\ContainerClosePacket;
 use raspberry\network\mcpe\protocol\ContainerOpenPacket;
 use raspberry\network\mcpe\protocol\InteractPacket;
@@ -25,6 +26,7 @@ use raspberry\network\mcpe\protocol\NetworkChunkPublisherUpdatePacket;
 use raspberry\network\mcpe\protocol\NetworkSettingsPacket;
 use raspberry\network\mcpe\protocol\Packet;
 use raspberry\network\mcpe\protocol\PlayerAuthInputPacket;
+use raspberry\network\mcpe\protocol\UpdateBlockPacket;
 use raspberry\network\mcpe\protocol\PlayStatusPacket;
 use raspberry\network\mcpe\protocol\ProtocolInfo;
 use raspberry\network\mcpe\protocol\ProtocolPacketIds;
@@ -54,14 +56,18 @@ use raspberry\network\mcpe\protocol\types\AbilityLayer;
 use raspberry\network\mcpe\protocol\types\Attribute;
 use raspberry\network\mcpe\protocol\types\EntityMetadata;
 use raspberry\network\mcpe\protocol\types\PlayerListEntry;
+use raspberry\network\mcpe\protocol\types\PlayerBlockAction;
 use raspberry\network\mcpe\protocol\types\inventory\ContainerIds;
 use raspberry\network\mcpe\protocol\types\inventory\TransactionAction;
+use raspberry\network\mcpe\protocol\types\inventory\UseItemData;
 use raspberry\network\mcpe\auth\AuthenticatedLogin;
 use raspberry\network\mcpe\compression\PacketCompression;
 use raspberry\network\mcpe\resourcepack\ResourcePackNegotiation;
 use raspberry\network\mcpe\serializer\NetworkChunkSerializer;
 use raspberry\network\mcpe\convert\SkinAdapter;
 use raspberry\network\mcpe\convert\CommandDataAdapter;
+
+use raspberry\block\BlockState;
 
 use raspberry\entity\Entity;
 use raspberry\entity\Human;
@@ -342,6 +348,13 @@ class NetworkSession{
             case ProtocolPacketIds::INVENTORY_TRANSACTION_PACKET:
                 if($this->state === self::STATE_IN_GAME){
                     $this->handleInventoryTransaction($this->decode($buffer, InventoryTransactionPacket::class));
+                }
+                return;
+
+            case ProtocolPacketIds::BLOCK_ACTOR_DATA_PACKET:
+                if($this->state === self::STATE_IN_GAME && $this->player !== null && !$this->player->isDead()){
+                    $packet = $this->decode($buffer, BlockActorDataPacket::class);
+                    $this->player->getBlockPlacer()->editSign($packet->x, $packet->y, $packet->z, $packet->nbt);
                 }
                 return;
 
@@ -872,6 +885,8 @@ class NetworkSession{
             }
         }elseif($packet->type === InventoryTransactionPacket::TYPE_MISMATCH){
             $manager->sendAll();
+        }elseif($packet->useItem !== null && $packet->useItem->action === UseItemData::ACTION_CLICK_BLOCK){
+            $player->getBlockPlacer()->useItemOn($packet->useItem);
         }
 
         foreach($packet->legacySlots as $containerId => $slots){
@@ -1166,6 +1181,7 @@ class NetworkSession{
         $startGame->z = $eyes->z;
         $startGame->difficulty = $this->server->getDifficulty()->value;
         $startGame->serverAuthoritativeInventory = true;
+        $startGame->serverAuthoritativeBlockBreaking = true;
         $startGame->gameRules = ["recipesunlock" => true];
         $startGame->yaw = $yaw;
         $startGame->pitch = $pitch;
@@ -1257,6 +1273,8 @@ class NetworkSession{
             $player->setSprinting(false);
         }
 
+        $player->setSneaking($packet->hasFlag(PlayerAuthInputPacket::FLAG_SNEAKING));
+
         if($packet->hasFlag(PlayerAuthInputPacket::FLAG_START_SWIMMING)){
             $player->setSwimming(true);
         }elseif($packet->hasFlag(PlayerAuthInputPacket::FLAG_STOP_SWIMMING)){
@@ -1273,7 +1291,54 @@ class NetworkSession{
             return;
         }
 
+        $this->handleBlockActions($player, $packet);
+
         $this->updateChunkQueue(false);
+    }
+
+    /**
+     * Breaking blocks, and the inventory request the client sends when mining with a tool.
+     */
+    private function handleBlockActions(Player $player, PlayerAuthInputPacket $packet) : void{
+        $breaker = $player->getBlockBreaker();
+        $breaker->onInputTick();
+
+        foreach($packet->blockActions as $action){
+            match($action->action){
+                PlayerBlockAction::START_BREAK => $breaker->start($action->x, $action->y, $action->z),
+                //moving on to the next block while holding the button
+                PlayerBlockAction::CONTINUE_DESTROY_BLOCK => $breaker->isBreaking($action->x, $action->y, $action->z) ? null : $breaker->start($action->x, $action->y, $action->z),
+                PlayerBlockAction::ABORT_BREAK => $breaker->abort(),
+                PlayerBlockAction::PREDICT_DESTROY_BLOCK, PlayerBlockAction::STOP_BREAK => $breaker->finish($action->x, $action->y, $action->z),
+                default => null
+            };
+        }
+
+        $interaction = $packet->itemInteraction;
+
+        if($interaction !== null && $interaction->action === UseItemData::ACTION_BREAK_BLOCK){
+            $breaker->finish($interaction->x, $interaction->y, $interaction->z);
+        }
+
+        if($packet->itemStackRequest !== null){
+            $this->itemStackRequestHandler?->handleRequests([$packet->itemStackRequest]);
+        }
+    }
+
+    /**
+     * Sends the held slot again, to undo an item the client thought it used.
+     */
+    public function resendHeldItem() : void{
+        if($this->player !== null){
+            $this->inventoryManager?->sendSlot($this->player->getInventory(), $this->player->getInventory()->getHeldSlot());
+        }
+    }
+
+    /**
+     * Sends one block, to show a change or to undo what the client predicted.
+     */
+    public function sendBlock(int $x, int $y, int $z, BlockState $block) : void{
+        $this->sendDataPacket(UpdateBlockPacket::create($x, $y, $z, $this->server->getBlockTranslator()->getNetworkId($block)));
     }
 
     /**

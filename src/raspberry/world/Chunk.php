@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace raspberry\world;
 
 use InvalidArgumentException;
+
 use raspberry\block\BlockState;
+use raspberry\block\entity\BlockEntity;
+
 use raspberry\world\biome\BiomeIds;
 use raspberry\world\format\SubChunk;
 
@@ -29,6 +32,9 @@ class Chunk{
 
     /** @var array<int, SubChunk> keyed by sub-chunk Y (-4 to 19) */
     private array $subChunks = [];
+
+    /** @var array<int, BlockEntity> keyed by blockIndex() */
+    private array $blockEntities = [];
 
     private bool $changed = false;
 
@@ -57,6 +63,45 @@ class Chunk{
         $this->getSubChunkAt($x, $y, $z)->setBlock($x, $y & 0x0f, $z, $block, $layer);
 
         $this->changed = true;
+    }
+
+    /**
+     * The block entity at local X/Z and world Y, if any.
+     */
+    public function getBlockEntity(int $x, int $y, int $z) : ?BlockEntity{
+        return $this->blockEntities[self::blockIndex($x, $y, $z)] ?? null;
+    }
+
+    /**
+     * Adds a block entity at its own position, which must be in this chunk.
+     */
+    public function addBlockEntity(BlockEntity $entity) : void{
+        if($entity->getX() >> 4 !== $this->x || $entity->getZ() >> 4 !== $this->z){
+            throw new InvalidArgumentException("Block entity at {$entity->getX()}, {$entity->getZ()} is not in chunk {$this->x}, {$this->z}");
+        }
+
+        $this->blockEntities[self::blockIndex($entity->getX() & 15, $entity->getY(), $entity->getZ() & 15)] = $entity;
+        $this->changed = true;
+    }
+
+    public function removeBlockEntity(int $x, int $y, int $z) : void{
+        $index = self::blockIndex($x, $y, $z);
+
+        if(isset($this->blockEntities[$index])){
+            unset($this->blockEntities[$index]);
+            $this->changed = true;
+        }
+    }
+
+    /**
+     * @return array<int, BlockEntity>
+     */
+    public function getBlockEntities() : array{
+        return $this->blockEntities;
+    }
+
+    private static function blockIndex(int $x, int $y, int $z) : int{
+        return (($y - self::MIN_Y) << 8) | ($z << 4) | $x;
     }
 
     public function getBiome(int $x, int $y, int $z) : int{
@@ -107,14 +152,30 @@ class Chunk{
     }
 
     /**
-     * Whether blocks or biomes changed since the last save (used in step 6).
+     * Whether block entities, blocks or biomes changed since the last save
      */
     public function hasChanged() : bool{
-        return $this->changed;
+        if($this->changed){
+            return true;
+        }
+
+        foreach($this->blockEntities as $entity){
+            if($entity->isChanged()){
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public function setChanged(bool $changed = true) : void{
         $this->changed = $changed;
+
+        if(!$changed){
+            foreach($this->blockEntities as $entity){
+                $entity->setChanged(false);
+            }
+        }
     }
 
     public function collectGarbage() : void{

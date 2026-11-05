@@ -7,6 +7,7 @@ namespace raspberry\network\mcpe\protocol;
 use raspberry\network\encoding\BinaryReader;
 use raspberry\network\encoding\BinaryWriter;
 
+use raspberry\network\mcpe\protocol\types\inventory\ContainerIds;
 use raspberry\network\mcpe\protocol\types\inventory\ItemStackRequest;
 use raspberry\network\mcpe\protocol\types\inventory\StackRequestAction;
 use raspberry\network\mcpe\protocol\types\inventory\StackRequestSlot;
@@ -34,21 +35,25 @@ class ItemStackRequestPacket implements Packet{
         $this->requests = [];
 
         for($i = 0, $count = self::readCount($reader, self::MAX_REQUESTS); $i < $count; ++$i){
-            $requestId = $reader->readVarInt();
-            $actions = [];
-
-            for($j = 0, $actionCount = self::readCount($reader, self::MAX_ACTIONS); $j < $actionCount; ++$j){
-                $actions[] = self::readAction($reader);
-            }
-
-            for($j = 0, $filterCount = self::readCount($reader, self::MAX_LIST); $j < $filterCount; ++$j){
-                $reader->readString(); //filtered text: not used
-            }
-
-            $reader->readInt(); //filter cause
-
-            $this->requests[] = new ItemStackRequest($requestId, $actions);
+            $this->requests[] = self::readRequest($reader);
         }
+    }
+
+    public static function readRequest(BinaryReader $reader) : ItemStackRequest{
+        $requestId = $reader->readVarInt();
+        $actions = [];
+
+        for($j = 0, $actionCount = self::readCount($reader, self::MAX_ACTIONS); $j < $actionCount; ++$j){
+            $actions[] = self::readAction($reader);
+        }
+
+        for($j = 0, $filterCount = self::readCount($reader, self::MAX_LIST); $j < $filterCount; ++$j){
+            $reader->readString(); //filtered text: not used
+        }
+
+        $reader->readInt(); //filter cause
+
+        return new ItemStackRequest($requestId, $actions);
     }
 
     private static function readAction(BinaryReader $reader) : StackRequestAction{
@@ -96,9 +101,9 @@ class ItemStackRequestPacket implements Packet{
                 break;
 
             case StackRequestAction::MINE_BLOCK:
-                $reader->readVarInt();
-                $reader->readVarInt();
-                $reader->readInt();
+                $hotbarSlot = $reader->readVarInt();
+                $reader->readVarInt(); //durability the client predicts
+                $action->source = new StackRequestSlot(ContainerIds::INVENTORY, null, $hotbarSlot & 0xff, $reader->readInt());
                 break;
 
             case StackRequestAction::CRAFT_RECIPE:

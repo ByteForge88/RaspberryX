@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace raspberry\network\mcpe\serializer;
 
+use raspberry\nbt\NbtSerializer;
+
 use raspberry\network\encoding\BinaryWriter;
 use raspberry\network\mcpe\convert\BlockTranslator;
+
 use raspberry\world\Chunk;
 use raspberry\world\format\BiomeStorage;
 use raspberry\world\format\PalettedStorage;
@@ -17,16 +20,6 @@ use function count;
 use function intdiv;
 use function pack;
 
-/**
- * Encodes a chunk for LevelChunkPacket (the non-cached, full-chunk form).
- *
- * Payload: every sub-chunk, then one biome storage per sub-chunk, then a 0 byte (no border blocks).
- * Sub-chunk: byte version (9), byte layer count, byte sub-chunk Y, then each layer as a paletted storage.
- * Paletted storage: byte (bitsPerBlock << 1 | 1), uint32 words with the packed palette indices,
- * then the palette as VarInts (count omitted when bitsPerBlock is 0).
- *
- * This is the network format only. Saving chunks to disk uses world\format\io\ChunkSerializer.
- */
 class NetworkChunkSerializer{
 
     private const SUBCHUNK_VERSION = 9;
@@ -73,6 +66,12 @@ class NetworkChunkSerializer{
         }
 
         $writer->writeByte(0); //border block count
+
+        $nbt = NbtSerializer::network();
+
+        foreach($chunk->getBlockEntities() as $entity){
+            $writer->writeBytes($nbt->write($entity->getSpawnData()));
+        }
 
         return $writer->getBuffer();
     }

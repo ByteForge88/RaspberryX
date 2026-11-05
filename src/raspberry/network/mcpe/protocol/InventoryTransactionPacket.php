@@ -8,6 +8,7 @@ use raspberry\network\encoding\BinaryReader;
 use raspberry\network\encoding\BinaryWriter;
 
 use raspberry\network\mcpe\protocol\types\inventory\TransactionAction;
+use raspberry\network\mcpe\protocol\types\inventory\UseItemData;
 use raspberry\network\mcpe\serializer\ItemStackSerializer;
 
 use UnexpectedValueException;
@@ -35,6 +36,9 @@ class InventoryTransactionPacket implements Packet{
     /** @var list<TransactionAction> */
     public array $actions = [];
 
+    /** set for TYPE_USE_ITEM */
+    public ?UseItemData $useItem = null;
+
     public static function getPacketId() : int{
         return ProtocolPacketIds::INVENTORY_TRANSACTION_PACKET;
     }
@@ -45,7 +49,25 @@ class InventoryTransactionPacket implements Packet{
 
     public function decodePayload(BinaryReader $reader) : void{
         $this->legacyRequestId = $reader->readVarInt();
-        $this->legacySlots = [];
+        $this->legacySlots = self::readLegacySlots($reader);
+        $this->type = $reader->readUnsignedVarInt();
+        $this->actions = self::readActions($reader);
+        $this->useItem = null;
+
+        match($this->type){
+            self::TYPE_NORMAL, self::TYPE_MISMATCH => null,
+            self::TYPE_USE_ITEM => $this->useItem = UseItemData::read($reader),
+            self::TYPE_USE_ITEM_ON_ENTITY => self::skipUseItemOnEntity($reader),
+            self::TYPE_RELEASE_ITEM => self::skipReleaseItem($reader),
+            default => throw new UnexpectedValueException("Unknown inventory transaction type {$this->type}")
+        };
+    }
+
+    /**
+     * @return array<int, list<int>> container ID => slots
+     */
+    public static function readLegacySlots(BinaryReader $reader) : array{
+        $legacySlots = [];
 
         if($reader->readBool()){
             for($i = 0, $count = self::readCount($reader); $i < $count; ++$i){
@@ -53,13 +75,19 @@ class InventoryTransactionPacket implements Packet{
                 $slots = $reader->readString();
 
                 for($j = 0, $length = strlen($slots); $j < $length; ++$j){
-                    $this->legacySlots[$containerId][] = ord($slots[$j]);
+                    $legacySlots[$containerId][] = ord($slots[$j]);
                 }
             }
         }
 
-        $this->type = $reader->readUnsignedVarInt();
-        $this->actions = [];
+        return $legacySlots;
+    }
+
+    /**
+     * @return list<TransactionAction>
+     */
+    public static function readActions(BinaryReader $reader) : array{
+        $actions = [];
 
         for($i = 0, $count = self::readCount($reader); $i < $count; ++$i){
             $sourceType = $reader->readUnsignedVarInt();
@@ -69,33 +97,10 @@ class InventoryTransactionPacket implements Packet{
             [$oldItem] = ItemStackSerializer::readInstance($reader);
             [$newItem] = ItemStackSerializer::readInstance($reader);
 
-            $this->actions[] = new TransactionAction($sourceType, $windowId, $sourceFlags, $slot, $oldItem, $newItem);
+            $actions[] = new TransactionAction($sourceType, $windowId, $sourceFlags, $slot, $oldItem, $newItem);
         }
 
-        match($this->type){
-            self::TYPE_NORMAL, self::TYPE_MISMATCH => null,
-            self::TYPE_USE_ITEM => self::skipUseItem($reader),
-            self::TYPE_USE_ITEM_ON_ENTITY => self::skipUseItemOnEntity($reader),
-            self::TYPE_RELEASE_ITEM => self::skipReleaseItem($reader),
-            default => throw new UnexpectedValueException("Unknown inventory transaction type {$this->type}")
-        };
-    }
-
-    private static function skipUseItem(BinaryReader $reader) : void{
-        $reader->readVarInt(); //action
-        $reader->readByte(); //trigger type
-        $reader->readVarInt(); //block x
-        $reader->readVarInt(); //block y
-        $reader->readVarInt(); //block z
-        $reader->readByte(); //face
-        $reader->readVarInt(); //hotbar slot
-        $reader->readByte(); //hand
-        ItemStackSerializer::readInstance($reader);
-        self::skipVector($reader); //player position
-        self::skipVector($reader); //click position
-        $reader->readUnsignedVarInt(); //block runtime ID
-        $reader->readByte(); //client prediction
-        $reader->readByte(); //cooldown state
+        return $actions;
     }
 
     private static function skipUseItemOnEntity(BinaryReader $reader) : void{

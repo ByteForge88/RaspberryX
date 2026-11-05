@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace raspberry\world\format\io;
 
 use raspberry\block\BlockState;
+use raspberry\block\entity\BlockEntityFactory;
+
+use raspberry\nbt\NbtSerializer;
 
 use raspberry\network\encoding\BinaryReader;
 use raspberry\network\encoding\BinaryWriter;
@@ -28,17 +31,6 @@ use function substr;
 use function zlib_decode;
 use function zlib_encode;
 
-/**
- * File: "RXCH" + version byte + zlib-compressed body. The body (little-endian):
- *   int32 chunkX, int32 chunkZ, byte subChunkCount
- *   per sub-chunk: byte y (signed), byte layerCount,
- *                  layers:  uvarint paletteSize, palette entries, [8192 bytes indices if paletteSize > 1]
- *                  biomes:  uvarint paletteSize, uint16 per entry,  [8192 bytes indices if paletteSize > 1]
- *   block palette entry: string name, byte propertyCount, per property: string name, byte type, value
- *     type 0 = bool (byte), 1 = int (int32), 2 = string
- *
- * This is only the disk format. Sending chunks to players uses a separate network serializer (Step 7)
- */
 final class ChunkSerializer{
 
     private const MAGIC = "RXCH";
@@ -87,6 +79,14 @@ final class ChunkSerializer{
             }
 
             self::writeIndices($writer, $biomes);
+        }
+
+        $blockEntities = $chunk->getBlockEntities();
+        $writer->writeUnsignedVarInt(count($blockEntities));
+        $nbt = NbtSerializer::littleEndian();
+
+        foreach($blockEntities as $entity){
+            $writer->writeBytes($nbt->write($entity->save()));
         }
 
         $compressed = zlib_encode($writer->getBuffer(), ZLIB_ENCODING_DEFLATE, 6);
@@ -162,7 +162,19 @@ final class ChunkSerializer{
             }
 
             if(!$reader->isFinished()){
-                throw new UnexpectedValueException("Unexpected data after the last sub-chunk");
+                $nbt = NbtSerializer::littleEndian();
+
+                for($i = 0, $count = $reader->readUnsignedVarInt(); $i < $count; ++$i){
+                    $entity = BlockEntityFactory::load($nbt->readFrom($reader));
+
+                    if($entity !== null && $entity->getX() >> 4 === $x && $entity->getZ() >> 4 === $z && $entity->getY() >= Chunk::MIN_Y && $entity->getY() <= Chunk::MAX_Y){
+                        $chunk->addBlockEntity($entity);
+                    }
+                }
+            }
+
+            if(!$reader->isFinished()){
+                throw new UnexpectedValueException("Unexpected data after the block entities");
             }
         }catch(Throwable $error){
             throw new CorruptChunkException("Chunk {$expectedX}, {$expectedZ} is corrupt: " . $error->getMessage(), 0, $error);

@@ -66,6 +66,12 @@ use raspberry\network\mcpe\protocol\AddItemActorPacket;
 use raspberry\network\mcpe\protocol\TakeItemActorPacket;
 use raspberry\network\mcpe\protocol\CraftingDataPacket;
 use raspberry\network\mcpe\protocol\UnlockedRecipesPacket;
+use raspberry\network\mcpe\protocol\UpdateBlockPacket;
+use raspberry\network\mcpe\protocol\LevelEventPacket;
+use raspberry\network\mcpe\protocol\LevelSoundEventPacket;
+use raspberry\network\mcpe\protocol\AnimatePacket;
+use raspberry\network\mcpe\protocol\BlockActorDataPacket;
+use raspberry\network\mcpe\protocol\OpenSignPacket;
 use raspberry\network\nethernet\NetherNetIdentity;
 use raspberry\network\nethernet\NetherNetTransport;
 
@@ -764,7 +770,13 @@ class Server{
             AddItemActorPacket::class,
             TakeItemActorPacket::class,
             CraftingDataPacket::class,
-            UnlockedRecipesPacket::class
+            UnlockedRecipesPacket::class,
+            UpdateBlockPacket::class,
+            LevelEventPacket::class,
+            LevelSoundEventPacket::class,
+            AnimatePacket::class,
+            BlockActorDataPacket::class,
+            OpenSignPacket::class
         ] as $packet){
             $this->packetRegistry->register($packet);
         }
