@@ -21,6 +21,9 @@ abstract class BlockEntity{
     /** changed since the chunk was last saved */
     private bool $changed = false;
 
+    /** @var array<int, Player> */
+    private array $viewers = [];
+
     public function __construct(int $x, int $y, int $z){
         $this->x = $x;
         $this->y = $y;
@@ -101,6 +104,21 @@ abstract class BlockEntity{
      */
     public function onBreak(World $world) : array{
         return [];
+    }
+
+    /**
+     * @return array<int, Player>
+     */
+    public function getViewers() : array{
+        return $this->viewers;
+    }
+
+    public function addViewer(Player $player) : void{
+        $this->viewers[$player->getId()] = $player;
+    }
+
+    public function removeViewer(Player $player) : void{
+        unset($this->viewers[$player->getId()]);
     }
 
     public function isChanged() : bool{

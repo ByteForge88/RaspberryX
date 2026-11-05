@@ -11,12 +11,6 @@ use UnexpectedValueException;
 
 class LevelEventPacket implements Packet{
 
-    public const PARTICLES_DESTROY_BLOCK = 2001;
-
-    public const START_BLOCK_CRACKING = 3600;
-    public const STOP_BLOCK_CRACKING = 3601;
-    public const UPDATE_BLOCK_CRACKING = 3602;
-
     public int $event = 0;
 
     public float $x = 0.0;

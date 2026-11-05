@@ -42,7 +42,7 @@ class SkinSerializer{
         $writer->writeString($skin->capeId);
         $writer->writeString($skin->fullId);
         $writer->writeByte($skin->armSize === Skin::ARM_SIZE_SLIM ? self::ARM_SIZE_SLIM : self::ARM_SIZE_WIDE);
-        $writer->writeInt(0, false); //skin color (ARGB, big-endian): not used
+        $writer->writeInt(0); //skin color: not used
         $writer->writeUnsignedVarInt(0); //persona pieces: not kept, see Skin
         $writer->writeUnsignedVarInt(0); //persona piece tint colors
         $writer->writeBool($skin->premium);

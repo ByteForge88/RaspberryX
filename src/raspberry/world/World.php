@@ -7,6 +7,8 @@ namespace raspberry\world;
 use raspberry\block\BlockIds;
 use raspberry\block\BlockState;
 use raspberry\block\entity\BlockEntity;
+use raspberry\block\entity\BlockEntityFactory;
+use raspberry\block\entity\TickableBlockEntity;
 
 use raspberry\world\format\io\WorldMetadata;
 use raspberry\world\format\io\WorldProvider;
@@ -23,11 +25,13 @@ use raspberry\math\Vector3;
 
 use raspberry\network\mcpe\protocol\Packet;
 use raspberry\network\mcpe\protocol\BlockActorDataPacket;
+use raspberry\network\mcpe\protocol\SpawnParticleEffectPacket;
 
 use Closure;
 use InvalidArgumentException;
 
 use function count;
+use function floor;
 use function mt_rand;
 
 class World{
@@ -201,8 +205,9 @@ class World{
 
     public function setBlock(int $x, int $y, int $z, BlockState $block) : void{
         $chunk = $this->loadChunk($x >> 4, $z >> 4);
+        $old = $chunk->getBlock($x & 15, $y, $z & 15)->getName();
 
-        if($chunk->getBlock($x & 15, $y, $z & 15)->getName() !== $block->getName()){
+        if($old !== $block->getName() && BlockEntityFactory::getSaveId($old) !== BlockEntityFactory::getSaveId($block->getName())){
             $chunk->removeBlockEntity($x & 15, $y, $z & 15);
         }
 
@@ -247,6 +252,13 @@ class World{
         }
 
         return $viewers;
+    }
+
+    /**
+     * Shows a named particle effect (a ParticleEffect constant) to the players nearby.
+     */
+    public function addParticle(float $x, float $y, float $z, string $particle) : void{
+        $this->broadcastPacket((int) floor($x), (int) floor($z), SpawnParticleEffectPacket::create($particle, $x, $y, $z));
     }
 
     /**
@@ -325,10 +337,19 @@ class World{
     }
 
     /**
-     * Runs scheduled updates and ticks every entity except players (their session ticks them).
+     * Ticks block entities, runs scheduled updates and ticks every entity except players (their
+     * session ticks them).
      */
     public function tick(int $currentTick) : void{
         $this->currentTick = $currentTick;
+
+        foreach($this->chunks as $chunk){
+            foreach($chunk->getBlockEntities() as $entity){
+                if($entity instanceof TickableBlockEntity){
+                    $entity->tick($this, $currentTick);
+                }
+            }
+        }
 
         foreach($this->scheduledUpdates as $key => [$tick, $update]){
             if($tick <= $currentTick){

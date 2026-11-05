@@ -18,6 +18,7 @@ use raspberry\block\entity\BlockEntityFactory;
 use raspberry\entity\Human;
 
 use raspberry\item\Item;
+use raspberry\item\ItemIds;
 
 use raspberry\math\Facing;
 use raspberry\math\Vector3;
@@ -27,6 +28,8 @@ use raspberry\nbt\tag\CompoundTag;
 use raspberry\network\mcpe\protocol\AnimatePacket;
 use raspberry\network\mcpe\protocol\OpenSignPacket;
 use raspberry\network\mcpe\protocol\BlockActorDataPacket;
+use raspberry\network\mcpe\protocol\types\LevelEvent;
+use raspberry\network\mcpe\protocol\LevelEventPacket;
 use raspberry\network\mcpe\protocol\LevelSoundEventPacket;
 use raspberry\network\mcpe\protocol\types\LevelSoundEvent;
 use raspberry\network\mcpe\protocol\types\inventory\UseItemData;
@@ -65,6 +68,14 @@ class BlockPlacer{
 
     /** two blocks tall plants (doors are found by their hinge) */
     private const TALL = '/^minecraft:(tall_grass|large_fern|sunflower|lilac|rose_bush|peony|pitcher_plant|small_dripleaf_block)$/D';
+
+    /** sign text colors of the dyes, as RGB (black text is pure black) */
+    private const DYE_COLORS = [
+        "white" => 0xf0f0f0, "orange" => 0xf9801d, "magenta" => 0xc74ebd, "light_blue" => 0x3ab3da,
+        "yellow" => 0xfed83d, "lime" => 0x80c71f, "pink" => 0xf38baa, "gray" => 0x474f52,
+        "light_gray" => 0x9d9d97, "cyan" => 0x169c9c, "purple" => 0x8932b8, "blue" => 0x3c44aa,
+        "brown" => 0x835432, "green" => 0x5e7c16, "red" => 0xb02e26, "black" => 0x000000
+    ];
 
     private Player $player;
 
@@ -135,10 +146,11 @@ class BlockPlacer{
         $entity = $this->player->getWorld()->getBlockEntity($x, $y, $z);
 
         if($entity instanceof Sign){
-            if(!$entity->isWaxed()){
-                $this->openSign($entity, $entity->isFrontFacing($block, $this->player->getPosition()));
-            }
+            $this->useSign($entity, $block);
+            return true;
+        }
 
+        if($this->player->getContainerOpener()->open($x, $y, $z, $block)){
             return true;
         }
 
@@ -322,9 +334,6 @@ class BlockPlacer{
         return true;
     }
 
-    /**
-     * A chest placed beside a single chest of the same kind, facing the same way, joins it.
-     */
     private function pairChest(Chest $chest, BlockState $state) : void{
         $world = $this->player->getWorld();
         $facing = Facing::fromName((string) $state->getProperty(BlockProperties::MINECRAFT_CARDINAL_DIRECTION));
@@ -333,7 +342,7 @@ class BlockPlacer{
             [$dx, , $dz] = Facing::offset($side);
             [$x, $y, $z] = [$chest->getX() + $dx, $chest->getY(), $chest->getZ() + $dz];
 
-            if(!$this->isLoaded($x, $y, $z) || !$world->getBlock($x, $y, $z)->equals($state)){
+            if(!$this->isLoaded($x, $y, $z) || !Chest::canPair($world->getBlock($x, $y, $z), $state)){
                 continue;
             }
 
@@ -346,6 +355,45 @@ class BlockPlacer{
                 return;
             }
         }
+    }
+
+    private function useSign(Sign $sign, BlockState $block) : void{
+        $world = $this->player->getWorld();
+        [$x, $y, $z] = [$sign->getX(), $sign->getY(), $sign->getZ()];
+        $held = $this->player->getInventory()->getItemInHand();
+        $id = $held->getId();
+        $front = $sign->isFrontFacing($block, $this->player->getPosition());
+
+        if($sign->isWaxed()){
+            $this->playSound(LevelSoundEvent::BLOCK_SIGN_WAXED_INTERACT_FAIL, $x, $y, $z, null);
+            return;
+        }
+
+        if($id === ItemIds::HONEYCOMB){
+            $sign->setWaxed(true);
+            $world->broadcastPacket($x, $z, LevelEventPacket::create(LevelEvent::WAX_ON, $x + 0.5, $y + 0.5, $z + 0.5));
+        }elseif(preg_match('/^minecraft:(\w+)_dye$/D', $id, $matches) === 1 && isset(self::DYE_COLORS[$matches[1]]) && $sign->getColor($front) !== self::toArgb(self::DYE_COLORS[$matches[1]])){
+            $sign->setColor($front, self::toArgb(self::DYE_COLORS[$matches[1]]));
+        }elseif(($id === ItemIds::GLOW_INK_SAC || $id === ItemIds::INK_SAC) && $sign->isGlowing($front) !== ($id === ItemIds::GLOW_INK_SAC)){
+            $sign->setGlowing($front, $id === ItemIds::GLOW_INK_SAC);
+        }else{
+            $this->openSign($sign, $front);
+            return;
+        }
+
+        $world->sendBlockEntity($sign);
+
+        if(!$this->player->getGameMode()->hasInstantBuild()){
+            $this->player->getInventory()->setItemInHand($held->getCount() > 1 ? $held->setCount($held->getCount() - 1) : Item::air());
+        }
+    }
+
+    /**
+     * An opaque RGB color as the signed ARGB int signs store.
+     */
+    private static function toArgb(int $rgb) : int{
+        $argb = $rgb | 0xff000000;
+        return $argb > 0x7fffffff ? $argb - 0x100000000 : $argb;
     }
 
     private function openSign(Sign $sign, bool $front) : void{

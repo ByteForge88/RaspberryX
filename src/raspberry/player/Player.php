@@ -25,6 +25,7 @@ use raspberry\nbt\tag\StringTag;
 use raspberry\nbt\NbtException;
 
 use raspberry\block\BlockIds;
+use raspberry\block\BlockCollision;
 
 use raspberry\command\CommandSender;
 
@@ -34,9 +35,13 @@ use raspberry\network\mcpe\auth\AuthenticatedLogin;
 use raspberry\network\mcpe\NetworkSession;
 use raspberry\network\mcpe\protocol\ActorEventPacket;
 use raspberry\network\mcpe\protocol\AnimatePacket;
+use raspberry\network\mcpe\protocol\LevelEventPacket;
+use raspberry\network\mcpe\protocol\LevelSoundEventPacket;
 use raspberry\network\mcpe\protocol\SetTitlePacket;
 use raspberry\network\mcpe\protocol\TextPacket;
 use raspberry\network\mcpe\protocol\ToastRequestPacket;
+use raspberry\network\mcpe\protocol\types\LevelEvent;
+use raspberry\network\mcpe\protocol\types\LevelSoundEvent;
 
 use raspberry\permission\PermissionLevel;
 use raspberry\permission\PermissibleTrait;
@@ -55,6 +60,7 @@ use function cos;
 use function deg2rad;
 use function floor;
 use function is_int;
+use function intdiv;
 use function max;
 use function min;
 use function microtime;
@@ -70,6 +76,12 @@ class Player extends Human implements CommandSender{
     public const VOID_DAMAGE = 4.0;
 
     private const VOID_DAMAGE_TICKS = 10;
+
+    public const MAX_XP_LEVEL = 24791;
+
+    /** a head inside a full block takes this much damage every this many ticks */
+    private const SUFFOCATION_DAMAGE = 1.0;
+    private const SUFFOCATION_TICKS = 10;
 
     /** falls up to this many blocks do no damage */
     public const SAFE_FALL_DISTANCE = 3.0;
@@ -108,6 +120,13 @@ class Player extends Human implements CommandSender{
 
     private int $lastVoidDamageTick = 0;
 
+    private int $lastSuffocationTick = 0;
+
+    private int $xpLevel = 0;
+
+    /** how far to the next level, 0 to 1 */
+    private float $xpProgress = 0.0;
+
     /** translation key of the death message for the next death, e.g. "death.attack.outOfWorld" */
     private ?string $deathCause = null;
 
@@ -135,6 +154,8 @@ class Player extends Human implements CommandSender{
 
     private BlockPlacer $blockPlacer;
 
+    private ContainerOpener $containerOpener;
+
     public function __construct(World $world, Vector3 $position, NetworkSession $session, AuthenticatedLogin $identity, GameMode $gameMode, Skin $skin){
         $this->session = $session;
         $this->identity = $identity;
@@ -149,6 +170,7 @@ class Player extends Human implements CommandSender{
         $this->recipeBook = new RecipeBook($this, $session->getServer()->getCraftingManager());
         $this->blockBreaker = new BlockBreaker($this);
         $this->blockPlacer = new BlockPlacer($this);
+        $this->containerOpener = new ContainerOpener($this);
 
         foreach([$this->inventory, $this->armorInventory, $this->offHandInventory, $this->uiInventory] as $inventory){
             $inventory->addListener($this->recipeBook);
@@ -184,6 +206,8 @@ class Player extends Human implements CommandSender{
         $this->food = max(0, min($data->getInt("FoodLevel", self::MAX_FOOD), self::MAX_FOOD));
         $this->saturation = max(0.0, min($data->getFloat("FoodSaturationLevel", self::DEFAULT_SATURATION), $this->food));
         $this->exhaustion = max(0.0, min($data->getFloat("FoodExhaustionLevel", 0.0), self::MAX_EXHAUSTION));
+        $this->xpProgress = max(0.0, min($data->getFloat("XpP", 0.0) ?? 0.0, 1.0));
+        $this->xpLevel = max(0, min($data->getInt("XpLevel", 0) ?? 0, self::MAX_XP_LEVEL));
 
         if($this->health <= 0){
             $this->resetVitals();
@@ -236,6 +260,8 @@ class Player extends Human implements CommandSender{
             ->setInt("FoodLevel", $this->dead ? self::MAX_FOOD : $this->food)
             ->setFloat("FoodSaturationLevel", $this->dead ? self::DEFAULT_SATURATION : $this->saturation)
             ->setFloat("FoodExhaustionLevel", $this->dead ? 0.0 : $this->exhaustion)
+            ->setFloat("XpP", $this->xpProgress)
+            ->setInt("XpLevel", $this->xpLevel)
             ->setInt("FoodTickTimer", $this->dead ? 1 : $this->foodTickTimer)
             ->setFloat("FallDistance", $this->dead ? 0.0 : $this->fallDistance)
             ->setInt("SelectedInventorySlot", $this->inventory->getHeldSlot())
@@ -330,6 +356,10 @@ class Player extends Human implements CommandSender{
         return $this->enderInventory;
     }
 
+    public function getUIInventory() : Inventory{
+        return $this->uiInventory;
+    }
+
     public function getRecipeBook() : RecipeBook{
         return $this->recipeBook;
     }
@@ -342,8 +372,55 @@ class Player extends Human implements CommandSender{
         return $this->blockPlacer;
     }
 
-    public function getUIInventory() : Inventory{
-        return $this->uiInventory;
+    public function getContainerOpener() : ContainerOpener{
+        return $this->containerOpener;
+    }
+
+    public function getXpLevel() : int{
+        return $this->xpLevel;
+    }
+
+    public function getXpProgress() : float{
+        return $this->xpProgress;
+    }
+
+    /**
+     * Experience points needed to get from $level to the next level.
+     */
+    public static function getXpToNextLevel(int $level) : int{
+        return match(true){
+            $level >= 30 => 9 * $level - 158,
+            $level >= 15 => 5 * $level - 38,
+            default => 2 * $level + 7
+        };
+    }
+
+    /**
+     * Gives experience points, with the pickup sound, and the level up sound every 5 levels.
+     */
+    public function addXp(int $amount) : void{
+        if($amount <= 0 || $this->xpLevel >= self::MAX_XP_LEVEL){
+            return;
+        }
+
+        $oldLevel = $this->xpLevel;
+        $points = $this->xpProgress * self::getXpToNextLevel($this->xpLevel) + $amount;
+
+        while($this->xpLevel < self::MAX_XP_LEVEL && $points >= self::getXpToNextLevel($this->xpLevel)){
+            $points -= self::getXpToNextLevel($this->xpLevel);
+            ++$this->xpLevel;
+        }
+
+        $this->xpProgress = $this->xpLevel >= self::MAX_XP_LEVEL ? 0.0 : min($points / self::getXpToNextLevel($this->xpLevel), 1.0);
+
+        $position = $this->getPosition();
+        $this->session->sendDataPacket(LevelEventPacket::create(LevelEvent::SOUND_EXPERIENCE_ORB_PICKUP, $position->x, $position->y, $position->z));
+
+        if(intdiv($this->xpLevel, 5) > intdiv($oldLevel, 5)){
+            $this->session->sendDataPacket(LevelSoundEventPacket::create(LevelSoundEvent::LEVELUP, $position->x, $position->y, $position->z, 0x10000000 * intdiv(min(30, $this->xpLevel), 5)));
+        }
+
+        $this->session->sendAttributes();
     }
 
     public function moveUIItemsToInventory() : void{
@@ -591,6 +668,8 @@ class Player extends Human implements CommandSender{
 
         if(!$this->session->getServer()->isKeepInventory()){
             $this->dropInventory();
+            $this->xpLevel = 0;
+            $this->xpProgress = 0.0;
         }
 
         foreach($this->viewers as $viewer){
@@ -616,6 +695,27 @@ class Player extends Human implements CommandSender{
             $this->lastVoidDamageTick = $currentTick;
             $this->damage(new DamageSource(DamageSource::CAUSE_VOID, self::VOID_DAMAGE));
         }
+
+        if($currentTick - $this->lastSuffocationTick >= self::SUFFOCATION_TICKS && $this->isHeadInBlock()){
+            $this->lastSuffocationTick = $currentTick;
+            $this->damage(new DamageSource(DamageSource::CAUSE_SUFFOCATION, self::SUFFOCATION_DAMAGE));
+        }
+
+        $this->containerOpener->tick();
+    }
+
+    /**
+     * Whether the player's eyes are inside a full block (spectators fly through blocks).
+     */
+    public function isHeadInBlock() : bool{
+        if(!$this->gameMode->hasCollision()){
+            return false;
+        }
+
+        $eyes = $this->getEyePosition();
+        [$x, $y, $z] = [$eyes->getFloorX(), $eyes->getFloorY(), $eyes->getFloorZ()];
+
+        return $y >= Chunk::MIN_Y && $y <= Chunk::MAX_Y && $this->world->isChunkLoaded($x >> 4, $z >> 4) && BlockCollision::isFullCube($this->world->getBlock($x, $y, $z));
     }
 
     /**

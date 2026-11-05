@@ -10,6 +10,7 @@ use raspberry\network\mcpe\convert\BlockTranslator;
 use raspberry\network\mcpe\convert\ItemTypeDictionary;
 use raspberry\network\mcpe\NetworkSession;
 use raspberry\network\mcpe\protocol\ChunkRadiusUpdatedPacket;
+use raspberry\network\mcpe\protocol\ContainerSetDataPacket;
 use raspberry\network\mcpe\protocol\CreativeContentPacket;
 use raspberry\network\mcpe\protocol\DisconnectPacket;
 use raspberry\network\mcpe\protocol\ItemRegistryPacket;
@@ -30,6 +31,7 @@ use raspberry\network\mcpe\protocol\ResourcePackClientResponsePacket;
 use raspberry\network\mcpe\protocol\ResourcePacksInfoPacket;
 use raspberry\network\mcpe\protocol\ResourcePackStackPacket;
 use raspberry\network\mcpe\protocol\SetLocalPlayerAsInitializedPacket;
+use raspberry\network\mcpe\protocol\SpawnParticleEffectPacket;
 use raspberry\network\mcpe\protocol\StartGamePacket;
 use raspberry\network\mcpe\protocol\VoxelShapesPacket;
 use raspberry\network\mcpe\protocol\AddPlayerPacket;
@@ -71,6 +73,7 @@ use raspberry\network\mcpe\protocol\LevelEventPacket;
 use raspberry\network\mcpe\protocol\LevelSoundEventPacket;
 use raspberry\network\mcpe\protocol\AnimatePacket;
 use raspberry\network\mcpe\protocol\BlockActorDataPacket;
+use raspberry\network\mcpe\protocol\BlockEventPacket;
 use raspberry\network\mcpe\protocol\OpenSignPacket;
 use raspberry\network\nethernet\NetherNetIdentity;
 use raspberry\network\nethernet\NetherNetTransport;
@@ -540,7 +543,7 @@ class Server{
 
     /**
      * Finds an in-game player by name, ignoring case. If nobody has that exact name, the player whose
-     * name starts with it and is closest in length is returned, so "kick ste" finds Steve.
+     * name starts with it and is closest is returned, so "kick ste" finds Steve.
      */
     public function getPlayerByPrefix(string $name) : ?Player{
         $name = strtolower($name);
@@ -776,7 +779,10 @@ class Server{
             LevelSoundEventPacket::class,
             AnimatePacket::class,
             BlockActorDataPacket::class,
-            OpenSignPacket::class
+            OpenSignPacket::class,
+            BlockEventPacket::class,
+            SpawnParticleEffectPacket::class,
+            ContainerSetDataPacket::class
         ] as $packet){
             $this->packetRegistry->register($packet);
         }

@@ -33,9 +33,15 @@ class BlockEntityFactory{
             preg_match('/^minecraft:(standing|wall)_banner$/D', $blockName) === 1 => "Banner",
             preg_match('/^minecraft:(skeleton_skull|wither_skeleton_skull|zombie_head|player_head|creeper_head|dragon_head|piglin_head)$/D', $blockName) === 1 => "Skull",
             $blockName === "minecraft:chest" || $blockName === "minecraft:trapped_chest" => "Chest",
+            preg_match('/^minecraft:(waxed_)?((exposed|weathered|oxidized)_)?copper_chest$/D', $blockName) === 1 => "Chest",
             $blockName === "minecraft:barrel" => "Barrel",
             preg_match('/^minecraft:\w+_shulker_box$/D', $blockName) === 1 => "ShulkerBox",
             $blockName === "minecraft:ender_chest" => "EnderChest",
+            $blockName === "minecraft:furnace" || $blockName === "minecraft:lit_furnace" => Furnace::ID_FURNACE,
+            $blockName === "minecraft:blast_furnace" || $blockName === "minecraft:lit_blast_furnace" => Furnace::ID_BLAST_FURNACE,
+            $blockName === "minecraft:smoker" || $blockName === "minecraft:lit_smoker" => Furnace::ID_SMOKER,
+            $blockName === "minecraft:brewing_stand" => "BrewingStand",
+            $blockName === "minecraft:hopper" => "Hopper",
             default => null
         };
     }
@@ -69,6 +75,9 @@ class BlockEntityFactory{
             "Barrel" => new Barrel($x, $y, $z),
             "ShulkerBox" => new ShulkerBox($x, $y, $z),
             "EnderChest" => new EnderChest($x, $y, $z),
+            Furnace::ID_FURNACE, Furnace::ID_BLAST_FURNACE, Furnace::ID_SMOKER => new Furnace($x, $y, $z, $id),
+            "BrewingStand" => new BrewingStand($x, $y, $z),
+            "Hopper" => new Hopper($x, $y, $z),
             default => null
         };
     }

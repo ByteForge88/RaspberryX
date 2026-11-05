@@ -15,6 +15,8 @@ use raspberry\nbt\tag\CompoundTag;
 use raspberry\nbt\tag\ListTag;
 use raspberry\nbt\tag\Tag;
 
+use raspberry\network\mcpe\protocol\ContainerSetDataPacket;
+
 use raspberry\player\Player;
 
 use raspberry\world\World;
@@ -29,10 +31,10 @@ abstract class ContainerBlockEntity extends BlockEntity implements InventoryList
 
     private ?string $customName = null;
 
-    public function __construct(int $x, int $y, int $z){
+    public function __construct(int $x, int $y, int $z, int $size = self::SIZE){
         parent::__construct($x, $y, $z);
 
-        $this->inventory = new Inventory(self::SIZE);
+        $this->inventory = new Inventory($size);
         $this->inventory->addListener($this);
     }
 
@@ -45,7 +47,7 @@ abstract class ContainerBlockEntity extends BlockEntity implements InventoryList
     }
 
     public function readData(CompoundTag $nbt) : void{
-        $this->inventory->setContents(self::readItems($nbt));
+        $this->inventory->setContents(self::readItems($nbt, $this->inventory->getSize()));
         $this->customName = $nbt->getString("CustomName");
     }
 
@@ -62,7 +64,10 @@ abstract class ContainerBlockEntity extends BlockEntity implements InventoryList
     }
 
     public function onBreak(World $world) : array{
-        return array_values($this->inventory->getContents());
+        $contents = array_values($this->inventory->getContents());
+        $this->inventory->clearAll();
+
+        return $contents;
     }
 
     public function onSlotChange(Inventory $inventory, int $slot, Item $oldItem) : void{
@@ -74,9 +79,33 @@ abstract class ContainerBlockEntity extends BlockEntity implements InventoryList
     }
 
     /**
-     * @return array<int, Item> slot => item
+     * Called when a player opens the screen, to send what the screen shows beside the items.
      */
-    public static function readItems(CompoundTag $nbt) : array{
+    public function onOpen(Player $player) : void{
+    }
+
+    /**
+     * @param array<int, int>   $values  key => value
+     * @param list<Player>|null $players null for every viewer
+     */
+    protected function sendContainerData(array $values, ?array $players = null) : void{
+        foreach($players ?? $this->getViewers() as $player){
+            $window = $player->getNetworkSession()->getInventoryManager()?->getWindow();
+
+            if($window === null || !$window->isAt($this->getX(), $this->getY(), $this->getZ())){
+                continue;
+            }
+
+            foreach($values as $key => $value){
+                $player->getNetworkSession()->sendDataPacket(ContainerSetDataPacket::create($window->getWindowId(), $key, $value));
+            }
+        }
+    }
+
+    /**
+     * @return array<int, Item>
+     */
+    public static function readItems(CompoundTag $nbt, int $size = self::SIZE) : array{
         $items = [];
 
         foreach($nbt->getListTag("Items")?->getValue() ?? [] as $entry){
@@ -86,7 +115,7 @@ abstract class ContainerBlockEntity extends BlockEntity implements InventoryList
 
             $slot = $entry->getByte("Slot", -1) ?? -1;
 
-            if($slot < 0 || $slot >= self::SIZE){
+            if($slot < 0 || $slot >= $size){
                 continue;
             }
 

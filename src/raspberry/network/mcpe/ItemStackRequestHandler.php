@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace raspberry\network\mcpe;
 
+use raspberry\block\entity\Furnace;
+use raspberry\block\entity\BrewingStand;
+
+use raspberry\crafting\FurnaceData;
 use raspberry\crafting\CraftingRecipe;
 
 use raspberry\inventory\Inventory;
@@ -77,13 +81,20 @@ class ItemStackRequestHandler{
     /** @var list<array{Item, int}> outputs of a recipe with more than one, waiting for a create action */
     private array $pendingResults = [];
 
-    /** the 3x3 grid of a crafting table instead of the 2x2 grid of the inventory (step 12) */
+    /** the 3x3 grid of a crafting table instead of the 2x2 grid of the inventory */
     private bool $largeGrid = false;
 
     public function __construct(NetworkSession $session, Player $player, InventoryManager $inventoryManager){
         $this->session = $session;
         $this->player = $player;
         $this->inventoryManager = $inventoryManager;
+    }
+
+    /**
+     * Uses the 3x3 grid of a crafting table, while one is open.
+     */
+    public function setLargeGrid(bool $largeGrid) : void{
+        $this->largeGrid = $largeGrid;
     }
 
     public function handle(ItemStackRequestPacket $packet) : void{
@@ -131,6 +142,7 @@ class ItemStackRequestHandler{
             }
 
             $response = new ItemStackResponse(ItemStackResponse::STATUS_OK, $request->requestId, $this->buildChanges());
+            $this->collectFurnaceExperience($request);
         }catch(UnexpectedValueException $exception){
             $this->undo();
             $this->drops = [];
@@ -388,15 +400,67 @@ class ItemStackRequestHandler{
         return $this->largeGrid ? [Player::UI_CRAFTING_LARGE, 3] : [Player::UI_CRAFTING_SMALL, 2];
     }
 
+    /**
+     * Taking from a furnace's output gives the player the experience it stored.
+     */
+    private function collectFurnaceExperience(ItemStackRequest $request) : void{
+        $furnace = $this->inventoryManager->getWindow()?->getEntity();
+
+        if(!$furnace instanceof Furnace){
+            return;
+        }
+
+        foreach($request->actions as $action){
+            if($action->source?->containerId === ContainerIds::FURNACE_RESULT){
+                $this->player->addXp($furnace->collectExperience());
+                return;
+            }
+        }
+    }
+
+    private function checkBlockSlot(StackRequestSlot $slot, Item $item) : void{
+        $window = $this->inventoryManager->getWindow();
+        $resolved = $window?->resolve($slot->containerId, $slot->slot);
+        $entity = $window?->getEntity();
+
+        if($resolved === null){
+            return;
+        }
+
+        $index = $resolved[1];
+
+        $fits = match(true){
+            $entity instanceof Furnace => match($index){
+                Furnace::SLOT_OUTPUT => false,
+                Furnace::SLOT_FUEL => FurnaceData::getBurnTicks($item) > 0 || $item->getId() === ItemIds::BUCKET,
+                default => true
+            },
+            $entity instanceof BrewingStand => match(true){
+                $index === BrewingStand::SLOT_FUEL => $item->getId() === ItemIds::BLAZE_POWDER,
+                $index === BrewingStand::SLOT_REAGENT => $this->session->getServer()->getCraftingManager()->isBrewingReagent($item),
+                default => $item->getCount() === 1 && in_array($item->getId(), [ItemIds::POTION, ItemIds::SPLASH_POTION, ItemIds::LINGERING_POTION, ItemIds::GLASS_BOTTLE], true)
+            },
+            default => true
+        };
+
+        if(!$fits){
+            throw new UnexpectedValueException($item->getId() . " cannot go in slot {$index} of " . $entity?->getSaveId());
+        }
+    }
+
     private function checkFits(StackRequestSlot $slot, Item $item) : void{
         if($item->isNull()){
             return;
         }
 
+        $this->checkBlockSlot($slot, $item);
+
         if($slot->containerId === ContainerIds::ARMOR){
             if($item->getCount() > 1 || !self::isArmorFor($slot->slot, $item->getId())){
                 throw new UnexpectedValueException($item->getId() . " cannot go in armor slot {$slot->slot}");
             }
+        }elseif($slot->containerId === ContainerIds::SHULKER_BOX && preg_match('/^minecraft:\w+_shulker_box$/D', $item->getId()) === 1){
+            throw new UnexpectedValueException("A shulker box cannot hold a shulker box");
         }elseif($slot->containerId === ContainerIds::OFFHAND && !in_array($item->getId(), self::OFFHAND_ITEMS, true)){
             throw new UnexpectedValueException($item->getId() . " cannot go in the offhand");
         }
@@ -425,6 +489,17 @@ class ItemStackRequestHandler{
             ContainerIds::OFFHAND => $slot->slot <= 1 ? [$player->getOffHandInventory(), 0] : null,
             ContainerIds::CURSOR => $slot->slot === Player::UI_CURSOR ? [$player->getUIInventory(), Player::UI_CURSOR] : null,
             ContainerIds::CRAFTING_INPUT => $this->isCraftingSlot($slot->slot) ? [$player->getUIInventory(), $slot->slot] : null,
+            ContainerIds::LEVEL_ENTITY,
+            ContainerIds::SHULKER_BOX,
+            ContainerIds::BARREL,
+            ContainerIds::FURNACE_INGREDIENT,
+            ContainerIds::BLAST_FURNACE_INGREDIENT,
+            ContainerIds::SMOKER_INGREDIENT,
+            ContainerIds::FURNACE_FUEL,
+            ContainerIds::FURNACE_RESULT,
+            ContainerIds::BREWING_STAND_INPUT,
+            ContainerIds::BREWING_STAND_RESULT,
+            ContainerIds::BREWING_STAND_FUEL => $this->inventoryManager->getWindow()?->resolve($slot->containerId, $slot->slot),
             default => null
         };
 

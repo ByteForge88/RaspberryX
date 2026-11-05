@@ -21,20 +21,16 @@ use raspberry\network\mcpe\protocol\Packet;
 use raspberry\network\mcpe\protocol\AnimatePacket;
 use raspberry\network\mcpe\protocol\LevelEventPacket;
 use raspberry\network\mcpe\protocol\LevelSoundEventPacket;
+use raspberry\network\mcpe\protocol\types\LevelEvent;
 use raspberry\network\mcpe\protocol\types\LevelSoundEvent;
 
 use raspberry\world\Chunk;
 
-use function floor;
 use function intdiv;
 use function max;
+use function min;
 use function mt_rand;
 
-/**
- * A player breaking blocks. The client says when it starts, stops and finishes breaking; the
- * server checks the block is in reach and that the player took long enough for the block and
- * the tool in hand, then breaks it, drops its items and wears the tool.
- */
 class BlockBreaker{
 
     /** how far from the eyes blocks can be broken */
@@ -57,9 +53,16 @@ class BlockBreaker{
     /** @var array{int, int, int}|null the block being broken */
     private ?array $target = null;
 
-    /** input ticks when breaking started, and how many it should take */
     private int $startTick = 0;
+
+    /** redone every tick, so switching tools counts */
     private int $breakTicks = 0;
+
+    /** 0 to 1 */
+    private float $progress = 0.0;
+
+    /** the face the particles come off */
+    private int $face = Facing::UP;
 
     /** counts the client's input packets, one per client tick */
     private int $inputTicks = 0;
@@ -72,25 +75,54 @@ class BlockBreaker{
         return $this->target === [$x, $y, $z];
     }
 
-    /**
-     * Called for every PlayerAuthInput.
-     */
     public function onInputTick() : void{
         ++$this->inputTicks;
 
-        if($this->target !== null && ($this->inputTicks - $this->startTick) % self::HIT_SOUND_TICKS === 0){
-            [$x, $y, $z] = $this->target;
-            $block = $this->player->getWorld()->getBlock($x, $y, $z);
+        if($this->target === null){
+            return;
+        }
 
+        [$x, $y, $z] = $this->target;
+        $world = $this->player->getWorld();
+        $block = $world->getBlock($x, $y, $z);
+
+        if($block->getName() === BlockIds::AIR){
+            $this->abort();
+            return;
+        }
+
+        if(!$this->player->getGameMode()->hasInstantBuild()){
+            $ticks = BlockBreakInfo::get($block->getName())->getBreakTicks($this->player->getInventory()->getItemInHand(), $block->getName());
+
+            if($ticks !== $this->breakTicks){
+                $this->breakTicks = $ticks;
+
+                if($ticks > 0){
+                    $this->broadcast(LevelEventPacket::create(LevelEvent::UPDATE_BLOCK_CRACKING, $x, $y, $z, intdiv(65535, $ticks)), $x, $z);
+                }
+            }
+
+            $this->progress = $ticks > 0 ? min(1.0, $this->progress + 1 / $ticks) : 1.0;
+
+            $world->broadcastPacket($x, $z, LevelEventPacket::create(LevelEvent::PARTICLES_CRACK_BLOCK_DOWN + $this->face, $x, $y, $z, $this->getNetworkId($block)));
+        }
+
+        if(($this->inputTicks - $this->startTick) % self::HIT_SOUND_TICKS === 0){
             $this->broadcast(LevelSoundEventPacket::create(LevelSoundEvent::HIT, $x + 0.5, $y + 0.5, $z + 0.5, $this->getNetworkId($block)), $x, $z);
         }
 
-        if($this->target !== null && ($this->inputTicks - $this->startTick) % self::SWING_TICKS === 0){
+        if(($this->inputTicks - $this->startTick) % self::SWING_TICKS === 0){
             $this->player->swingArm(AnimatePacket::SWING_MINE);
         }
     }
 
-    public function start(int $x, int $y, int $z) : void{
+    public function setFace(int $face) : void{
+        if($face >= Facing::DOWN && $face <= Facing::EAST){
+            $this->face = $face;
+        }
+    }
+
+    public function start(int $x, int $y, int $z, int $face = Facing::UP) : void{
         $this->abort();
 
         $block = $this->getBreakableBlock($x, $y, $z);
@@ -101,17 +133,22 @@ class BlockBreaker{
 
         $this->target = [$x, $y, $z];
         $this->startTick = $this->inputTicks;
+        $this->progress = 0.0;
+        $this->setFace($face);
         $this->player->swingArm(AnimatePacket::SWING_MINE);
 
         if($this->player->getGameMode()->hasInstantBuild()){
             $this->breakTicks = 0;
+            $this->progress = 1.0;
             return;
         }
 
         $this->breakTicks = BlockBreakInfo::get($block->getName())->getBreakTicks($this->player->getInventory()->getItemInHand(), $block->getName());
 
         if($this->breakTicks > 0){
-            $this->broadcast(LevelEventPacket::create(LevelEventPacket::START_BLOCK_CRACKING, $x, $y, $z, intdiv(65535, $this->breakTicks)), $x, $z);
+            $this->broadcast(LevelEventPacket::create(LevelEvent::START_BLOCK_CRACKING, $x, $y, $z, intdiv(65535, $this->breakTicks)), $x, $z);
+        }else{
+            $this->progress = 1.0;
         }
     }
 
@@ -124,7 +161,7 @@ class BlockBreaker{
         $this->target = null;
 
         if($this->breakTicks > 0){
-            $this->broadcast(LevelEventPacket::create(LevelEventPacket::STOP_BLOCK_CRACKING, $x, $y, $z), $x, $z);
+            $this->broadcast(LevelEventPacket::create(LevelEvent::STOP_BLOCK_CRACKING, $x, $y, $z), $x, $z);
         }
     }
 
@@ -146,7 +183,6 @@ class BlockBreaker{
 
         $creative = $this->player->getGameMode()->hasInstantBuild();
         $breaking = $this->target === [$x, $y, $z];
-        $elapsed = $this->inputTicks - $this->startTick;
 
         if(!$breaking && $creative){
             $this->start($x, $y, $z);
@@ -155,7 +191,7 @@ class BlockBreaker{
 
         $reason = match(true){
             !$breaking => "it was not being broken",
-            !$creative && $elapsed < (int) floor($this->breakTicks * self::TIME_TOLERANCE) => "it took {$elapsed} ticks, it needs {$this->breakTicks}",
+            !$creative && $this->progress < self::TIME_TOLERANCE => "it was only " . (int) ($this->progress * 100) . "% broken",
             default => null
         };
 
@@ -211,7 +247,7 @@ class BlockBreaker{
         $entity = $world->getBlockEntity($x, $y, $z);
 
         $world->setBlock($x, $y, $z, $this->air());
-        $particles = LevelEventPacket::create(LevelEventPacket::PARTICLES_DESTROY_BLOCK, $x + 0.5, $y + 0.5, $z + 0.5, $this->getNetworkId($block));
+        $particles = LevelEventPacket::create(LevelEvent::PARTICLES_DESTROY_BLOCK, $x + 0.5, $y + 0.5, $z + 0.5, $this->getNetworkId($block));
         $this->broadcast($particles, $x, $z);
 
         //in survival the client plays the break sound itself, in creative it waits for the server

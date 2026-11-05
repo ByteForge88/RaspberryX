@@ -118,7 +118,7 @@ class StartGamePacket implements Packet{
         $writer->writeVarInt(0); //editor world type: not an editor world
         $writer->writeBool(false); //created in editor
         $writer->writeBool(false); //exported from editor
-        $writer->writeByte(0);//26.60 update
+        $writer->writeByte(0); //editor level migration version
         $writer->writeVarInt(0); //day cycle lock time
         $writer->writeUnsignedVarInt(0); //education edition offer
         $writer->writeBool(false); //education features enabled
@@ -202,7 +202,7 @@ class StartGamePacket implements Packet{
                 $writer->writeBool($value);
             }elseif(is_int($value)){
                 $writer->writeUnsignedVarInt(2);
-                $writer->writeUnsignedInt($value);
+                $writer->writeInt($value);
             }else{
                 $writer->writeUnsignedVarInt(3);
                 $writer->writeFloat($value);

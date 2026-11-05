@@ -66,8 +66,34 @@ class Sign extends BlockEntity{
         $this->setChanged();
     }
 
+    /**
+     * The text color as ARGB.
+     */
+    public function getColor(bool $front) : int{
+        return $this->colors[$front ? 0 : 1];
+    }
+
+    public function setColor(bool $front, int $argb) : void{
+        $this->colors[$front ? 0 : 1] = $argb;
+        $this->setChanged();
+    }
+
+    public function isGlowing(bool $front) : bool{
+        return $this->glowing[$front ? 0 : 1];
+    }
+
+    public function setGlowing(bool $front, bool $glowing) : void{
+        $this->glowing[$front ? 0 : 1] = $glowing;
+        $this->setChanged();
+    }
+
     public function isWaxed() : bool{
         return $this->waxed;
+    }
+
+    public function setWaxed(bool $waxed) : void{
+        $this->waxed = $waxed;
+        $this->setChanged();
     }
 
     public function getEditor() : ?int{

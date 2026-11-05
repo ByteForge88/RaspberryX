@@ -20,8 +20,22 @@ class BlockCollision{
     'redstone_wire|lever|tripwire_hook|ladder|snow_layer' .
     ')$/D';
 
+    /** solid blocks that are not full, see-through cubes: a head inside them does not suffocate, and they do not block a chest lid */
+    private const NOT_FULL = '/^minecraft:(' .
+    '\w*glass(_pane)?|\w*leaves(_flowered)?|\w+_slab|\w*stairs|\w*fence(_gate)?|\w*_wall|\w*door|\w*trapdoor|\w*bars|\w*chain|' .
+    '\w*chest|\w*shulker_box|\w*bed|\w*cake|\w*anvil|\w*lantern|cauldron|hopper|brewing_stand|enchanting_table|end_rod|\w*lightning_rod|' .
+    'flower_pot|\w+_skull|\w+_head|bell|\w*campfire|daylight_detector(_inverted)?|conduit|beacon|ice|frosted_ice|slime|honey_block|scaffolding|' .
+    'cactus|chorus_\w+|grindstone|stonecutter_block|lectern|composter|\w*amethyst_(bud|cluster)|pointed_dripstone|\w*azalea|big_dripleaf|' .
+    'bamboo|sea_pickle|turtle_egg|sniffer_egg|(glow_)?frame|heavy_core|decorated_pot|mob_spawner|trial_spawner|vault|\w*copper_grate|' .
+    'piston_arm_collision|sticky_piston_arm_collision|moving_block|end_portal_frame|dragon_egg|\w*candle|\w+_shelf|crafter|' .
+    '(powered|unpowered)_(repeater|comparator)|\w*_hanging_sign|frog_spawn|mangrove_roots|\w*copper_golem_statue|creaking_heart' .
+    ')$/D';
+
     /** @var array<string, bool> */
     private static array $cache = [];
+
+    /** @var array<string, bool> */
+    private static array $fullCache = [];
 
     private function __construct(){
     }
@@ -30,5 +44,15 @@ class BlockCollision{
         $name = $block->getName();
 
         return self::$cache[$name] ??= preg_match(self::PASSABLE, $name) !== 1;
+    }
+
+    /**
+     * Whether the block is a full cube you cannot see through: a player whose head is in one
+     * suffocates, and one above a chest keeps its lid shut.
+     */
+    public static function isFullCube(BlockState $block) : bool{
+        $name = $block->getName();
+
+        return self::$fullCache[$name] ??= self::isSolid($block) && preg_match(self::NOT_FULL, $name) !== 1;
     }
 }

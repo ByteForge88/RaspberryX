@@ -5,11 +5,13 @@ declare(strict_types=1);
 namespace raspberry\crafting;
 
 use raspberry\item\Item;
+use raspberry\item\ItemIds;
 
 use RuntimeException;
 use UnexpectedValueException;
 
 use function array_search;
+use function in_array;
 use function dirname;
 use function file_get_contents;
 use function is_array;
@@ -150,6 +152,58 @@ class CraftingManager{
      */
     public function getFurnaceRecipes() : array{
         return $this->furnaceRecipes;
+    }
+
+    /**
+     * The recipe $block ("furnace", "blast_furnace", "smoker"...) uses to smelt $input, null for none.
+     */
+    public function getFurnaceRecipe(Item $input, string $block) : ?FurnaceRecipe{
+        foreach($this->furnaceRecipes as $recipe){
+            if(in_array($block, $recipe->getBlocks(), true) && $recipe->getInput()->matches($input)){
+                return $recipe;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * What brewing $reagent into $potion makes, null when it does nothing. A potion keeps its
+     * kind (drinkable, splash, lingering) when mixed, container recipes change the kind.
+     */
+    public function getBrewingOutput(Item $potion, Item $reagent) : ?Item{
+        if($potion->isNull() || $reagent->isNull()){
+            return null;
+        }
+
+        if(in_array($potion->getId(), [ItemIds::POTION, ItemIds::SPLASH_POTION, ItemIds::LINGERING_POTION], true)){
+            foreach($this->brewingRecipes as $recipe){
+                if($recipe->getInputPotion() === $potion->getMeta() && $recipe->getReagent()->matches($reagent)){
+                    return new Item($potion->getId(), 1, $recipe->getOutputPotion());
+                }
+            }
+        }
+
+        foreach($this->brewingContainerRecipes as $recipe){
+            if($recipe->getInput() === $potion->getId() && $recipe->getReagent()->matches($reagent)){
+                return new Item($recipe->getOutput(), 1, $potion->getMeta());
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Whether the item is used in any brewing recipe.
+     */
+    public function isBrewingReagent(Item $item) : bool{
+        foreach([...$this->brewingRecipes, ...$this->brewingContainerRecipes] as $recipe){
+            if($recipe->getReagent()->matches($item)){
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

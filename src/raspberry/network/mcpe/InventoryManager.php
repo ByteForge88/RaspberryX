@@ -4,11 +4,15 @@ declare(strict_types=1);
 
 namespace raspberry\network\mcpe;
 
+use raspberry\block\entity\BlockEntity;
+
 use raspberry\inventory\Inventory;
 use raspberry\inventory\InventoryListener;
 
 use raspberry\item\Item;
 
+use raspberry\network\mcpe\protocol\ContainerClosePacket;
+use raspberry\network\mcpe\protocol\ContainerOpenPacket;
 use raspberry\network\mcpe\protocol\InventoryContentPacket;
 use raspberry\network\mcpe\protocol\InventorySlotPacket;
 use raspberry\network\mcpe\protocol\PlayerHotbarPacket;
@@ -16,9 +20,16 @@ use raspberry\network\mcpe\protocol\types\ItemInstance;
 
 use raspberry\player\Player;
 
+use Closure;
+
+use function array_unique;
+use function array_values;
+use function ksort;
 use function spl_object_id;
 
 class InventoryManager implements InventoryListener{
+
+    private const MAX_WINDOW_ID = 99;
 
     private NetworkSession $session;
 
@@ -27,8 +38,15 @@ class InventoryManager implements InventoryListener{
     /** @var array<int, Inventory> */
     private array $inventories = [];
 
-    /** @var array<int, int> */
+    /** @var array<int, int> inventory => window ID */
     private array $windows = [];
+
+    /** @var array<int, int> */
+    private array $offsets = [];
+
+    private ?ContainerWindow $window = null;
+
+    private int $lastWindowId = 0;
 
     /** @var array<int, array<int, int>> */
     private array $stackIds = [];
@@ -52,8 +70,8 @@ class InventoryManager implements InventoryListener{
     }
 
     public function sendAll() : void{
-        foreach($this->inventories as $inventory){
-            $this->sendContents($inventory);
+        foreach(array_unique($this->windows) as $windowId){
+            $this->sendWindow($windowId);
         }
 
         $this->session->sendDataPacket(PlayerHotbarPacket::create($this->player->getInventory()->getHeldSlot()));
@@ -70,8 +88,65 @@ class InventoryManager implements InventoryListener{
         $key = spl_object_id($inventory);
 
         if(isset($this->windows[$key])){
-            $this->session->sendDataPacket(InventorySlotPacket::create($this->windows[$key], $slot, $this->toInstance($inventory, $slot, $inventory->getItem($slot))));
+            $this->session->sendDataPacket(InventorySlotPacket::create($this->windows[$key], $slot + $this->offsets[$key], $this->toInstance($inventory, $slot, $inventory->getItem($slot))));
         }
+    }
+
+    public function getWindow() : ?ContainerWindow{
+        return $this->window;
+    }
+
+    /**
+     * Opens a container screen showing $inventories (none for a crafting table), closing the
+     * one that was open.
+     *
+     * @param list<array{int, int, int}> $positions the blocks it belongs to, the first is the one opened
+     * @param list<int>                  $slotContainerIds the container IDs of its slots in inventory requests
+     * @param list<Inventory>            $inventories
+     * @param (Closure() : void)|null    $onClose
+     */
+    public function openWindow(int $type, array $positions, array $slotContainerIds, array $inventories, ?Closure $onClose = null, ?BlockEntity $entity = null) : ContainerWindow{
+        $this->closeWindow(true);
+
+        $this->lastWindowId = $this->lastWindowId % self::MAX_WINDOW_ID + 1;
+        $window = new ContainerWindow($this->lastWindowId, $type, $positions, $slotContainerIds, $inventories, $onClose, $entity);
+        $this->window = $window;
+
+        [$x, $y, $z] = $positions[0];
+        $this->session->sendDataPacket(ContainerOpenPacket::create($window->getWindowId(), $type, $x, $y, $z, -1));
+
+        foreach($window->getParts() as [$inventory, $offset]){
+            $this->addWindow($inventory, $window->getWindowId(), $offset, false);
+        }
+
+        if($window->getParts() !== []){
+            $this->sendWindow($window->getWindowId());
+        }
+
+        return $window;
+    }
+
+    public function closeWindow(bool $tellClient) : void{
+        $window = $this->window;
+
+        if($window === null){
+            return;
+        }
+
+        $this->window = null;
+
+        foreach($window->getParts() as [$inventory]){
+            $key = spl_object_id($inventory);
+
+            unset($this->windows[$key], $this->offsets[$key], $this->inventories[$key], $this->stackIds[$key]);
+            $inventory->removeListener($this);
+        }
+
+        if($tellClient){
+            $this->session->sendDataPacket(ContainerClosePacket::create($window->getWindowId(), $window->getType(), true));
+        }
+
+        $window->onClose();
     }
 
     public function setStackId(Inventory $inventory, int $slot, int $stackId) : void{
@@ -101,7 +176,7 @@ class InventoryManager implements InventoryListener{
             return;
         }
 
-        $this->session->sendDataPacket(InventorySlotPacket::create($this->windows[$key], $slot, $this->toInstance($inventory, $slot, $item)));
+        $this->session->sendDataPacket(InventorySlotPacket::create($this->windows[$key], $slot + $this->offsets[$key], $this->toInstance($inventory, $slot, $item)));
         $this->onVisibleChange($inventory, $slot);
     }
 
@@ -122,7 +197,7 @@ class InventoryManager implements InventoryListener{
             return;
         }
 
-        $this->sendContents($inventory);
+        $this->sendWindow($this->windows[$key]);
         $this->onVisibleChange($inventory, null);
     }
 
@@ -130,13 +205,23 @@ class InventoryManager implements InventoryListener{
         $this->onVisibleChange($inventory, $slot);
     }
 
-    private function addWindow(Inventory $inventory, int $windowId) : void{
+    private function addWindow(Inventory $inventory, int $windowId, int $offset = 0, bool $send = true) : void{
         $key = spl_object_id($inventory);
         $this->inventories[$key] = $inventory;
         $this->windows[$key] = $windowId;
+        $this->offsets[$key] = $offset;
         $inventory->addListener($this);
 
-        $this->onContentChange($inventory);
+        if($send){
+            $this->onContentChange($inventory);
+            return;
+        }
+
+        $this->stackIds[$key] = [];
+
+        foreach($inventory->getContents() as $slot => $item){
+            $this->stackIds[$key][$slot] = $this->nextStackId++;
+        }
     }
 
     private function toInstance(Inventory $inventory, int $slot, Item $item) : ItemInstance{
@@ -145,14 +230,24 @@ class InventoryManager implements InventoryListener{
         return $instance;
     }
 
-    private function sendContents(Inventory $inventory) : void{
+    /**
+     * Sends every slot of a window: all inventories shown in it, one after the other.
+     */
+    private function sendWindow(int $windowId) : void{
         $items = [];
 
-        foreach($inventory->getContents(true) as $slot => $item){
-            $items[] = $this->toInstance($inventory, $slot, $item);
+        foreach($this->inventories as $key => $inventory){
+            if($this->windows[$key] !== $windowId){
+                continue;
+            }
+
+            foreach($inventory->getContents(true) as $slot => $item){
+                $items[$this->offsets[$key] + $slot] = $this->toInstance($inventory, $slot, $item);
+            }
         }
 
-        $this->session->sendDataPacket(InventoryContentPacket::create($this->windows[spl_object_id($inventory)], $items));
+        ksort($items);
+        $this->session->sendDataPacket(InventoryContentPacket::create($windowId, array_values($items)));
     }
 
     /**

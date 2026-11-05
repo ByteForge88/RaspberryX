@@ -15,6 +15,8 @@ class Attribute{
     public const HUNGER = "minecraft:player.hunger";
     public const SATURATION = "minecraft:player.saturation";
     public const EXHAUSTION = "minecraft:player.exhaustion";
+    public const EXPERIENCE = "minecraft:player.experience";
+    public const EXPERIENCE_LEVEL = "minecraft:player.level";
 
     public string $name;
 

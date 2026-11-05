@@ -481,6 +481,8 @@ class NetworkSession{
             $logger->info($language->translate("player.lost", ["player" => $this->displayName, "reason" => $reason]));
         }
 
+        $this->inventoryManager?->closeWindow(false);
+
         if($wasInGame && $this->player !== null){
             $this->server->onPlayerQuit($this->player);
         }
@@ -569,7 +571,9 @@ class NetworkSession{
             new Attribute(Attribute::MOVEMENT_SPEED, 0.0, PHP_FLOAT_MAX, $player->getMovementSpeed(), Player::DEFAULT_MOVEMENT_SPEED),
             new Attribute(Attribute::HUNGER, 0.0, Player::MAX_FOOD, $player->getFood(), Player::MAX_FOOD),
             new Attribute(Attribute::SATURATION, 0.0, Player::MAX_FOOD, $player->getSaturation(), Player::DEFAULT_SATURATION),
-            new Attribute(Attribute::EXHAUSTION, 0.0, 5.0, $player->getExhaustion(), 0.0)
+            new Attribute(Attribute::EXHAUSTION, 0.0, 5.0, $player->getExhaustion(), 0.0),
+            new Attribute(Attribute::EXPERIENCE, 0.0, 1.0, $player->getXpProgress(), 0.0),
+            new Attribute(Attribute::EXPERIENCE_LEVEL, 0.0, Player::MAX_XP_LEVEL, $player->getXpLevel(), 0.0)
         ], $this->server->getCurrentTick()));
     }
 
@@ -861,6 +865,8 @@ class NetworkSession{
 
         if($packet->windowId === InventoryContentPacket::WINDOW_INVENTORY){
             $this->inventoryOpen = false;
+        }elseif($this->inventoryManager?->getWindow()?->getWindowId() === $packet->windowId){
+            $this->inventoryManager->closeWindow(false);
         }
 
         $this->player->moveUIItemsToInventory();
@@ -1305,9 +1311,9 @@ class NetworkSession{
 
         foreach($packet->blockActions as $action){
             match($action->action){
-                PlayerBlockAction::START_BREAK => $breaker->start($action->x, $action->y, $action->z),
+                PlayerBlockAction::START_BREAK => $breaker->start($action->x, $action->y, $action->z, $action->face),
                 //moving on to the next block while holding the button
-                PlayerBlockAction::CONTINUE_DESTROY_BLOCK => $breaker->isBreaking($action->x, $action->y, $action->z) ? null : $breaker->start($action->x, $action->y, $action->z),
+                PlayerBlockAction::CONTINUE_DESTROY_BLOCK => $breaker->isBreaking($action->x, $action->y, $action->z) ? $breaker->setFace($action->face) : $breaker->start($action->x, $action->y, $action->z, $action->face),
                 PlayerBlockAction::ABORT_BREAK => $breaker->abort(),
                 PlayerBlockAction::PREDICT_DESTROY_BLOCK, PlayerBlockAction::STOP_BREAK => $breaker->finish($action->x, $action->y, $action->z),
                 default => null
@@ -1323,6 +1329,17 @@ class NetworkSession{
         if($packet->itemStackRequest !== null){
             $this->itemStackRequestHandler?->handleRequests([$packet->itemStackRequest]);
         }
+    }
+
+    public function getInventoryManager() : ?InventoryManager{
+        return $this->inventoryManager;
+    }
+
+    /**
+     * Crafting uses the 3x3 grid while a crafting table is open.
+     */
+    public function setLargeCraftingGrid(bool $large) : void{
+        $this->itemStackRequestHandler?->setLargeGrid($large);
     }
 
     /**

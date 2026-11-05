@@ -23,21 +23,23 @@ class ShulkerBox extends ContainerBlockEntity{
         return "ShulkerBox";
     }
 
+    public function getFacing() : int{
+        return $this->facing;
+    }
+
     public function readData(CompoundTag $nbt) : void{
         parent::readData($nbt);
-
-        $this->facing = ($nbt->getByte("facing", Facing::UP) ?? Facing::UP) & 7;
+        $facing = $nbt->getByte("facing", Facing::UP) ?? Facing::UP;
+        $this->facing = $facing >= Facing::DOWN && $facing <= Facing::EAST ? $facing : Facing::UP;
     }
 
     public function writeData(CompoundTag $nbt) : void{
         parent::writeData($nbt);
-
         $nbt->setByte("facing", $this->facing);
     }
 
     public function onPlace(Item $item, Player $player, int $face) : void{
         parent::onPlace($item, $player, $face);
-
         $this->facing = $face;
         $this->getInventory()->setContents(self::readItems($item->getExtraTags()));
     }

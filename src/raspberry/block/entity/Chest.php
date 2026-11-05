@@ -4,11 +4,18 @@ declare(strict_types=1);
 
 namespace raspberry\block\entity;
 
+use raspberry\block\BlockProperties;
+use raspberry\block\BlockState;
+
 use raspberry\nbt\tag\CompoundTag;
 
 use raspberry\world\World;
 
+use function preg_match;
+
 class Chest extends ContainerBlockEntity{
+
+    private const COPPER_CHEST = '/^minecraft:(waxed_)?((exposed|weathered|oxidized)_)?copper_chest$/D';
 
     /** @var array{int, int}|null */
     private ?array $pair = null;
@@ -22,6 +29,16 @@ class Chest extends ContainerBlockEntity{
      */
     public function getPair() : ?array{
         return $this->pair;
+    }
+
+    public static function canPair(BlockState $first, BlockState $second) : bool{
+        if(!$first->hasProperty(BlockProperties::MINECRAFT_CARDINAL_DIRECTION) || !$second->hasProperty(BlockProperties::MINECRAFT_CARDINAL_DIRECTION) ||
+            $first->getProperty(BlockProperties::MINECRAFT_CARDINAL_DIRECTION) !== $second->getProperty(BlockProperties::MINECRAFT_CARDINAL_DIRECTION)
+        ){
+            return false;
+        }
+
+        return $first->getName() === $second->getName() || (preg_match(self::COPPER_CHEST, $first->getName()) === 1 && preg_match(self::COPPER_CHEST, $second->getName()) === 1);
     }
 
     public function isPaired() : bool{
@@ -42,7 +59,6 @@ class Chest extends ContainerBlockEntity{
 
     public function readData(CompoundTag $nbt) : void{
         parent::readData($nbt);
-
         $pairX = $nbt->getInt("pairx");
         $pairZ = $nbt->getInt("pairz");
         $this->pair = $pairX !== null && $pairZ !== null ? [$pairX, $pairZ] : null;
