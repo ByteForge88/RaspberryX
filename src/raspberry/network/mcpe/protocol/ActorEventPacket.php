@@ -13,6 +13,7 @@ class ActorEventPacket implements Packet{
     public const HURT = 2;
     public const DEATH = 3;
     public const RESPAWN = 18;
+    public const EATING_ITEM = 57;
 
     public int $actorRuntimeId = 0;
 

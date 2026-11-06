@@ -12,6 +12,7 @@
     "react/http": "^1.11.1",
     "firebase/php-jwt": "^7.2.1",
     "ext-zlib": "*",
+    "ext-ffi": "*",
     "symfony/filesystem": "*",
     "symfony/yaml": "*"
   },
@@ -24,6 +25,9 @@
     }
   },
   "scripts": {
+    "make-native": [
+      "@php build/make-native.php"
+    ],
     "make-server": [
       "@composer dump-autoload --optimize",
       "@php -d phar.readonly=0 build/make-server.php"

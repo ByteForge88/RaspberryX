@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace raspberry\network\mcpe;
 
 use raspberry\block\entity\Furnace;
+use raspberry\block\entity\Crafter;
 use raspberry\block\entity\BrewingStand;
 
 use raspberry\crafting\FurnaceData;
@@ -81,6 +82,12 @@ class ItemStackRequestHandler{
     /** @var list<array{Item, int}> outputs of a recipe with more than one, waiting for a create action */
     private array $pendingResults = [];
 
+    /** whether a work block made something in the running request */
+    private bool $madeResult = false;
+
+    /** @var array<string, array{Inventory, int}> slots sent whole after the responses */
+    private array $resync = [];
+
     /** the 3x3 grid of a crafting table instead of the 2x2 grid of the inventory */
     private bool $largeGrid = false;
 
@@ -126,6 +133,12 @@ class ItemStackRequestHandler{
             $this->inventoryManager->sendAll();
         }
 
+        foreach($this->resync as [$inventory, $slot]){
+            $this->inventoryManager->sendSlot($inventory, $slot);
+        }
+
+        $this->resync = [];
+
         $this->workBlocks->updateEnchantOffers();
     }
 
@@ -142,6 +155,7 @@ class ItemStackRequestHandler{
     public function createResult(Item $item) : void{
         $this->created = (clone $item)->setCount(1);
         $this->createdCount = $item->getCount();
+        $this->madeResult = true;
     }
 
     private function handleRequest(ItemStackRequest $request) : ItemStackResponse{
@@ -151,6 +165,7 @@ class ItemStackRequestHandler{
         $this->created = null;
         $this->createdCount = 0;
         $this->pendingResults = [];
+        $this->madeResult = false;
         $this->requestStacks[$request->requestId] = [];
         $this->filterStrings = $request->filterStrings;
 
@@ -167,6 +182,15 @@ class ItemStackRequestHandler{
 
             $response = new ItemStackResponse(ItemStackResponse::STATUS_OK, $request->requestId, $this->buildChanges());
             $this->collectFurnaceExperience($request);
+
+            if($this->madeResult){
+                foreach($this->changes as $key => [$inventory, $index]){
+                    if($inventory !== $this->player->getUIInventory()){
+                        $this->resync[$key] = [$inventory, $index];
+                    }
+                }
+            }
+
             $this->workBlocks->onRequestDone(true);
         }catch(UnexpectedValueException $exception){
             $this->undo();
@@ -502,6 +526,7 @@ class ItemStackRequestHandler{
                 $index === BrewingStand::SLOT_REAGENT => $this->session->getServer()->getCraftingManager()->isBrewingReagent($item),
                 default => $item->getCount() === 1 && in_array($item->getId(), [ItemIds::POTION, ItemIds::SPLASH_POTION, ItemIds::LINGERING_POTION, ItemIds::GLASS_BOTTLE], true)
             },
+            $entity instanceof Crafter => !$entity->isSlotDisabled($index),
             default => true
         };
 
@@ -529,13 +554,7 @@ class ItemStackRequestHandler{
     }
 
     private static function isArmorFor(int $slot, string $id) : bool{
-        return match($slot){
-            ArmorInventory::SLOT_HEAD => preg_match('/^minecraft:(\w+_helmet|carved_pumpkin|\w+_head|\w+_skull)$/D', $id) === 1,
-            ArmorInventory::SLOT_CHEST => preg_match('/^minecraft:(\w+_chestplate|elytra)$/D', $id) === 1,
-            ArmorInventory::SLOT_LEGS => preg_match('/^minecraft:\w+_leggings$/D', $id) === 1,
-            ArmorInventory::SLOT_FEET => preg_match('/^minecraft:\w+_boots$/D', $id) === 1,
-            default => false
-        };
+        return ArmorInventory::getSlotFor($id) === $slot;
     }
 
     /**
@@ -552,6 +571,7 @@ class ItemStackRequestHandler{
             ContainerIds::CURSOR => $slot->slot === Player::UI_CURSOR ? [$player->getUIInventory(), Player::UI_CURSOR] : null,
             ContainerIds::CRAFTING_INPUT => $this->isCraftingSlot($slot->slot) ? [$player->getUIInventory(), $slot->slot] : null,
             ContainerIds::LEVEL_ENTITY,
+            ContainerIds::CRAFTER,
             ContainerIds::SHULKER_BOX,
             ContainerIds::BARREL,
             ContainerIds::FURNACE_INGREDIENT,
@@ -596,7 +616,6 @@ class ItemStackRequestHandler{
         $expected = $this->inventoryManager->getStackId($inventory, $index);
         $named = $slot->stackNetworkId;
 
-        //a negative ID names the stack an earlier request (with that ID) left in the slot
         if($named < 0){
             $named = $this->requestStacks[$named][self::key($inventory, $index)] ?? throw new UnexpectedValueException("Slot was not changed by request {$named}");
         }

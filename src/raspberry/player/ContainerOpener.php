@@ -8,14 +8,17 @@ use raspberry\block\BlockCollision;
 use raspberry\block\BlockIds;
 use raspberry\block\BlockProperties;
 use raspberry\block\BlockState;
+use raspberry\block\entity\Beacon;
 use raspberry\block\entity\BlockEntity;
 use raspberry\block\entity\BlockEntityFactory;
 use raspberry\block\entity\BrewingStand;
 use raspberry\block\entity\Chest;
-use raspberry\block\entity\ContainerBlockEntity;
+use raspberry\block\entity\Crafter;
+use raspberry\block\entity\Dispenser;
 use raspberry\block\entity\Furnace;
 use raspberry\block\entity\Hopper;
 use raspberry\block\entity\ShulkerBox;
+use raspberry\block\entity\ContainerBlockEntity;
 
 use raspberry\inventory\Inventory;
 
@@ -62,6 +65,10 @@ class ContainerOpener{
             preg_match('/^minecraft:(lit_)?(furnace|blast_furnace|smoker)$/D', $name) === 1 => $this->openFurnace($x, $y, $z, $block),
             $name === BlockIds::BREWING_STAND => $this->openSimple($x, $y, $z, $block, BrewingStand::class, ContainerWindow::TYPE_BREWING_STAND, [ContainerIds::BREWING_STAND_INPUT, ContainerIds::BREWING_STAND_RESULT, ContainerIds::BREWING_STAND_FUEL]),
             $name === BlockIds::HOPPER => $this->openSimple($x, $y, $z, $block, Hopper::class, ContainerWindow::TYPE_HOPPER, [ContainerIds::LEVEL_ENTITY]),
+            $name === BlockIds::DISPENSER => $this->openSimple($x, $y, $z, $block, Dispenser::class, ContainerWindow::TYPE_DISPENSER, [ContainerIds::LEVEL_ENTITY]),
+            $name === BlockIds::DROPPER => $this->openSimple($x, $y, $z, $block, Dispenser::class, ContainerWindow::TYPE_DROPPER, [ContainerIds::LEVEL_ENTITY]),
+            $name === BlockIds::CRAFTER => $this->openSimple($x, $y, $z, $block, Crafter::class, ContainerWindow::TYPE_CRAFTER, [ContainerIds::CRAFTER]),
+            $name === BlockIds::BEACON => $this->openBeacon($x, $y, $z, $block),
             default => $this->openWorkBlock($x, $y, $z, match($name){
                 BlockIds::ANVIL, BlockIds::CHIPPED_ANVIL, BlockIds::DAMAGED_ANVIL => ContainerWindow::TYPE_ANVIL,
                 BlockIds::ENCHANTING_TABLE => ContainerWindow::TYPE_ENCHANTMENT,
@@ -89,6 +96,30 @@ class ContainerOpener{
 
         if($this->player->getEyePosition()->distance(new Vector3($x + 0.5, $y + 0.5, $z + 0.5)) > self::MAX_DISTANCE){
             $this->player->getNetworkSession()->getInventoryManager()?->closeWindow(true);
+        }
+    }
+
+    /**
+     * The player clicked a slot of the open crafter to turn it off or on. A slot with an item
+     * in it cannot be turned off.
+     */
+    public function toggleCrafterSlot(int $x, int $y, int $z, int $slot, bool $disabled) : void{
+        $window = $this->player->getNetworkSession()->getInventoryManager()?->getWindow();
+        $crafter = $window?->getEntity();
+
+        if($window === null || !$window->isAt($x, $y, $z) || !$crafter instanceof Crafter || $slot < 0 || $slot >= Crafter::SIZE){
+            return;
+        }
+
+        if($disabled && !$crafter->getInventory()->getItem($slot)->isNull()){
+            $this->player->getWorld()->sendBlockEntity($crafter);
+            return;
+        }
+
+        if($crafter->isSlotDisabled($slot) !== $disabled){
+            $crafter->setSlotDisabled($slot, $disabled);
+            $this->player->getWorld()->sendBlockEntity($crafter);
+            $this->playSound(LevelSoundEvent::CRAFTER_DISABLE_SLOT, $x, $y, $z);
         }
     }
 
@@ -121,6 +152,26 @@ class ContainerOpener{
         $this->player->getNetworkSession()->getInventoryManager()?->openWindow($type, [[$x, $y, $z]], [], [], function() : void{
             $this->player->moveUIItemsToInventory();
         });
+
+        return true;
+    }
+
+    /**
+     * The payment slot lives in the UI inventory like a work block's, what is left in it goes
+     * back to the inventory when the screen closes.
+     */
+    private function openBeacon(int $x, int $y, int $z, BlockState $block) : bool{
+        $beacon = $this->getEntity($x, $y, $z, $block);
+
+        if(!$beacon instanceof Beacon){
+            return true;
+        }
+
+        $beacon->updateLevel($this->player->getWorld());
+
+        $this->player->getNetworkSession()->getInventoryManager()?->openWindow(ContainerWindow::TYPE_BEACON, [[$x, $y, $z]], [], [], function() : void{
+            $this->player->moveUIItemsToInventory();
+        }, $beacon);
 
         return true;
     }

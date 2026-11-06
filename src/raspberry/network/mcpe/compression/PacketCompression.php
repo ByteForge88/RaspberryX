@@ -36,6 +36,13 @@ class PacketCompression{
         return $this->enabled;
     }
 
+    /**
+     * Batches from this size are compressed.
+     */
+    public function getThreshold() : int{
+        return $this->threshold;
+    }
+
     public function enable(int $threshold = 256) : void{
         if($this->enabled){
             throw new LogicException("Compression has already been negotiated");

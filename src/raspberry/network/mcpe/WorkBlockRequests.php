@@ -7,6 +7,7 @@ namespace raspberry\network\mcpe;
 use raspberry\Server;
 
 use raspberry\block\BlockIds;
+use raspberry\block\entity\Beacon;
 
 use raspberry\crafting\Loom;
 use raspberry\crafting\Anvil;
@@ -50,7 +51,8 @@ class WorkBlockRequests{
         ContainerIds::GRINDSTONE_ADDITIONAL => [ContainerWindow::TYPE_GRINDSTONE, Player::UI_GRINDSTONE_ADDITIONAL],
         ContainerIds::SMITHING_TABLE_INPUT => [ContainerWindow::TYPE_SMITHING_TABLE, Player::UI_SMITHING_INPUT],
         ContainerIds::SMITHING_TABLE_MATERIAL => [ContainerWindow::TYPE_SMITHING_TABLE, Player::UI_SMITHING_MATERIAL],
-        ContainerIds::SMITHING_TABLE_TEMPLATE => [ContainerWindow::TYPE_SMITHING_TABLE, Player::UI_SMITHING_TEMPLATE]
+        ContainerIds::SMITHING_TABLE_TEMPLATE => [ContainerWindow::TYPE_SMITHING_TABLE, Player::UI_SMITHING_TEMPLATE],
+        ContainerIds::BEACON_PAYMENT => [ContainerWindow::TYPE_BEACON, Player::UI_BEACON_PAYMENT]
     ];
 
     private ItemStackRequestHandler $handler;
@@ -66,6 +68,9 @@ class WorkBlockRequests{
     private bool $enchanted = false;
 
     private bool $anvilUsed = false;
+
+    /** @var array{Beacon, int, int}|null */
+    private ?array $beaconPayment = null;
 
     /** what the last enchanting offers were for: window ID and the item */
     private int $offersWindow = -1;
@@ -152,6 +157,15 @@ class WorkBlockRequests{
                 $this->weave($action->pattern, $action->timesCrafted);
                 return true;
 
+            case StackRequestAction::BEACON_PAYMENT:
+                $this->requireWindow(ContainerWindow::TYPE_BEACON);
+                $this->payBeacon($action->primaryEffect, $action->secondaryEffect);
+                return true;
+
+            case StackRequestAction::DESTROY:
+            case StackRequestAction::CONSUME:
+                return $this->beaconPayment !== null && $action->source?->containerId === ContainerIds::BEACON_PAYMENT;
+
             default:
                 return false;
         }
@@ -179,12 +193,18 @@ class WorkBlockRequests{
             if($this->anvilUsed){
                 $this->wearAnvil();
             }
+
+            if($this->beaconPayment !== null){
+                [$beacon, $primary, $secondary] = $this->beaconPayment;
+                $beacon->setEffects($this->player->getWorld(), $primary, $secondary);
+            }
         }
 
         $this->pendingLevels = 0;
         $this->pendingXp = 0;
         $this->enchanted = false;
         $this->anvilUsed = false;
+        $this->beaconPayment = null;
     }
 
     /**
@@ -367,6 +387,35 @@ class WorkBlockRequests{
         }
 
         $world->broadcastPacket($x, $z, LevelEventPacket::create($event, $x + 0.5, $y + 0.5, $z + 0.5));
+    }
+
+    /**
+     * The player picked the beacon's effects and paid for them with an ingot or a gem.
+     */
+    private function payBeacon(int $primary, int $secondary) : void{
+        $beacon = $this->session->getInventoryManager()?->getWindow()?->getEntity();
+
+        if(!$beacon instanceof Beacon){
+            throw new UnexpectedValueException("No beacon is open");
+        }
+
+        $beacon->updateLevel($this->player->getWorld());
+
+        if(!$beacon->canSelect($primary, $secondary)){
+            throw new UnexpectedValueException("A level {$beacon->getLevel()} beacon cannot give effects {$primary} and {$secondary}");
+        }
+
+        $payment = $this->getItem(Player::UI_BEACON_PAYMENT);
+
+        if(!Beacon::isPayment($payment)){
+            if(!$this->isCreative() || !$payment->isNull()){
+                throw new UnexpectedValueException("The beacon cannot be paid with " . $payment->getId());
+            }
+        }else{
+            $this->setItem(ContainerIds::BEACON_PAYMENT, Player::UI_BEACON_PAYMENT, (clone $payment)->setCount($payment->getCount() - 1));
+        }
+
+        $this->beaconPayment = [$beacon, $primary, $secondary];
     }
 
     private function requireWindow(int $type) : void{

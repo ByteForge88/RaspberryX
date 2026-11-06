@@ -99,8 +99,8 @@ class ItemStackRequestPacket implements Packet{
                 break;
 
             case StackRequestAction::BEACON_PAYMENT:
-                $reader->readVarInt();
-                $reader->readVarInt();
+                $action->primaryEffect = $reader->readVarInt();
+                $action->secondaryEffect = $reader->readVarInt();
                 break;
 
             case StackRequestAction::MINE_BLOCK:

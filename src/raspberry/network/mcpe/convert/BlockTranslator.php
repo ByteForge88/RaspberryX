@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace raspberry\network\mcpe\convert;
 
 use raspberry\block\BlockState;
+use raspberry\block\BlockStateIds;
 
 use function chr;
 use function hash;
@@ -24,22 +25,9 @@ use function strlen;
  */
 class BlockTranslator{
 
-    /** @var array<string, int> block state key => network ID */
-    private array $cache = [];
-
-    /**
-     * The network ID as a signed 32-bit integer, ready to be written as a VarInt.
-     */
     public function getNetworkId(BlockState $state) : int{
-        $key = $state->getKey();
-
-        if(isset($this->cache[$key])){
-            return $this->cache[$key];
-        }
-
-        $hash = self::hash($state);
-
-        return $this->cache[$key] = $hash >= 0x80000000 ? $hash - 0x100000000 : $hash;
+        $hash = BlockStateIds::get($state);
+        return $hash >= 0x80000000 ? $hash - 0x100000000 : $hash;
     }
 
     /**

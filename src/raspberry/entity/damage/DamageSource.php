@@ -31,6 +31,7 @@ class DamageSource{
     public const CAUSE_CUSTOM = 14;
     public const CAUSE_STARVATION = 15;
     public const CAUSE_FALLING_BLOCK = 16;
+    public const CAUSE_WITHER = 17;
 
     private int $cause;
 
@@ -39,7 +40,7 @@ class DamageSource{
     private ?Entity $attacker;
 
     public function __construct(int $cause, float $amount, ?Entity $attacker = null){
-        if($cause < self::CAUSE_CONTACT || $cause > self::CAUSE_FALLING_BLOCK){
+        if($cause < self::CAUSE_CONTACT || $cause > self::CAUSE_WITHER){
             throw new InvalidArgumentException("Unknown damage cause {$cause}");
         }
 
@@ -76,6 +77,10 @@ class DamageSource{
         return $this->cause === self::CAUSE_VOID || $this->cause === self::CAUSE_SUICIDE;
     }
 
+    public function isFire() : bool{
+        return $this->cause === self::CAUSE_FIRE || $this->cause === self::CAUSE_FIRE_TICK || $this->cause === self::CAUSE_LAVA;
+    }
+
     public function isReducedByArmor() : bool{
         return match($this->cause){
             self::CAUSE_CONTACT,
@@ -105,6 +110,7 @@ class DamageSource{
             self::CAUSE_MAGIC => "death.attack.magic",
             self::CAUSE_STARVATION => "death.attack.starve",
             self::CAUSE_FALLING_BLOCK => "death.attack.fallingBlock",
+            self::CAUSE_WITHER => "death.attack.wither",
             default => "death.attack.generic"
         };
     }

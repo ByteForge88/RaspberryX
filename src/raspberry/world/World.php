@@ -252,6 +252,7 @@ class World{
      * Sends a block entity's data to the players who see it, after it changed.
      */
     public function sendBlockEntity(BlockEntity $entity) : void{
+        $this->getChunk($entity->getX() >> 4, $entity->getZ() >> 4)?->touch();
         $this->broadcastPacket($entity->getX(), $entity->getZ(), BlockActorDataPacket::create($entity->getX(), $entity->getY(), $entity->getZ(), $entity->getSpawnData()));
     }
 

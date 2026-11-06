@@ -1,5 +1,6 @@
 .idea/*
 vendor/*
+native/target/*
 bin/*
 worlds/*
 data/server-identity.pem

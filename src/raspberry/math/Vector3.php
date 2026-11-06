@@ -54,6 +54,14 @@ class Vector3{
         return sqrt(($this->x - $other->x) ** 2 + ($this->y - $other->y) ** 2 + ($this->z - $other->z) ** 2);
     }
 
+    public function distanceSquared(self $other) : float{
+        return ($this->x - $other->x) ** 2 + ($this->y - $other->y) ** 2 + ($this->z - $other->z) ** 2;
+    }
+
+    public function length() : float{
+        return sqrt($this->x * $this->x + $this->y * $this->y + $this->z * $this->z);
+    }
+
     public function equals(self $other) : bool{
         return $this->x === $other->x && $this->y === $other->y && $this->z === $other->z;
     }

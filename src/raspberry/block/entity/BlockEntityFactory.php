@@ -43,6 +43,15 @@ class BlockEntityFactory{
             $blockName === "minecraft:brewing_stand" => "BrewingStand",
             $blockName === "minecraft:hopper" => "Hopper",
             $blockName === "minecraft:powered_comparator" || $blockName === "minecraft:unpowered_comparator" => "Comparator",
+            $blockName === "minecraft:dispenser" => "Dispenser",
+            $blockName === "minecraft:dropper" => "Dropper",
+            $blockName === "minecraft:crafter" => "Crafter",
+            $blockName === "minecraft:jukebox" => "Jukebox",
+            $blockName === "minecraft:lectern" => "Lectern",
+            $blockName === "minecraft:flower_pot" => "FlowerPot",
+            $blockName === "minecraft:campfire" || $blockName === "minecraft:soul_campfire" => "Campfire",
+            $blockName === "minecraft:beacon" => "Beacon",
+            $blockName === "minecraft:cauldron" => "Cauldron",
             default => null
         };
     }
@@ -80,6 +89,15 @@ class BlockEntityFactory{
             "BrewingStand" => new BrewingStand($x, $y, $z),
             "Hopper" => new Hopper($x, $y, $z),
             "Comparator" => new Comparator($x, $y, $z),
+            "Dispenser" => new Dispenser($x, $y, $z),
+            "Dropper" => new Dropper($x, $y, $z),
+            "Crafter" => new Crafter($x, $y, $z),
+            "Jukebox" => new Jukebox($x, $y, $z),
+            "Lectern" => new Lectern($x, $y, $z),
+            "FlowerPot" => new FlowerPot($x, $y, $z),
+            "Campfire" => new Campfire($x, $y, $z),
+            "Beacon" => new Beacon($x, $y, $z),
+            "Cauldron" => new Cauldron($x, $y, $z),
             default => null
         };
     }

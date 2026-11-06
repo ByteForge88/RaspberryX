@@ -39,6 +39,9 @@ class InventoryTransactionPacket implements Packet{
     /** set for TYPE_USE_ITEM */
     public ?UseItemData $useItem = null;
 
+    /** set for TYPE_RELEASE_ITEM: 0 let go (a bow), 1 finished eating or drinking */
+    public ?int $releaseAction = null;
+
     public static function getPacketId() : int{
         return ProtocolPacketIds::INVENTORY_TRANSACTION_PACKET;
     }
@@ -53,12 +56,13 @@ class InventoryTransactionPacket implements Packet{
         $this->type = $reader->readUnsignedVarInt();
         $this->actions = self::readActions($reader);
         $this->useItem = null;
+        $this->releaseAction = null;
 
         match($this->type){
             self::TYPE_NORMAL, self::TYPE_MISMATCH => null,
             self::TYPE_USE_ITEM => $this->useItem = UseItemData::read($reader),
             self::TYPE_USE_ITEM_ON_ENTITY => self::skipUseItemOnEntity($reader),
-            self::TYPE_RELEASE_ITEM => self::skipReleaseItem($reader),
+            self::TYPE_RELEASE_ITEM => $this->releaseAction = self::readReleaseItem($reader),
             default => throw new UnexpectedValueException("Unknown inventory transaction type {$this->type}")
         };
     }
@@ -113,12 +117,14 @@ class InventoryTransactionPacket implements Packet{
         self::skipVector($reader);
     }
 
-    private static function skipReleaseItem(BinaryReader $reader) : void{
-        $reader->readVarInt(); //action
+    private static function readReleaseItem(BinaryReader $reader) : int{
+        $action = $reader->readVarInt();
         $reader->readVarInt(); //hotbar slot
         ItemStackSerializer::readInstance($reader);
         self::skipVector($reader); //head position
         $reader->readByte(); //hand
+
+        return $action;
     }
 
     private static function skipVector(BinaryReader $reader) : void{

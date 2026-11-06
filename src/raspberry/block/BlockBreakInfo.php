@@ -86,10 +86,7 @@ class BlockBreakInfo{
         return ToolInfo::getType($item->getId()) === $this->tool && ToolInfo::getTierLevel($item->getId()) >= self::TIER_LEVELS[$this->tier];
     }
 
-    /**
-     * How many ticks breaking takes in survival with $item, standing on the ground out of water.
-     */
-    public function getBreakTicks(Item $item, string $blockName) : int{
+    public function getBreakTicks(Item $item, string $blockName, float $speedMultiplier = 1.0) : int{
         if($this->hardness < 0){
             return PHP_INT_MAX;
         }
@@ -108,7 +105,7 @@ class BlockBreakInfo{
             }
         }
 
-        $damagePerTick = $speed / $this->hardness / ($this->canHarvest($item) ? 30 : 100);
+        $damagePerTick = $speed * $speedMultiplier / $this->hardness / ($this->canHarvest($item) ? 30 : 100);
 
         return $damagePerTick >= 1 ? 0 : (int) ceil(1 / $damagePerTick);
     }

@@ -49,6 +49,11 @@ abstract class ContainerBlockEntity extends BlockEntity implements InventoryList
         return $this->customName;
     }
 
+    public function setCustomName(?string $name) : void{
+        $this->customName = $name;
+        $this->setChanged();
+    }
+
     public function readData(CompoundTag $nbt) : void{
         $this->inventory->setContents(self::readItems($nbt, $this->inventory->getSize()));
         $this->customName = $nbt->getString("CustomName");

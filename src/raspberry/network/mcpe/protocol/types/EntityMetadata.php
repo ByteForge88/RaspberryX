@@ -14,16 +14,28 @@ class EntityMetadata{
     public const KEY_FLAGS = 0;
     public const KEY_COLOR_INDEX = 3;
     public const KEY_NAME = 4;
+    public const KEY_OWNER = 5;
     public const KEY_AIR_SUPPLY = 7;
     public const KEY_EFFECT_COLOR = 8;
     public const KEY_EFFECT_AMBIENCE = 9;
+    public const KEY_CUSTOM_DISPLAY = 18;
     public const KEY_PLAYER_FLAGS = 26;
+    public const KEY_AUX_VALUE_DATA = 36;
     public const KEY_SCALE = 38;
     public const KEY_AIR_SUPPLY_MAX = 42;
     public const KEY_WIDTH = 53;
     public const KEY_HEIGHT = 54;
+    public const KEY_CLOUD_RADIUS = 61;
+    public const KEY_CLOUD_WAITING = 62;
+    public const KEY_CLOUD_PARTICLE = 63;
     public const KEY_ALWAYS_SHOW_NAME_TAG = 81;
     public const KEY_FLAGS_TWO = 92;
+    public const KEY_CLOUD_DURATION = 95;
+    public const KEY_CLOUD_SPAWN_TIME = 96;
+    public const KEY_CLOUD_RADIUS_PER_TICK = 97;
+    public const KEY_CLOUD_RADIUS_ON_PICKUP = 98;
+    public const KEY_CLOUD_PICKUP_COUNT = 99;
+    public const KEY_VISIBLE_MOB_EFFECTS = 131;
 
     public const TYPE_BYTE = 0;
     public const TYPE_SHORT = 1;
@@ -35,6 +47,8 @@ class EntityMetadata{
     public const FLAG_ON_FIRE = 0;
     public const FLAG_SNEAKING = 1;
     public const FLAG_SPRINTING = 3;
+    public const FLAG_USING_ITEM = 4;
+    public const FLAG_INVISIBLE = 5;
     public const FLAG_SHOW_NAME = 14;
     public const FLAG_ALWAYS_SHOW_NAME = 15;
     public const FLAG_CAN_CLIMB = 19;

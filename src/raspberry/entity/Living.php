@@ -4,7 +4,14 @@ declare(strict_types=1);
 
 namespace raspberry\entity;
 
+use raspberry\entity\effect\Effect;
+use raspberry\entity\effect\EffectInstance;
+use raspberry\entity\effect\EffectManager;
 use raspberry\entity\damage\DamageSource;
+
+use raspberry\math\Vector3;
+
+use raspberry\world\World;
 
 use function max;
 use function min;
@@ -23,6 +30,17 @@ abstract class Living extends Entity{
     protected float $absorption = 0.0;
 
     protected float $movementSpeed = self::DEFAULT_MOVEMENT_SPEED;
+
+    protected EffectManager $effects;
+
+    public function __construct(World $world, Vector3 $position){
+        parent::__construct($world, $position);
+        $this->effects = new EffectManager($this);
+    }
+
+    public function getEffects() : EffectManager{
+        return $this->effects;
+    }
 
     public function getHealth() : float{
         return $this->health;
@@ -53,7 +71,12 @@ abstract class Living extends Entity{
             return;
         }
 
-        $amount = $source->getAmount();
+        $amount = $this->reduceDamage($source);
+
+        if($amount <= 0){
+            return;
+        }
+
         $absorbed = min($amount, $this->absorption);
         $this->absorption -= $absorbed;
 
@@ -112,7 +135,55 @@ abstract class Living extends Entity{
     }
 
     protected function canBeDamagedBy(DamageSource $source) : bool{
-        return true;
+        return !$this->effects->has(Effect::FIRE_RESISTANCE) || !$source->isFire();
+    }
+
+    /**
+     * Resistance takes a fifth off for each level, five levels stop everything but the void.
+     */
+    protected function reduceDamage(DamageSource $source) : float{
+        $resistance = $this->effects->getLevel(Effect::RESISTANCE);
+
+        if($resistance === 0 || $source->bypassesGameMode()){
+            return $source->getAmount();
+        }
+
+        return $source->getAmount() * max(0.0, 1.0 - 0.2 * $resistance);
+    }
+
+    /**
+     * @internal
+     */
+    public function onEffectAdded(EffectInstance $effect, ?EffectInstance $old) : void{
+        if($effect->getEffect() === Effect::ABSORPTION){
+            $this->setAbsorption(max($this->absorption, 4.0 * $effect->getLevel()));
+        }
+
+        $this->updateEffectAttributes();
+    }
+
+    /**
+     * @internal
+     */
+    public function onEffectRemoved(EffectInstance $effect) : void{
+        if($effect->getEffect() === Effect::ABSORPTION){
+            $this->setAbsorption(0.0);
+        }
+
+        $this->updateEffectAttributes();
+    }
+
+    /**
+     * Speed, slowness and health boost change the attributes while they last.
+     */
+    protected function updateEffectAttributes() : void{
+        $speed = self::DEFAULT_MOVEMENT_SPEED * (1.0 + 0.2 * $this->effects->getLevel(Effect::SPEED)) * max(0.0, 1.0 - 0.15 * $this->effects->getLevel(Effect::SLOWNESS));
+        $maxHealth = 20.0 + 4.0 * $this->effects->getLevel(Effect::HEALTH_BOOST);
+
+        if($speed !== $this->movementSpeed || $maxHealth !== $this->maxHealth){
+            $this->movementSpeed = $speed;
+            $this->setMaxHealth($maxHealth);
+        }
     }
 
     /**

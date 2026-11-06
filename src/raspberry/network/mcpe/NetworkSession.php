@@ -10,17 +10,20 @@ use raspberry\network\mcpe\protocol\BlockActorDataPacket;
 use raspberry\network\mcpe\protocol\ContainerClosePacket;
 use raspberry\network\mcpe\protocol\ContainerOpenPacket;
 use raspberry\network\mcpe\protocol\InteractPacket;
+use raspberry\network\mcpe\protocol\LecternUpdatePacket;
+use raspberry\network\mcpe\protocol\PlayerToggleCrafterSlotRequestPacket;
 use raspberry\network\mcpe\protocol\InventoryContentPacket;
 use raspberry\network\mcpe\protocol\ItemStackRequestPacket;
 use raspberry\network\mcpe\protocol\InventoryTransactionPacket;
+use raspberry\network\mcpe\protocol\AddActorPacket;
 use raspberry\network\mcpe\protocol\AddItemActorPacket;
 use raspberry\network\mcpe\protocol\MobArmorEquipmentPacket;
+use raspberry\network\mcpe\protocol\MobEffectPacket;
 use raspberry\network\mcpe\protocol\MobEquipmentPacket;
 use raspberry\network\mcpe\protocol\types\ItemInstance;
 use raspberry\network\mcpe\protocol\DisconnectPacket;
 use raspberry\network\mcpe\protocol\ItemRegistryPacket;
 use raspberry\network\mcpe\protocol\JigsawStructureDataPacket;
-use raspberry\network\mcpe\protocol\LevelChunkPacket;
 use raspberry\network\mcpe\protocol\LoginPacket;
 use raspberry\network\mcpe\protocol\NetworkChunkPublisherUpdatePacket;
 use raspberry\network\mcpe\protocol\NetworkSettingsPacket;
@@ -63,7 +66,7 @@ use raspberry\network\mcpe\protocol\types\inventory\UseItemData;
 use raspberry\network\mcpe\auth\AuthenticatedLogin;
 use raspberry\network\mcpe\compression\PacketCompression;
 use raspberry\network\mcpe\resourcepack\ResourcePackNegotiation;
-use raspberry\network\mcpe\serializer\NetworkChunkSerializer;
+use raspberry\network\mcpe\convert\BlockDefinitions;
 use raspberry\network\mcpe\convert\SkinAdapter;
 use raspberry\network\mcpe\convert\CommandDataAdapter;
 
@@ -71,11 +74,17 @@ use raspberry\block\BlockState;
 
 use raspberry\entity\Entity;
 use raspberry\entity\Human;
+use raspberry\entity\Living;
+use raspberry\entity\effect\Effect;
+use raspberry\entity\effect\EffectInstance;
+use raspberry\entity\object\AreaEffectCloud;
 use raspberry\entity\object\ItemEntity;
+use raspberry\entity\object\ThrownPotion;
 
 use raspberry\inventory\PlayerInventory;
 
 use raspberry\item\Item;
+use raspberry\item\Potion;
 
 use InvalidArgumentException;
 
@@ -87,13 +96,14 @@ use raspberry\Server;
 
 use raspberry\nbt\NbtException;
 
+use raspberry\world\World;
 use raspberry\world\generator\GeneratorFactory;
 
 use stdClass;
 use Throwable;
 use UnexpectedValueException;
 
-use function array_slice;
+use function array_shift;
 use function ceil;
 use function count;
 use function is_string;
@@ -135,8 +145,8 @@ class NetworkSession{
     /** how long to wait for a client to arrive after a teleport before sending it again (5 seconds) */
     private const TELEPORT_RESEND_TICKS = 100;
 
-    /** chunks sent per tick, so a large view distance does not stall the server */
-    private const CHUNKS_PER_TICK = 16;
+    /** chunks being encoded for this client at once */
+    private const CHUNKS_IN_FLIGHT = 16;
 
     /** ticks to wait after a DisconnectPacket before closing, so the message reaches the client */
     private const DISCONNECT_DELAY_TICKS = 10;
@@ -177,6 +187,15 @@ class NetworkSession{
 
     /** @var list<array{int, int}> chunks still to send, nearest first */
     private array $chunkQueue = [];
+
+    /** @var array<string, true> chunks in the client's view distance */
+    private array $wantedChunks = [];
+
+    /** @var array<string, true> chunks being encoded on a worker */
+    private array $encodingChunks = [];
+
+    /** goes up when the sent chunks are forgotten, a chunk encoded before that is not sent */
+    private int $chunkEpoch = 0;
 
     /** where the client was teleported to, its movement is ignored until it arrives there */
     private ?Vector3 $pendingTeleport = null;
@@ -358,8 +377,26 @@ class NetworkSession{
                 }
                 return;
 
+            case ProtocolPacketIds::ACTOR_EVENT_PACKET:
+                $this->handleActorEvent($this->decode($buffer, ActorEventPacket::class));
+                return;
+
             case ProtocolPacketIds::CONTAINER_CLOSE_PACKET:
                 $this->handleContainerClose($this->decode($buffer, ContainerClosePacket::class));
+                return;
+
+            case ProtocolPacketIds::LECTERN_UPDATE_PACKET:
+                if($this->state === self::STATE_IN_GAME && $this->player !== null && !$this->player->isDead()){
+                    $packet = $this->decode($buffer, LecternUpdatePacket::class);
+                    $this->player->getBlockPlacer()->turnLecternPage($packet->x, $packet->y, $packet->z, $packet->page);
+                }
+                return;
+
+            case ProtocolPacketIds::PLAYER_TOGGLE_CRAFTER_SLOT_REQUEST_PACKET:
+                if($this->state === self::STATE_IN_GAME && $this->player !== null && !$this->player->isDead()){
+                    $packet = $this->decode($buffer, PlayerToggleCrafterSlotRequestPacket::class);
+                    $this->player->getContainerOpener()->toggleCrafterSlot($packet->x, $packet->y, $packet->z, $packet->slot, $packet->disabled);
+                }
                 return;
 
             case ProtocolPacketIds::COMMAND_REQUEST_PACKET:
@@ -489,8 +526,7 @@ class NetworkSession{
 
         $this->player?->close();
         $this->resourcePacks = null;
-        $this->chunkQueue = [];
-        $this->sentChunks = [];
+        $this->forgetChunks();
     }
 
     public function sendGameMode() : void{
@@ -554,7 +590,17 @@ class NetworkSession{
 
     public function sendOwnMetadata() : void{
         if($this->player !== null){
-            $this->sendDataPacket(SetActorDataPacket::create($this->player->getId(), self::createHumanMetadata($this->player), $this->server->getCurrentTick()));
+            $this->sendHumanMetadata($this->player);
+        }
+    }
+
+    public function sendHumanMetadata(Human $human) : void{
+        $this->sendDataPacket(SetActorDataPacket::create($human->getId(), self::createHumanMetadata($human), $this->server->getCurrentTick()));
+    }
+
+    public function sendEffect(int $event, EffectInstance $effect) : void{
+        if($this->player !== null){
+            $this->sendDataPacket(MobEffectPacket::create($this->player->getId(), $event, $effect->getEffect()->value, $effect->getAmplifier(), $effect->isVisible(), $effect->getDuration(), $effect->isAmbient(), $this->server->getCurrentTick()));
         }
     }
 
@@ -637,6 +683,11 @@ class NetworkSession{
             return;
         }
 
+        if($entity instanceof ThrownPotion || $entity instanceof AreaEffectCloud){
+            $this->spawnActor($entity);
+            return;
+        }
+
         if(!$entity instanceof Human){
             return; //TODO: AddActorPacket for other entities
         }
@@ -698,6 +749,63 @@ class NetworkSession{
         $this->sendDataPacket($packet);
     }
 
+    private function spawnActor(ThrownPotion|AreaEffectCloud $entity) : void{
+        $position = $entity->getPosition();
+        $motion = $entity instanceof ThrownPotion ? $entity->getMotion() : Vector3::zero();
+
+        $packet = new AddActorPacket();
+        $packet->actorRuntimeId = $entity->getId();
+        $packet->type = $entity->getNetworkTypeId();
+        $packet->x = $position->x;
+        $packet->y = $position->y;
+        $packet->z = $position->z;
+        $packet->motionX = $motion->x;
+        $packet->motionY = $motion->y;
+        $packet->motionZ = $motion->z;
+        $packet->pitch = $entity->getPitch();
+        $packet->yaw = $entity->getYaw();
+        $packet->metadata = self::createActorMetadata($entity);
+
+        $this->sendDataPacket($packet);
+    }
+
+    /**
+     * Sends an entity's metadata again, for the ones whose looks change (an effect cloud shrinking).
+     */
+    public function sendEntityMetadata(ThrownPotion|AreaEffectCloud $entity) : void{
+        $this->sendDataPacket(SetActorDataPacket::create($entity->getId(), self::createActorMetadata($entity), $this->server->getCurrentTick()));
+    }
+
+    private static function createActorMetadata(ThrownPotion|AreaEffectCloud $entity) : EntityMetadata{
+        $metadata = new EntityMetadata();
+        $metadata->setLong(EntityMetadata::KEY_FLAGS_TWO, 0);
+        $metadata->setFloat(EntityMetadata::KEY_SCALE, 1.0);
+        $metadata->setLong(EntityMetadata::KEY_OWNER, $entity->getOwner()?->getId() ?? -1);
+
+        if($entity instanceof ThrownPotion){
+            $metadata->setFlag(EntityMetadata::FLAG_HAS_GRAVITY);
+            $metadata->setFlag(EntityMetadata::FLAG_HAS_COLLISION);
+            $metadata->setFloat(EntityMetadata::KEY_WIDTH, 0.25);
+            $metadata->setFloat(EntityMetadata::KEY_HEIGHT, 0.25);
+            $metadata->setShort(EntityMetadata::KEY_AUX_VALUE_DATA, $entity->getPotionMeta());
+            return $metadata;
+        }
+
+        //the cloud is shrunk by the server, the client is told not to do it on its own
+        $metadata->setFloat(EntityMetadata::KEY_WIDTH, $entity->getRadius() * 2);
+        $metadata->setFloat(EntityMetadata::KEY_HEIGHT, AreaEffectCloud::HEIGHT);
+        $metadata->setFloat(EntityMetadata::KEY_CLOUD_RADIUS, $entity->getRadius());
+        $metadata->setInt(EntityMetadata::KEY_CLOUD_WAITING, AreaEffectCloud::WAIT_TICKS);
+        $metadata->setInt(EntityMetadata::KEY_CLOUD_DURATION, 2147483647);
+        $metadata->setFloat(EntityMetadata::KEY_CLOUD_RADIUS_PER_TICK, 0.0);
+        $metadata->setFloat(EntityMetadata::KEY_CLOUD_RADIUS_ON_PICKUP, 0.0);
+        $metadata->setInt(EntityMetadata::KEY_CLOUD_PICKUP_COUNT, 0);
+        $metadata->setInt(EntityMetadata::KEY_EFFECT_COLOR, -16777216 | Potion::getColor($entity->getPotionMeta()));
+        $metadata->setByte(EntityMetadata::KEY_EFFECT_AMBIENCE, 0);
+
+        return $metadata;
+    }
+
     public function despawnEntity(Entity $entity) : void{
         $this->sendDataPacket(RemoveActorPacket::create($entity->getId()));
     }
@@ -726,8 +834,7 @@ class NetworkSession{
 
     public function onTeleport(bool $worldChanged) : void{
         if($worldChanged){
-            $this->sentChunks = [];
-            $this->chunkQueue = [];
+            $this->forgetChunks();
             $this->sendSpawnPositions();
         }
 
@@ -821,10 +928,30 @@ class NetworkSession{
         $metadata->setFloat(EntityMetadata::KEY_SCALE, 1.0);
         $metadata->setShort(EntityMetadata::KEY_AIR_SUPPLY, 300);
         $metadata->setShort(EntityMetadata::KEY_AIR_SUPPLY_MAX, 300);
-        $metadata->setInt(EntityMetadata::KEY_EFFECT_COLOR, 0);
-        $metadata->setByte(EntityMetadata::KEY_EFFECT_AMBIENCE, 0);
         $metadata->setByte(EntityMetadata::KEY_COLOR_INDEX, 0);
+        self::addEffectMetadata($metadata, $human);
         return $metadata;
+    }
+
+    private static function addEffectMetadata(EntityMetadata $metadata, Living $entity) : void{
+        $packed = 0;
+        $visible = [];
+        $ambient = true;
+
+        foreach($entity->getEffects()->all() as $effect){
+            if(!$effect->isVisible()){
+                continue;
+            }
+
+            $packed = ($packed << 7) | ($effect->getEffect()->value << 1) | ($effect->isAmbient() ? 1 : 0);
+            $visible[] = $effect->getEffect();
+            $ambient = $ambient && $effect->isAmbient();
+        }
+
+        $metadata->setInt(EntityMetadata::KEY_EFFECT_COLOR, $visible === [] ? 0 : -16777216 | Potion::mixColors($visible));
+        $metadata->setByte(EntityMetadata::KEY_EFFECT_AMBIENCE, $visible !== [] && $ambient ? 1 : 0);
+        $metadata->setLong(EntityMetadata::KEY_VISIBLE_MOB_EFFECTS, $packed);
+        $metadata->setFlag(EntityMetadata::FLAG_INVISIBLE, $entity->getEffects()->has(Effect::INVISIBILITY));
     }
 
     private function handleMobEquipment(MobEquipmentPacket $packet) : void{
@@ -874,6 +1001,21 @@ class NetworkSession{
         $this->sendDataPacket(ContainerClosePacket::create($packet->windowId, $packet->windowId === InventoryContentPacket::WINDOW_INVENTORY ? 0 : $packet->type, false));
     }
 
+    /**
+     * Others see a player eat through the event its client sends.
+     */
+    private function handleActorEvent(ActorEventPacket $packet) : void{
+        $player = $this->player;
+
+        if($player === null || $this->state !== self::STATE_IN_GAME || $packet->actorRuntimeId !== $player->getId() || $packet->event !== ActorEventPacket::EATING_ITEM || !$player->getItemUser()->isUsing()){
+            return;
+        }
+
+        foreach($player->getViewers() as $viewer){
+            $viewer->getNetworkSession()->sendActorEvent($player, ActorEventPacket::EATING_ITEM, $packet->data);
+        }
+    }
+
     private function handleInventoryTransaction(InventoryTransactionPacket $packet) : void{
         $player = $this->player;
         $manager = $this->inventoryManager;
@@ -893,6 +1035,10 @@ class NetworkSession{
             $manager->sendAll();
         }elseif($packet->useItem !== null && $packet->useItem->action === UseItemData::ACTION_CLICK_BLOCK){
             $player->getBlockPlacer()->useItemOn($packet->useItem);
+        }elseif($packet->useItem !== null && $packet->useItem->action === UseItemData::ACTION_CLICK_AIR){
+            $player->getItemUser()->useInAir();
+        }elseif($packet->releaseAction !== null){
+            $player->getItemUser()->release($packet->releaseAction);
         }
 
         foreach($packet->legacySlots as $containerId => $slots){
@@ -1199,6 +1345,7 @@ class NetworkSession{
         $startGame->levelId = $world->getName();
         $startGame->time = 6000; //noon; TODO: world time
         $startGame->playerPermissions = $this->player->isOp() ? StartGamePacket::PERMISSION_OPERATOR : StartGamePacket::PERMISSION_MEMBER;
+        $startGame->blockDefinitions = BlockDefinitions::get();
 
         $this->sendDataPackets([
             new JigsawStructureDataPacket(),
@@ -1392,7 +1539,7 @@ class NetworkSession{
                 $key = ($centerX + $x) . ":" . ($centerZ + $z);
                 $wanted[$key] = true;
 
-                if(!isset($this->sentChunks[$key])){
+                if(!isset($this->sentChunks[$key]) && !isset($this->encodingChunks[$key])){
                     $queue[] = [$centerX + $x, $centerZ + $z, $x * $x + $z * $z];
                 }
             }
@@ -1404,6 +1551,8 @@ class NetworkSession{
                 unset($this->sentChunks[$key]);
             }
         }
+
+        $this->wantedChunks = $wanted;
 
         usort($queue, static fn(array $a, array $b) : int => $a[2] <=> $b[2]);
 
@@ -1422,18 +1571,54 @@ class NetworkSession{
         }
 
         $world = $this->player->getWorld();
-        $translator = $this->server->getBlockTranslator();
-        $packets = [];
 
-        foreach(array_slice($this->chunkQueue, 0, self::CHUNKS_PER_TICK) as [$x, $z]){
-            $payload = NetworkChunkSerializer::serialize($world->loadChunk($x, $z), $translator);
+        while($this->chunkQueue !== [] && count($this->encodingChunks) < self::CHUNKS_IN_FLIGHT){
+            [$x, $z] = array_shift($this->chunkQueue);
+            $key = $x . ":" . $z;
 
-            $packets[] = LevelChunkPacket::create($x, $z, NetworkChunkSerializer::getSubChunkCount(), $payload);
-            $this->sentChunks[$x . ":" . $z] = true;
+            if(!isset($this->sentChunks[$key]) && !isset($this->encodingChunks[$key])){
+                $this->encodeChunk($world, $x, $z);
+            }
         }
+    }
 
-        $this->chunkQueue = array_slice($this->chunkQueue, self::CHUNKS_PER_TICK);
+    /**
+     * Has a worker encode the chunk and sends it once that is done. The client only counts as
+     * having it from then on, block changes before that go into a new encoding.
+     */
+    private function encodeChunk(World $world, int $x, int $z) : void{
+        $chunk = $world->loadChunk($x, $z);
+        $key = $x . ":" . $z;
+        $epoch = $this->chunkEpoch;
+        $revision = $chunk->getRevision();
+        $this->encodingChunks[$key] = true;
 
-        $this->sendDataPackets($packets);
+        $chunk->encode($this->compression->isEnabled() ? $this->compression->getThreshold() : -1, function(string $batch) use ($world, $chunk, $x, $z, $key, $epoch, $revision) : void{
+            if($epoch !== $this->chunkEpoch || !$this->isConnected()){
+                return;
+            }
+
+            unset($this->encodingChunks[$key]);
+
+            if(!isset($this->wantedChunks[$key]) || $this->player?->getWorld() !== $world){
+                return;
+            }
+
+            if($chunk->getRevision() !== $revision){
+                $this->encodeChunk($world, $x, $z);
+                return;
+            }
+
+            $this->server->getTransport()->sendReliable($this->id, $batch);
+            $this->sentChunks[$key] = true;
+        });
+    }
+
+    private function forgetChunks() : void{
+        $this->sentChunks = [];
+        $this->chunkQueue = [];
+        $this->wantedChunks = [];
+        $this->encodingChunks = [];
+        ++$this->chunkEpoch;
     }
 }

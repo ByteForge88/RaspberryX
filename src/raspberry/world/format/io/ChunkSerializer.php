@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace raspberry\world\format\io;
 
 use raspberry\block\BlockState;
+use raspberry\block\BlockStateIds;
 use raspberry\block\entity\BlockEntityFactory;
 
 use raspberry\nbt\NbtSerializer;
@@ -13,21 +14,21 @@ use raspberry\network\encoding\BinaryReader;
 use raspberry\network\encoding\BinaryWriter;
 
 use raspberry\world\Chunk;
-use raspberry\world\format\SubChunk;
-use raspberry\world\format\BiomeStorage;
-use raspberry\world\format\BlockStorage;
-use raspberry\world\format\PalettedStorage;
 
 use Throwable;
 use UnexpectedValueException;
 
 use function chr;
+use function array_values;
 use function count;
 use function is_bool;
 use function is_int;
+use function max;
 use function ord;
+use function pack;
 use function strlen;
 use function substr;
+use function unpack;
 use function zlib_decode;
 use function zlib_encode;
 
@@ -40,6 +41,9 @@ final class ChunkSerializer{
     private const TYPE_INT = 1;
     private const TYPE_STRING = 2;
 
+    /** blocks or biomes in a sub-chunk */
+    private const STORAGE_SIZE = 4096;
+
     /** decompressed chunks above this size are treated as corrupt */
     private const MAX_BODY_SIZE = 64 * 1024 * 1024;
 
@@ -50,35 +54,34 @@ final class ChunkSerializer{
         $writer->writeInt($chunk->getX());
         $writer->writeInt($chunk->getZ());
 
-        $subChunks = $chunk->getSubChunks();
-        $writer->writeByte(count($subChunks));
+        $storage = new BinaryReader($chunk->exportStorage());
+        $writer->writeByte(Chunk::MAX_SUBCHUNK - Chunk::MIN_SUBCHUNK + 1);
 
-        foreach($subChunks as $y => $subChunk){
+        for($y = Chunk::MIN_SUBCHUNK; $y <= Chunk::MAX_SUBCHUNK; ++$y){
             $writer->writeByte($y & 0xff);
 
-            $layers = $subChunk->getBlockLayers();
-            $writer->writeByte(count($layers));
+            $layerCount = $storage->readByte();
+            $writer->writeByte($layerCount);
 
-            foreach($layers as $layer){
-                $palette = $layer->getPalette();
+            for($layer = 0; $layer < $layerCount; ++$layer){
+                [$palette, $indices] = self::readExported($storage);
                 $writer->writeUnsignedVarInt(count($palette));
 
-                foreach($palette as $state){
-                    self::writeBlockState($writer, $state);
+                foreach($palette as $id){
+                    self::writeBlockState($writer, BlockStateIds::fromId($id));
                 }
 
-                self::writeIndices($writer, $layer);
+                $writer->writeBytes($indices ?? "");
             }
 
-            $biomes = $subChunk->getBiomeStorage();
-            $biomePalette = $biomes->getPalette();
+            [$biomePalette, $biomeIndices] = self::readExported($storage);
             $writer->writeUnsignedVarInt(count($biomePalette));
 
             foreach($biomePalette as $biomeId){
                 $writer->writeUnsignedShort($biomeId);
             }
 
-            self::writeIndices($writer, $biomes);
+            $writer->writeBytes($biomeIndices ?? "");
         }
 
         $blockEntities = $chunk->getBlockEntities();
@@ -99,7 +102,7 @@ final class ChunkSerializer{
     }
 
     /**
-     * @throws CorruptChunkException when the data is damaged or belongs to another chunk
+     * @throws CorruptChunkException
      */
     public static function deserialize(string $data, int $expectedX, int $expectedZ) : Chunk{
         try{
@@ -131,22 +134,35 @@ final class ChunkSerializer{
             $chunk = new Chunk($x, $z);
             $subChunkCount = $reader->readByte();
 
+            //sub-chunks missing from the file are air
+            $empty = "\x01" . self::exported([BlockStateIds::get(new BlockState("minecraft:air"))], null) . self::exported([Chunk::DEFAULT_BIOME], null);
+            $storage = [];
+
             for($i = 0; $i < $subChunkCount; ++$i){
                 $y = $reader->readByte();
                 $y = $y >= 0x80 ? $y - 0x100 : $y;//signed byte
 
+                if($y < Chunk::MIN_SUBCHUNK || $y > Chunk::MAX_SUBCHUNK){
+                    throw new UnexpectedValueException("Sub-chunk Y {$y} is outside the world");
+                }
+
                 $layerCount = $reader->readByte();
-                $layers = [];
+
+                if($layerCount < 1 || $layerCount > Chunk::MAX_LAYERS){
+                    throw new UnexpectedValueException("A sub-chunk needs 1 to " . Chunk::MAX_LAYERS . " block layers, got {$layerCount}");
+                }
+
+                $data = chr($layerCount);
 
                 for($layer = 0; $layer < $layerCount; ++$layer){
                     $palette = [];
                     $paletteSize = self::readPaletteSize($reader);
 
                     for($entry = 0; $entry < $paletteSize; ++$entry){
-                        $palette[] = self::readBlockState($reader);
+                        $palette[] = BlockStateIds::get(self::readBlockState($reader));
                     }
 
-                    $layers[] = BlockStorage::fromData($palette, self::readIndices($reader, $paletteSize));
+                    $data .= self::exported($palette, self::readIndices($reader, $paletteSize));
                 }
 
                 $biomePalette = [];
@@ -156,10 +172,16 @@ final class ChunkSerializer{
                     $biomePalette[] = $reader->readUnsignedShort();
                 }
 
-                $biomes = BiomeStorage::fromData($biomePalette, self::readIndices($reader, $biomePaletteSize));
-
-                $chunk->setSubChunk($y, SubChunk::fromStorages($layers, $biomes));
+                $storage[$y] = $data . self::exported($biomePalette, self::readIndices($reader, $biomePaletteSize));
             }
+
+            $data = "";
+
+            for($y = Chunk::MIN_SUBCHUNK; $y <= Chunk::MAX_SUBCHUNK; ++$y){
+                $data .= $storage[$y] ?? $empty;
+            }
+
+            $chunk->importStorage($data);
 
             if(!$reader->isFinished()){
                 $nbt = NbtSerializer::littleEndian();
@@ -226,22 +248,43 @@ final class ChunkSerializer{
         return new BlockState($name, $properties);
     }
 
-    private static function writeIndices(BinaryWriter $writer, PalettedStorage $storage) : void{
-        $indices = $storage->getRawIndices();
+    /**
+     * A palette and its offsets as the native side exports and imports them.
+     *
+     * @param list<int> $palette
+     */
+    private static function exported(array $palette, ?string $indices) : string{
+        return pack("V", count($palette)) . pack("V*", ...$palette) . ($indices ?? "");
+    }
 
-        if($indices !== null){
-            $writer->writeBytes($indices);
-        }
+    /**
+     * @return array{list<int>, string|null}
+     */
+    private static function readExported(BinaryReader $reader) : array{
+        $count = $reader->readUnsignedInt();
+        $palette = array_values(unpack("V*", $reader->readBytes($count * 4)));
+
+        return [$palette, $count > 1 ? $reader->readBytes(self::STORAGE_SIZE * 2) : null];
     }
 
     private static function readIndices(BinaryReader $reader, int $paletteSize) : ?string{
-        return $paletteSize > 1 ? $reader->readBytes(PalettedStorage::SIZE * 2) : null;
+        if($paletteSize === 1){
+            return null;
+        }
+
+        $indices = $reader->readBytes(self::STORAGE_SIZE * 2);
+
+        if(max(unpack("v*", $indices)) >= $paletteSize){
+            throw new UnexpectedValueException("Palette index points outside the palette");
+        }
+
+        return $indices;
     }
 
     private static function readPaletteSize(BinaryReader $reader) : int{
         $size = $reader->readUnsignedVarInt();
 
-        if($size < 1 || $size > PalettedStorage::SIZE){
+        if($size < 1 || $size > self::STORAGE_SIZE){
             throw new UnexpectedValueException("Invalid palette size {$size}");
         }
 

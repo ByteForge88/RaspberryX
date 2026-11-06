@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace raspberry;
 
+use raspberry\native\Native;
+
 use raspberry\network\mcpe\auth\LoginAuthenticator;
 use raspberry\network\mcpe\convert\ItemTranslator;
 use raspberry\network\mcpe\convert\BlockTranslator;
@@ -70,12 +72,17 @@ use raspberry\network\mcpe\protocol\TakeItemActorPacket;
 use raspberry\network\mcpe\protocol\CraftingDataPacket;
 use raspberry\network\mcpe\protocol\UnlockedRecipesPacket;
 use raspberry\network\mcpe\protocol\UpdateBlockPacket;
+use raspberry\network\mcpe\protocol\MobEffectPacket;
+use raspberry\network\mcpe\protocol\AddActorPacket;
+use raspberry\network\mcpe\protocol\StopSoundPacket;
 use raspberry\network\mcpe\protocol\LevelEventPacket;
 use raspberry\network\mcpe\protocol\LevelSoundEventPacket;
 use raspberry\network\mcpe\protocol\AnimatePacket;
 use raspberry\network\mcpe\protocol\BlockActorDataPacket;
 use raspberry\network\mcpe\protocol\BlockEventPacket;
 use raspberry\network\mcpe\protocol\OpenSignPacket;
+use raspberry\network\mcpe\protocol\LecternUpdatePacket;
+use raspberry\network\mcpe\protocol\PlayerToggleCrafterSlotRequestPacket;
 use raspberry\network\nethernet\NetherNetIdentity;
 use raspberry\network\nethernet\NetherNetTransport;
 
@@ -100,6 +107,7 @@ use raspberry\command\defaults\TellCommand;
 use raspberry\command\defaults\TitleCommand;
 use raspberry\command\defaults\VersionCommand;
 use raspberry\command\defaults\ClearCommand;
+use raspberry\command\defaults\EffectCommand;
 use raspberry\command\defaults\GiveCommand;
 
 use raspberry\console\ConsoleReader;
@@ -136,6 +144,7 @@ use Symfony\Component\Filesystem\Path;
 use stdClass;
 use Throwable;
 use LogicException;
+use RuntimeException;
 use UnexpectedValueException;
 use InvalidArgumentException;
 
@@ -777,6 +786,7 @@ class Server{
             CraftingDataPacket::class,
             UnlockedRecipesPacket::class,
             UpdateBlockPacket::class,
+            StopSoundPacket::class,
             LevelEventPacket::class,
             LevelSoundEventPacket::class,
             AnimatePacket::class,
@@ -784,7 +794,11 @@ class Server{
             OpenSignPacket::class,
             BlockEventPacket::class,
             SpawnParticleEffectPacket::class,
-            PlayerEnchantOptionsPacket::class
+            PlayerEnchantOptionsPacket::class,
+            LecternUpdatePacket::class,
+            PlayerToggleCrafterSlotRequestPacket::class,
+            MobEffectPacket::class,
+            AddActorPacket::class
         ] as $packet){
             $this->packetRegistry->register($packet);
         }
@@ -809,6 +823,7 @@ class Server{
             "spawnpoint" => "op",
             "give" => "op",
             "clear" => "op",
+            "effect" => "op",
             "save-all" => "op",
             "stop" => "op"
         ] as $command => $default){
@@ -837,6 +852,7 @@ class Server{
             new SpawnpointCommand(),
             new GiveCommand(),
             new ClearCommand(),
+            new EffectCommand(),
             new SaveAllCommand(),
             new StopCommand(),
             new VersionCommand()
@@ -920,6 +936,7 @@ class Server{
             "version" => $this->blockStateRegistry->getVersion()
         ]));
 
+        $this->loadNative();
         $this->loadDefaultWorld($worldName, $worldGenerator, $flatLayers, $spawnChunkRadius);
 
         $listenAddress = str_contains($serverIp, ":") ? "[{$serverIp}]:{$serverPort}" : "{$serverIp}:{$serverPort}";
@@ -1063,6 +1080,7 @@ class Server{
 
                 try{
                     $this->transport?->poll();
+                    Native::poll();
                 }catch(Throwable $exception){
                     $failure = $exception;
                     $this->stop();
@@ -1098,6 +1116,7 @@ class Server{
 
     private function tick() : void{
         ++$this->currentTick;
+        Native::poll();
 
         $now = hrtime(true);
 
@@ -1133,6 +1152,18 @@ class Server{
         }catch(Throwable){
             //shutting down anyway
         }
+    }
+
+    /**
+     * The native library holds the chunks and does the heavy work on threads of its own, the
+     * server cannot run without it.
+     */
+    private function loadNative() : void{
+        if(!Native::load(Path::join($this->dataPath, "bin", "native", Native::getLibraryName()))){
+            throw new RuntimeException($this->language->translate("server.native.missing", ["reason" => (string) Native::getError()]));
+        }
+
+        $this->logger->info($this->language->translate("server.native.loaded"));
     }
 
     private function registerSignalHandlers() : void{

@@ -4,17 +4,25 @@ declare(strict_types=1);
 
 namespace raspberry\world;
 
-use InvalidArgumentException;
-
+use raspberry\block\BlockIds;
 use raspberry\block\BlockState;
+use raspberry\block\BlockStateIds;
 use raspberry\block\entity\BlockEntity;
 
-use raspberry\world\biome\BiomeIds;
-use raspberry\world\format\SubChunk;
+use raspberry\nbt\NbtSerializer;
 
-/**
- * A 16 x 384 x 16 column of the world, split into 24 sub-chunks (Y -64 to 319).
- */
+use raspberry\native\Native;
+
+use raspberry\world\biome\BiomeIds;
+
+use Closure;
+use FFI;
+use InvalidArgumentException;
+use LogicException;
+use UnexpectedValueException;
+
+use function strlen;
+
 class Chunk{
 
     public const WIDTH = 16;
@@ -25,26 +33,43 @@ class Chunk{
     public const MIN_SUBCHUNK = self::MIN_Y >> 4; //-4
     public const MAX_SUBCHUNK = self::MAX_Y >> 4; //19
 
+    public const MAX_LAYERS = 2;
+
     public const DEFAULT_BIOME = BiomeIds::PLAINS;
+
+    /** what the native side answers when the chunk is all air */
+    private const NO_SUBCHUNK = -128;
+
+    private FFI $ffi;
+
+    private int $handle;
 
     private int $x;
     private int $z;
 
-    /** @var array<int, SubChunk> keyed by sub-chunk Y (-4 to 19) */
-    private array $subChunks = [];
-
-    /** @var array<int, BlockEntity> keyed by blockIndex() */
+    /** @var array<int, BlockEntity> */
     private array $blockEntities = [];
 
     private bool $changed = false;
 
+    /** goes up with every change a player could see, so a chunk being sent knows it is stale */
+    private int $revision = 0;
+
     public function __construct(int $x, int $z, int $biomeId = self::DEFAULT_BIOME){
+        self::checkBiome($biomeId);
+
+        $this->ffi = Native::get();
         $this->x = $x;
         $this->z = $z;
+        $this->handle = $this->ffi->rx_chunk_new(BlockStateIds::get(self::air()), $biomeId);
+    }
 
-        for($y = self::MIN_SUBCHUNK; $y <= self::MAX_SUBCHUNK; ++$y){
-            $this->subChunks[$y] = new SubChunk($biomeId);
-        }
+    public function __destruct(){
+        $this->ffi->rx_chunk_free($this->handle);
+    }
+
+    private function __clone(){
+        //two objects would free the same native chunk
     }
 
     public function getX() : int{
@@ -55,14 +80,41 @@ class Chunk{
         return $this->z;
     }
 
+    public function getRevision() : int{
+        return $this->revision;
+    }
+
+    /**
+     * Something players see in the chunk changed outside its blocks, like a block entity's data.
+     */
+    public function touch() : void{
+        ++$this->revision;
+    }
+
     public function getBlock(int $x, int $y, int $z, int $layer = 0) : BlockState{
-        return $this->getSubChunkAt($x, $y, $z)->getBlock($x, $y & 0x0f, $z, $layer);
+        self::check($x, $y, $z, $layer);
+
+        return BlockStateIds::fromId($this->ffi->rx_chunk_get_block($this->handle, $x, $y, $z, $layer));
     }
 
     public function setBlock(int $x, int $y, int $z, BlockState $block, int $layer = 0) : void{
-        $this->getSubChunkAt($x, $y, $z)->setBlock($x, $y & 0x0f, $z, $block, $layer);
+        self::check($x, $y, $z, $layer);
 
+        $this->ffi->rx_chunk_set_block($this->handle, $x, $y, $z, $layer, BlockStateIds::get($block));
         $this->changed = true;
+        ++$this->revision;
+    }
+
+    /**
+     * Sets every block of the chunk from $minY to $maxY, much quicker than one by one.
+     */
+    public function fill(int $minY, int $maxY, BlockState $block, int $layer = 0) : void{
+        self::check(0, $minY, 0, $layer);
+        self::check(0, $maxY, 0, $layer);
+
+        $this->ffi->rx_chunk_fill($this->handle, $minY, $maxY, $layer, BlockStateIds::get($block));
+        $this->changed = true;
+        ++$this->revision;
     }
 
     /**
@@ -82,6 +134,7 @@ class Chunk{
 
         $this->blockEntities[self::blockIndex($entity->getX() & 15, $entity->getY(), $entity->getZ() & 15)] = $entity;
         $this->changed = true;
+        ++$this->revision;
     }
 
     public function removeBlockEntity(int $x, int $y, int $z) : void{
@@ -90,6 +143,7 @@ class Chunk{
         if(isset($this->blockEntities[$index])){
             unset($this->blockEntities[$index]);
             $this->changed = true;
+            ++$this->revision;
         }
     }
 
@@ -105,46 +159,35 @@ class Chunk{
     }
 
     public function getBiome(int $x, int $y, int $z) : int{
-        return $this->getSubChunkAt($x, $y, $z)->getBiome($x, $y & 0x0f, $z);
+        self::check($x, $y, $z, 0);
+
+        return $this->ffi->rx_chunk_get_biome($this->handle, $x, $y, $z);
     }
 
     public function setBiome(int $x, int $y, int $z, int $biomeId) : void{
-        $this->getSubChunkAt($x, $y, $z)->setBiome($x, $y & 0x0f, $z, $biomeId);
+        self::check($x, $y, $z, 0);
+        self::checkBiome($biomeId);
 
+        $this->ffi->rx_chunk_set_biome($this->handle, $x, $y, $z, $biomeId);
         $this->changed = true;
+        ++$this->revision;
     }
 
-    /**
-     * Replaces a whole sub-chunk, e.g. when loading from disk. Does not mark the chunk as changed.
-     */
-    public function setSubChunk(int $subChunkY, SubChunk $subChunk) : void{
-        $this->getSubChunk($subChunkY);
-        $this->subChunks[$subChunkY] = $subChunk;
-    }
+    public function fillBiome(int $biomeId) : void{
+        self::checkBiome($biomeId);
 
-    public function getSubChunk(int $subChunkY) : SubChunk{
-        return $this->subChunks[$subChunkY] ?? throw new InvalidArgumentException("Sub-chunk Y must be between " . self::MIN_SUBCHUNK . " and " . self::MAX_SUBCHUNK . ", got {$subChunkY}");
-    }
-
-    /**
-     * @return array<int, SubChunk> keyed by sub-chunk Y, bottom to top
-     */
-    public function getSubChunks() : array{
-        return $this->subChunks;
+        $this->ffi->rx_chunk_fill_biome($this->handle, $biomeId);
+        $this->changed = true;
+        ++$this->revision;
     }
 
     /**
      * Highest sub-chunk Y that contains blocks, or null when the whole chunk is air.
-     * The network serializer uses this to skip empty sub-chunks at the top.
      */
     public function getHighestNonEmptySubChunk() : ?int{
-        for($y = self::MAX_SUBCHUNK; $y >= self::MIN_SUBCHUNK; --$y){
-            if(!$this->subChunks[$y]->isEmpty()){
-                return $y;
-            }
-        }
+        $y = $this->ffi->rx_chunk_highest_subchunk($this->handle);
 
-        return null;
+        return $y === self::NO_SUBCHUNK ? null : $y;
     }
 
     public function isEmpty() : bool{
@@ -178,13 +221,66 @@ class Chunk{
         }
     }
 
+    /**
+     * Drops palette entries no block uses any more.
+     */
     public function collectGarbage() : void{
-        foreach($this->subChunks as $subChunk){
-            $subChunk->collectGarbage();
-        }
+        $this->ffi->rx_chunk_collect_garbage($this->handle);
     }
 
-    private function getSubChunkAt(int $x, int $y, int $z) : SubChunk{
+    /**
+     * The blocks and biomes as the native side writes them, for saving. Per sub-chunk from the
+     * bottom: a layer count byte, each layer, then the biomes, each of those a u32 palette
+     * count, the palette (u32 IDs) and, when there is more than one entry, 4096 u16 offsets.
+     */
+    public function exportStorage() : string{
+        $out = $this->ffi->new("char*");
+        $length = $this->ffi->new("size_t");
+
+        if($this->ffi->rx_chunk_export($this->handle, FFI::addr($out), FFI::addr($length)) !== 1){
+            throw new LogicException("The native chunk is gone");
+        }
+
+        return Native::take($out, $length->cdata);
+    }
+
+    /**
+     * Replaces the blocks and biomes with what exportStorage() gave. Does not mark the chunk as
+     * changed.
+     */
+    public function importStorage(string $data) : void{
+        if($this->ffi->rx_chunk_import($this->handle, $data, strlen($data)) !== 1){
+            throw new UnexpectedValueException("The block data is damaged");
+        }
+
+        ++$this->revision;
+    }
+
+    /**
+     * Encodes the chunk for the client on a worker thread: a LevelChunk packet in a batch of
+     * its own, compressed from $threshold bytes (negative for not at all). $onDone gets the
+     * bytes for the transport, on the main thread.
+     *
+     * @param Closure(string) : void $onDone
+     */
+    public function encode(int $threshold, Closure $onDone) : void{
+        $nbt = NbtSerializer::network();
+        $extra = "";
+
+        foreach($this->blockEntities as $entity){
+            $extra .= $nbt->write($entity->getSpawnData());
+        }
+
+        $id = $this->ffi->rx_chunk_encode($this->handle, $this->x, $this->z, $this->revision, $extra, strlen($extra), $threshold);
+
+        if($id === 0){
+            throw new LogicException("The native chunk is gone");
+        }
+
+        Native::await($id, $onDone);
+    }
+
+    private static function check(int $x, int $y, int $z, int $layer) : void{
         if($x < 0 || $x >= self::WIDTH || $z < 0 || $z >= self::WIDTH){
             throw new InvalidArgumentException("Local X and Z must be between 0 and 15, got {$x}, {$z}");
         }
@@ -193,6 +289,19 @@ class Chunk{
             throw new InvalidArgumentException("Y must be between " . self::MIN_Y . " and " . self::MAX_Y . ", got {$y}");
         }
 
-        return $this->subChunks[$y >> 4];
+        if($layer < 0 || $layer >= self::MAX_LAYERS){
+            throw new InvalidArgumentException("Block layer must be between 0 and " . (self::MAX_LAYERS - 1) . ", got {$layer}");
+        }
+    }
+
+    private static function checkBiome(int $biomeId) : void{
+        if($biomeId < 0 || $biomeId > 0xffff){
+            throw new InvalidArgumentException("Biome ID must be between 0 and 65535, got {$biomeId}");
+        }
+    }
+
+    private static function air() : BlockState{
+        static $air = null;
+        return $air ??= new BlockState(BlockIds::AIR);
     }
 }

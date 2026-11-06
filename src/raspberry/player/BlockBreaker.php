@@ -9,6 +9,7 @@ use raspberry\block\BlockIds;
 use raspberry\block\BlockProperties;
 use raspberry\block\BlockState;
 use raspberry\block\StairsShape;
+use raspberry\block\entity\Lectern;
 
 use raspberry\item\Item;
 use raspberry\item\ToolInfo;
@@ -50,7 +51,7 @@ class BlockBreaker{
 
     private Player $player;
 
-    /** @var array{int, int, int}|null the block being broken */
+    /** @var array{int, int, int}|null */
     private ?array $target = null;
 
     private int $startTick = 0;
@@ -66,6 +67,9 @@ class BlockBreaker{
 
     /** counts the client's input packets, one per client tick */
     private int $inputTicks = 0;
+
+    /** @var array{int, int, int, int}|null */
+    private ?array $tookBook = null;
 
     public function __construct(Player $player){
         $this->player = $player;
@@ -92,7 +96,7 @@ class BlockBreaker{
         }
 
         if(!$this->player->getGameMode()->hasInstantBuild()){
-            $ticks = BlockBreakInfo::get($block->getName())->getBreakTicks($this->player->getInventory()->getItemInHand(), $block->getName());
+            $ticks = BlockBreakInfo::get($block->getName())->getBreakTicks($this->player->getInventory()->getItemInHand(), $block->getName(), $this->player->getEffects()->getBreakSpeedMultiplier());
 
             if($ticks !== $this->breakTicks){
                 $this->breakTicks = $ticks;
@@ -127,7 +131,7 @@ class BlockBreaker{
 
         $block = $this->getBreakableBlock($x, $y, $z);
 
-        if($block === null){
+        if($block === null || $this->takeBook($x, $y, $z)){
             return;
         }
 
@@ -143,7 +147,7 @@ class BlockBreaker{
             return;
         }
 
-        $this->breakTicks = BlockBreakInfo::get($block->getName())->getBreakTicks($this->player->getInventory()->getItemInHand(), $block->getName());
+        $this->breakTicks = BlockBreakInfo::get($block->getName())->getBreakTicks($this->player->getInventory()->getItemInHand(), $block->getName(), $this->player->getEffects()->getBreakSpeedMultiplier());
 
         if($this->breakTicks > 0){
             $this->broadcast(LevelEventPacket::create(LevelEvent::START_BLOCK_CRACKING, $x, $y, $z, intdiv(65535, $this->breakTicks)), $x, $z);
@@ -179,6 +183,12 @@ class BlockBreaker{
         if($world->getBlock($x, $y, $z)->getName() === BlockIds::AIR){
             $this->abort();
             return; //already broken, the client sent more than one finish
+        }
+
+        //hitting a lectern takes its book, the lectern stays
+        if($this->tookBook !== null && [$this->tookBook[0], $this->tookBook[1], $this->tookBook[2]] === [$x, $y, $z] && $this->inputTicks - $this->tookBook[3] <= 10){
+            $this->player->getNetworkSession()->sendBlock($x, $y, $z, $world->getBlock($x, $y, $z));
+            return;
         }
 
         $creative = $this->player->getGameMode()->hasInstantBuild();
@@ -238,6 +248,27 @@ class BlockBreaker{
         return $block;
     }
 
+    private function takeBook(int $x, int $y, int $z) : bool{
+        $world = $this->player->getWorld();
+        $lectern = $world->getBlockEntity($x, $y, $z);
+        $book = $lectern instanceof Lectern ? $lectern->getBook() : null;
+
+        if($book === null){
+            return false;
+        }
+
+        $lectern->setBook(null);
+        $world->sendBlockEntity($lectern);
+        $world->getRedstoneUpdater()->update($x, $y, $z);
+        $this->tookBook = [$x, $y, $z, $this->inputTicks];
+
+        foreach($this->player->getInventory()->addItem($book) as $left){
+            $world->dropItem(new Vector3($x + 0.5, $y + 1, $z + 0.5), $left);
+        }
+
+        return true;
+    }
+
     private function breakBlock(int $x, int $y, int $z) : void{
         $player = $this->player;
         $world = $player->getWorld();
@@ -250,9 +281,9 @@ class BlockBreaker{
         $particles = LevelEventPacket::create(LevelEvent::PARTICLES_DESTROY_BLOCK, $x + 0.5, $y + 0.5, $z + 0.5, $this->getNetworkId($block));
         $this->broadcast($particles, $x, $z);
 
-        //in survival the client plays the break sound itself, in creative it waits for the server
         if($player->getGameMode()->hasInstantBuild()){
             $player->getNetworkSession()->sendDataPacket($particles);
+            $player->getNetworkSession()->sendDataPacket(LevelSoundEventPacket::create(LevelSoundEvent::BREAK, $x + 0.5, $y + 0.5, $z + 0.5, $this->getNetworkId($block)));
         }
 
         //the other half of a door, tall plant or bed goes with it
@@ -311,9 +342,6 @@ class BlockBreaker{
         return null;
     }
 
-    /**
-     * Tools lose durability when used; Unbreaking makes that less likely. A tool that runs out breaks.
-     */
     private function wearTool(int $amount) : void{
         $inventory = $this->player->getInventory();
         $item = $inventory->getItemInHand();

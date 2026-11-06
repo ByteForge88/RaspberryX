@@ -81,6 +81,7 @@ LANG_WORD_ALIASES = {"silver": "light_gray", "big": "dark"}
 SMALL_WORDS = {"of", "the", "and", "with", "on", "a", "in", "to"}
 
 CREATIVE_ITEMS_JSON = ROOT / "resources" / "vanilla" / "creative_items.json"
+ITEM_COMPONENTS_JSON = ROOT / "resources" / "vanilla" / "item_components.json"
 
 VALUE_OVERRIDES = {
     "minecraft:activator_rail": {"rail_direction": [0, 1, 2, 3, 4, 5]},
@@ -987,7 +988,9 @@ BLOCK_RULES = [
     (r"^(chest|trapped_chest|barrel|crafting_table|cartography_table|fletching_table|smithing_table|loom|lectern)$", 2.5, "axe", None, None),
     (r"^bookshelf$", 1.5, "axe", None, [drop("book", 3)]),
     (r"^chiseled_bookshelf$", 1.5, "axe", None, None),
-    (r"^(jukebox|campfire|soul_campfire)$", 2, "axe", None, None),
+    (r"^jukebox$", 2, "axe", None, None),
+    (r"^campfire$", 2, "axe", None, [drop("charcoal", 2)]),
+    (r"^soul_campfire$", 2, "axe", None, [drop("soul_soil")]),
     (r"^noteblock$", 0.8, "axe", None, None),
     (r"^(composter|beehive)$", 0.6, "axe", None, None),
     (r"^bee_nest$", 0.3, "axe", None, NOTHING),

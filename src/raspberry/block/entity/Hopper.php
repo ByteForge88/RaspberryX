@@ -64,6 +64,10 @@ class Hopper extends ContainerBlockEntity implements TickableBlockEntity{
 
         $this->cooldown = 0;
 
+        if($world->getBlock($this->getX(), $this->getY(), $this->getZ())->getProperty(BlockProperties::TOGGLE_BIT) === true){
+            return;
+        }
+
         if($this->push($world) | $this->pull($world)){
             $this->cooldown = self::TRANSFER_COOLDOWN;
             $this->setChanged();
@@ -153,11 +157,7 @@ class Hopper extends ContainerBlockEntity implements TickableBlockEntity{
         return false;
     }
 
-    /**
-     * The container whose items a hopper can move at a position: chests (both halves of a
-     * double chest), barrels, shulker boxes, hoppers, furnaces and brewing stands.
-     */
-    private static function getContainer(World $world, int $x, int $y, int $z) : ?ContainerBlockEntity{
+    public static function getContainer(World $world, int $x, int $y, int $z) : ?ContainerBlockEntity{
         if($y < Chunk::MIN_Y || $y > Chunk::MAX_Y || !$world->isChunkLoaded($x >> 4, $z >> 4)){
             return null;
         }
@@ -170,9 +170,13 @@ class Hopper extends ContainerBlockEntity implements TickableBlockEntity{
     /**
      * Puts one of $item into $target, in the slots items from that side go to.
      */
-    private static function insertOne(World $world, ContainerBlockEntity $target, Item $item, bool $fromAbove) : bool{
+    public static function insertOne(World $world, ContainerBlockEntity $target, Item $item, bool $fromAbove) : bool{
         $one = (clone $item)->setCount(1);
         $inventory = $target->getInventory();
+
+        if($target instanceof Crafter){
+            return $target->insertOne($one);
+        }
 
         $slots = match(true){
             $target instanceof Furnace => $fromAbove ? [Furnace::SLOT_INPUT] : (FurnaceData::getBurnTicks($one) > 0 ? [Furnace::SLOT_FUEL] : []),
@@ -227,6 +231,7 @@ class Hopper extends ContainerBlockEntity implements TickableBlockEntity{
         return match(true){
             $source instanceof Furnace => [Furnace::SLOT_OUTPUT],
             $source instanceof BrewingStand => BrewingStand::POTION_SLOTS,
+            $source instanceof Crafter => [],
             default => self::allSlots($source->getInventory())
         };
     }

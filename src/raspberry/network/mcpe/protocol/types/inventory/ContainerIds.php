@@ -13,6 +13,7 @@ class ContainerIds{
     public const ARMOR = 6;
     /** chests, ender chests and hoppers */
     public const LEVEL_ENTITY = 7;
+    public const BEACON_PAYMENT = 8;
     public const BREWING_STAND_INPUT = 9;
     public const BREWING_STAND_RESULT = 10;
     public const BREWING_STAND_FUEL = 11;
@@ -42,6 +43,7 @@ class ContainerIds{
     public const CURSOR = 59;
     public const CREATED_OUTPUT = 60;
     public const SMITHING_TABLE_TEMPLATE = 61;
+    public const CRAFTER = 62;
 
     private function __construct(){
     }

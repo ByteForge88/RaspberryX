@@ -30,7 +30,7 @@ try{
         throw new RuntimeException("RaspberryX requires 64-bit PHP");
     }
 
-    foreach(["phar", "webrtc", "openssl", "json", "zlib"] as $extension){
+    foreach(["phar", "webrtc", "openssl", "json", "zlib", "ffi"] as $extension){
         if(!extension_loaded($extension)){
             throw new RuntimeException("Required PHP extension is missing: {$extension}");
         }

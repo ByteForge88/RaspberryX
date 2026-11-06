@@ -48,6 +48,10 @@ class StackRequestAction{
     /** loom: the banner pattern ID */
     public string $pattern = "";
 
+    /** beacon: the effects picked, 0 for none */
+    public int $primaryEffect = 0;
+    public int $secondaryEffect = 0;
+
     public function __construct(int $type){
         $this->type = $type;
     }

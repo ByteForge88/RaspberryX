@@ -9,6 +9,9 @@ use raspberry\block\BlockState;
 use raspberry\block\BlockCollision;
 use raspberry\block\BlockProperties;
 use raspberry\block\entity\Chest;
+use raspberry\block\entity\Crafter;
+use raspberry\block\entity\Jukebox;
+use raspberry\block\entity\Lectern;
 use raspberry\block\entity\Comparator;
 use raspberry\block\entity\ContainerBlockEntity;
 
@@ -77,6 +80,7 @@ class RedstoneSignal{
             $name === BlockIds::POWERED_COMPARATOR, $name === BlockIds::UNPOWERED_COMPARATOR => $direction === self::getFacing($block) ? $this->getComparatorOutput($x, $y, $z) : 0,
             $name === BlockIds::OBSERVER => $block->getProperty(BlockProperties::POWERED_BIT) === true && $direction === Facing::opposite(self::getObserverFacing($block)) ? 15 : 0,
             $name === BlockIds::TRAPPED_CHEST => $this->getTrappedChestPower($x, $y, $z),
+            $name === BlockIds::LECTERN => $block->getProperty(BlockProperties::POWERED_BIT) === true ? 15 : 0,
             default => 0
         };
     }
@@ -92,7 +96,7 @@ class RedstoneSignal{
         return match(true){
             $name === BlockIds::REDSTONE_TORCH => $direction === Facing::UP ? 15 : 0,
             $name === BlockIds::LEVER, preg_match(self::BUTTON, $name) === 1 => $direction === self::getAttachment($block) ? $this->emit($x, $y, $z, $direction) : 0,
-            preg_match(self::PRESSURE_PLATE, $name) === 1, $name === BlockIds::TRAPPED_CHEST => $direction === Facing::DOWN ? $this->emit($x, $y, $z, $direction) : 0,
+            preg_match(self::PRESSURE_PLATE, $name) === 1, $name === BlockIds::TRAPPED_CHEST, $name === BlockIds::LECTERN => $direction === Facing::DOWN ? $this->emit($x, $y, $z, $direction) : 0,
             $name === BlockIds::POWERED_REPEATER, $name === BlockIds::POWERED_COMPARATOR, $name === BlockIds::UNPOWERED_COMPARATOR, $name === BlockIds::OBSERVER => $this->emit($x, $y, $z, $direction),
             default => 0
         };
@@ -286,6 +290,10 @@ class RedstoneSignal{
         }
 
         $entity = $this->world->isChunkLoaded($x >> 4, $z >> 4) ? $this->world->getBlockEntity($x, $y, $z) : null;
+
+        if($entity instanceof Jukebox || $entity instanceof Lectern || $entity instanceof Crafter){
+            return $entity->getSignal();
+        }
 
         if(!$entity instanceof ContainerBlockEntity){
             return null;

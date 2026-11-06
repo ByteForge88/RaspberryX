@@ -40,7 +40,15 @@ class ShulkerBox extends ContainerBlockEntity{
 
     public function onPlace(Item $item, Player $player, int $face) : void{
         parent::onPlace($item, $player, $face);
-        $this->facing = $face;
+        $this->loadFromItem($item, $face);
+    }
+
+    /**
+     * Takes the contents the box item carries, for a box put down by a player or a dispenser.
+     */
+    public function loadFromItem(Item $item, int $facing) : void{
+        $this->facing = $facing;
+        $this->setCustomName($item->getCustomName());
         $this->getInventory()->setContents(self::readItems($item->getExtraTags()));
     }
 

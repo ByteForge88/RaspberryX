@@ -1,0 +1,21 @@
+[package]
+name = "raspberry-native"
+version = "0.1.0"
+edition = "2021"
+description = "The native half of RaspberryX: work that is too heavy for PHP, run on its own threads"
+license = "LGPL-3.0"
+publish = false
+
+[lib]
+name = "raspberry_native"
+crate-type = ["cdylib"]
+
+[dependencies]
+#deflate for packet compression
+miniz_oxide = "0.8.9"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "unwind"

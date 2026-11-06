@@ -76,8 +76,11 @@ class StartGamePacket implements Packet{
 
     public bool $commandsEnabled = true;
 
-    public string $baseGameVersion = "*";
+    public string $baseGameVersion = ProtocolInfo::MINECRAFT_VERSION_NETWORK;
     public string $gameVersion = ProtocolInfo::MINECRAFT_VERSION_NETWORK;
+
+    /** @var list<array{string, string}> */
+    public array $blockDefinitions = [];
 
     public bool $serverAuthoritativeInventory = false;
     public bool $serverAuthoritativeBlockBreaking = false;
@@ -169,7 +172,13 @@ class StartGamePacket implements Packet{
         $writer->writeBool($this->serverAuthoritativeBlockBreaking);
         $writer->writeLong($this->time);
         $writer->writeVarInt(0); //enchantment seed
-        $writer->writeUnsignedVarInt(0); //custom blocks
+        $writer->writeUnsignedVarInt(count($this->blockDefinitions));
+
+        foreach($this->blockDefinitions as [$name, $components]){
+            $writer->writeString($name);
+            $writer->writeBytes($components);
+        }
+
         $writer->writeString(self::randomUuid()); //multiplayer correlation ID
         $writer->writeBool($this->serverAuthoritativeInventory);
         $writer->writeString($this->gameVersion);

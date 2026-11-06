@@ -12,7 +12,7 @@ use UnexpectedValueException;
 class ResourcePackStackPacket implements Packet{
 
     //TODO: custom resource packs
-    public string $baseGameVersion = "*";
+    public string $baseGameVersion = ProtocolInfo::MINECRAFT_VERSION_NETWORK;
 
     public static function getPacketId() : int{
         return ProtocolPacketIds::RESOURCE_PACK_STACK_PACKET;

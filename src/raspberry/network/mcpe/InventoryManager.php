@@ -126,6 +126,17 @@ class InventoryManager implements InventoryListener{
         return $window;
     }
 
+    /**
+     * Opens a screen the server keeps nothing for, like a lectern's book. The client does not
+     * say when it closes.
+     */
+    public function openScreen(int $type, int $x, int $y, int $z) : void{
+        $this->closeWindow(true);
+
+        $this->lastWindowId = $this->lastWindowId % self::MAX_WINDOW_ID + 1;
+        $this->session->sendDataPacket(ContainerOpenPacket::create($this->lastWindowId, $type, $x, $y, $z, -1));
+    }
+
     public function closeWindow(bool $tellClient) : void{
         $window = $this->window;
 

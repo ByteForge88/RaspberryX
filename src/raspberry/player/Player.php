@@ -8,6 +8,8 @@ use raspberry\entity\Human;
 use raspberry\entity\Skin;
 use raspberry\entity\damage\DamageSource;
 use raspberry\entity\object\ItemEntity;
+use raspberry\entity\effect\Effect;
+use raspberry\entity\effect\EffectInstance;
 
 use raspberry\inventory\ArmorInventory;
 use raspberry\inventory\Inventory;
@@ -26,6 +28,7 @@ use raspberry\nbt\NbtException;
 
 use raspberry\block\BlockIds;
 use raspberry\block\BlockCollision;
+use raspberry\block\BlockProperties;
 
 use raspberry\command\CommandSender;
 
@@ -37,6 +40,7 @@ use raspberry\network\mcpe\protocol\ActorEventPacket;
 use raspberry\network\mcpe\protocol\AnimatePacket;
 use raspberry\network\mcpe\protocol\LevelEventPacket;
 use raspberry\network\mcpe\protocol\LevelSoundEventPacket;
+use raspberry\network\mcpe\protocol\MobEffectPacket;
 use raspberry\network\mcpe\protocol\SetTitlePacket;
 use raspberry\network\mcpe\protocol\TextPacket;
 use raspberry\network\mcpe\protocol\ToastRequestPacket;
@@ -84,6 +88,8 @@ class Player extends Human implements CommandSender{
     private const SUFFOCATION_DAMAGE = 1.0;
     private const SUFFOCATION_TICKS = 10;
 
+    private const FIRE_DAMAGE_TICKS = 10;
+
     /** falls up to this many blocks do no damage */
     public const SAFE_FALL_DISTANCE = 3.0;
 
@@ -111,6 +117,7 @@ class Player extends Human implements CommandSender{
     public const UI_ENCHANTING_LAPIS = 15;
     public const UI_GRINDSTONE_INPUT = 16;
     public const UI_GRINDSTONE_ADDITIONAL = 17;
+    public const UI_BEACON_PAYMENT = 27;
     public const UI_SMITHING_INPUT = 51;
     public const UI_SMITHING_MATERIAL = 52;
     public const UI_SMITHING_TEMPLATE = 53;
@@ -139,6 +146,8 @@ class Player extends Human implements CommandSender{
     private int $lastVoidDamageTick = 0;
 
     private int $lastSuffocationTick = 0;
+
+    private int $lastFireDamageTick = 0;
 
     private int $xpLevel = 0;
 
@@ -177,6 +186,8 @@ class Player extends Human implements CommandSender{
 
     private ContainerOpener $containerOpener;
 
+    private ItemUser $itemUser;
+
     public function __construct(World $world, Vector3 $position, NetworkSession $session, AuthenticatedLogin $identity, GameMode $gameMode, Skin $skin){
         $this->session = $session;
         $this->identity = $identity;
@@ -192,6 +203,7 @@ class Player extends Human implements CommandSender{
         $this->blockBreaker = new BlockBreaker($this);
         $this->blockPlacer = new BlockPlacer($this);
         $this->containerOpener = new ContainerOpener($this);
+        $this->itemUser = new ItemUser($this);
 
         foreach([$this->inventory, $this->armorInventory, $this->offHandInventory, $this->uiInventory] as $inventory){
             $inventory->addListener($this->recipeBook);
@@ -220,6 +232,15 @@ class Player extends Human implements CommandSender{
 
     public function loadData(CompoundTag $data) : void{
         $this->gameMode = GameMode::tryFrom($data->getInt("PlayerGameType", $this->gameMode->value)) ?? $this->gameMode;
+
+        foreach($data->getListTag("ActiveEffects")?->getValue() ?? [] as $tag){
+            $effect = $tag instanceof CompoundTag ? Effect::tryFrom($tag->getByte("Id", 0) ?? 0) : null;
+
+            if($effect !== null && !$effect->isInstant() && ($duration = $tag->getInt("Duration", 0) ?? 0) > 0){
+                $this->effects->add(new EffectInstance($effect, $duration, $tag->getByte("Amplifier", 0) ?? 0, $tag->getByte("Ambient", 0) === 1, $tag->getByte("ShowParticles", 1) !== 0), true);
+            }
+        }
+
         $this->flying = $this->gameMode->forcesFlying() || ($this->gameMode->allowsFlying() && $data->getByte("Flying", 0) === 1);
 
         $this->health = max(0.0, min($data->getFloat("Health", $this->maxHealth), $this->maxHealth));
@@ -293,8 +314,7 @@ class Player extends Human implements CommandSender{
             ->setTag("Offhand", self::writeItems($this->offHandInventory, false))
             ->setTag("EnderChestInventory", self::writeItems($this->enderInventory, true))
             ->setTag("UnlockedRecipes", new ListTag(array_map(fn(string $id) => new StringTag($id), $this->recipeBook->getUnlocked()), StringTag::TAG_STRING))
-            //filled in once effects exist
-            ->setTag("ActiveEffects", new ListTag([], CompoundTag::TAG_COMPOUND));
+            ->setTag("ActiveEffects", $this->saveEffects());
 
         if($this->spawnPosition !== null && $this->spawnWorldName !== null){
             $data->setString("SpawnWorld", $this->spawnWorldName)
@@ -304,6 +324,21 @@ class Player extends Human implements CommandSender{
         }
 
         return $data;
+    }
+
+    private function saveEffects() : ListTag{
+        $list = [];
+
+        foreach($this->dead ? [] : $this->effects->all() as $effect){
+            $list[] = (new CompoundTag())
+                ->setByte("Id", $effect->getEffect()->value)
+                ->setByte("Amplifier", $effect->getAmplifier())
+                ->setInt("Duration", $effect->getDuration())
+                ->setByte("Ambient", $effect->isAmbient() ? 1 : 0)
+                ->setByte("ShowParticles", $effect->isVisible() ? 1 : 0);
+        }
+
+        return new ListTag($list, CompoundTag::TAG_COMPOUND);
     }
 
     public function getName() : string{
@@ -397,6 +432,10 @@ class Player extends Human implements CommandSender{
 
     public function getContainerOpener() : ContainerOpener{
         return $this->containerOpener;
+    }
+
+    public function getItemUser() : ItemUser{
+        return $this->itemUser;
     }
 
     public function getXpLevel() : int{
@@ -669,7 +708,36 @@ class Player extends Human implements CommandSender{
     }
 
     protected function canBeDamagedBy(DamageSource $source) : bool{
-        return !$this->dead && (!$this->gameMode->isInvulnerable() || $source->bypassesGameMode());
+        return !$this->dead && (!$this->gameMode->isInvulnerable() || $source->bypassesGameMode()) && parent::canBeDamagedBy($source);
+    }
+
+    public function onEffectAdded(EffectInstance $effect, ?EffectInstance $old) : void{
+        parent::onEffectAdded($effect, $old);
+
+        if($this->spawned){
+            $this->session->sendEffect($old === null ? MobEffectPacket::EVENT_ADD : MobEffectPacket::EVENT_UPDATE, $effect);
+            $this->broadcastEffectVisuals();
+        }
+    }
+
+    public function onEffectRemoved(EffectInstance $effect) : void{
+        parent::onEffectRemoved($effect);
+
+        if($this->spawned){
+            $this->session->sendEffect(MobEffectPacket::EVENT_REMOVE, $effect);
+            $this->broadcastEffectVisuals();
+        }
+    }
+
+    /**
+     * Others see effect particles and invisibility through the player's metadata.
+     */
+    private function broadcastEffectVisuals() : void{
+        $this->session->sendOwnMetadata();
+
+        foreach($this->viewers as $viewer){
+            $viewer->getNetworkSession()->sendHumanMetadata($this);
+        }
     }
 
     protected function onDamaged(DamageSource $source) : void{
@@ -704,6 +772,7 @@ class Player extends Human implements CommandSender{
 
         $this->deathCause = null;
         $this->dead = true;
+        $this->effects->clear();
 
         if(!$this->session->getServer()->isKeepInventory()){
             $this->dropInventory();
@@ -724,6 +793,12 @@ class Player extends Human implements CommandSender{
             return;
         }
 
+        $this->effects->tick();
+
+        if($this->dead){
+            return;
+        }
+
         if(!$this->gameMode->isInvulnerable()){
             $this->tickHunger($this->session->getServer()->getDifficulty());
         }
@@ -738,6 +813,11 @@ class Player extends Human implements CommandSender{
         if($currentTick - $this->lastSuffocationTick >= self::SUFFOCATION_TICKS && $this->isHeadInBlock()){
             $this->lastSuffocationTick = $currentTick;
             $this->damage(new DamageSource(DamageSource::CAUSE_SUFFOCATION, self::SUFFOCATION_DAMAGE));
+        }
+
+        if($currentTick - $this->lastFireDamageTick >= self::FIRE_DAMAGE_TICKS && ($fire = $this->getFireAtFeet()) !== null){
+            $this->lastFireDamageTick = $currentTick;
+            $this->damage($fire);
         }
 
         $this->containerOpener->tick();
@@ -755,6 +835,27 @@ class Player extends Human implements CommandSender{
         [$x, $y, $z] = [$eyes->getFloorX(), $eyes->getFloorY(), $eyes->getFloorZ()];
 
         return $y >= Chunk::MIN_Y && $y <= Chunk::MAX_Y && $this->world->isChunkLoaded($x >> 4, $z >> 4) && BlockCollision::isFullCube($this->world->getBlock($x, $y, $z));
+    }
+
+    /**
+     * The damage from what the player stands in: a lit campfire burns, a soul campfire twice as
+     * much, and a cauldron of lava like lava does.
+     */
+    private function getFireAtFeet() : ?DamageSource{
+        [$x, $y, $z] = [$this->position->getFloorX(), $this->position->getFloorY(), $this->position->getFloorZ()];
+
+        if(!$this->gameMode->hasCollision() || $y < Chunk::MIN_Y || $y > Chunk::MAX_Y || !$this->world->isChunkLoaded($x >> 4, $z >> 4)){
+            return null;
+        }
+
+        $block = $this->world->getBlock($x, $y, $z);
+
+        return match(true){
+            $block->getName() === BlockIds::CAMPFIRE && $block->getProperty(BlockProperties::EXTINGUISHED) === false => new DamageSource(DamageSource::CAUSE_FIRE, 1.0),
+            $block->getName() === BlockIds::SOUL_CAMPFIRE && $block->getProperty(BlockProperties::EXTINGUISHED) === false => new DamageSource(DamageSource::CAUSE_FIRE, 2.0),
+            $block->getName() === BlockIds::CAULDRON && $block->getProperty(BlockProperties::CAULDRON_LIQUID) === "lava" && $block->getProperty(BlockProperties::FILL_LEVEL) > 0 => new DamageSource(DamageSource::CAUSE_LAVA, 4.0),
+            default => null
+        };
     }
 
     /**
@@ -782,14 +883,14 @@ class Player extends Human implements CommandSender{
     }
 
     private function updateFallDistance(float $dy, bool $onGround) : void{
-        if($this->flying || $this->swimming || $this->isInWater()){
+        if($this->flying || $this->swimming || $this->isInWater() || $this->effects->has(Effect::SLOW_FALLING) || $this->effects->has(Effect::LEVITATION)){
             $this->fallDistance = 0.0;
             return;
         }
 
         if($onGround){
             $this->fallDistance -= min($dy, 0.0);
-            $damage = $this->fallDistance - self::SAFE_FALL_DISTANCE;
+            $damage = $this->fallDistance - self::SAFE_FALL_DISTANCE - $this->effects->getLevel(Effect::JUMP_BOOST);
             $this->fallDistance = 0.0;
 
             if($damage >= 0.5){
@@ -926,10 +1027,18 @@ class Player extends Human implements CommandSender{
     }
 
     /**
-     * @internal called by NetworkSession when the client reports it has loaded
+     * @internal
      */
     public function onSpawned() : void{
         $this->spawned = true;
+
+        foreach($this->effects->all() as $effect){
+            $this->session->sendEffect(MobEffectPacket::EVENT_ADD, $effect);
+        }
+
+        if($this->effects->all() !== []){
+            $this->session->sendOwnMetadata();
+        }
     }
 
     public function isOnline() : bool{

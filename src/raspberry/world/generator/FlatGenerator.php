@@ -106,20 +106,14 @@ class FlatGenerator implements Generator{
 
     public function generateChunk(Chunk $chunk) : void{
         if($this->biomeId !== Chunk::DEFAULT_BIOME){
-            foreach($chunk->getSubChunks() as $subChunk){
-                $subChunk->getBiomeStorage()->fill($this->biomeId);
-            }
+            $chunk->fillBiome($this->biomeId);
         }
 
-        for($x = 0; $x < Chunk::WIDTH; ++$x){
-            for($z = 0; $z < Chunk::WIDTH; ++$z){
-                $y = self::BOTTOM_Y;
+        $y = self::BOTTOM_Y;
 
-                foreach($this->column as $block){
-                    $chunk->setBlock($x, $y, $z, $block);
-                    ++$y;
-                }
-            }
+        foreach($this->column as $block){
+            $chunk->fill($y, $y, $block);
+            ++$y;
         }
     }
 }

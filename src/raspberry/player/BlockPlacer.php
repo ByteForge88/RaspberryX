@@ -5,26 +5,36 @@ declare(strict_types=1);
 namespace raspberry\player;
 
 use raspberry\block\BlockCollision;
+use raspberry\block\BoneMeal;
 use raspberry\block\BlockIds;
 use raspberry\block\BlockOrientation;
 use raspberry\block\BlockProperties;
 use raspberry\block\BlockState;
+use raspberry\block\Cauldrons;
 use raspberry\block\ItemBlocks;
 use raspberry\block\StairsShape;
 use raspberry\block\entity\Sign;
 use raspberry\block\entity\Chest;
+use raspberry\block\entity\Jukebox;
+use raspberry\block\entity\Lectern;
+use raspberry\block\entity\FlowerPot;
+use raspberry\block\entity\Campfire;
+use raspberry\block\entity\BlockEntity;
 use raspberry\block\entity\BlockEntityFactory;
 
 use raspberry\entity\Human;
 
 use raspberry\item\Item;
 use raspberry\item\ItemIds;
+use raspberry\item\ToolInfo;
+use raspberry\item\enchantment\Enchantment;
 
 use raspberry\math\Facing;
 use raspberry\math\Vector3;
 
 use raspberry\nbt\tag\CompoundTag;
 
+use raspberry\network\mcpe\ContainerWindow;
 use raspberry\network\mcpe\protocol\AnimatePacket;
 use raspberry\network\mcpe\protocol\OpenSignPacket;
 use raspberry\network\mcpe\protocol\BlockActorDataPacket;
@@ -39,6 +49,7 @@ use raspberry\world\Chunk;
 use function abs;
 use function floor;
 use function mb_check_encoding;
+use function mt_rand;
 use function preg_match;
 use function rtrim;
 use function str_replace;
@@ -105,6 +116,11 @@ class BlockPlacer{
         $clicked = $world->getBlock($x, $y, $z);
         $held = $player->getInventory()->getItemInHand();
 
+        if(($held->getId() === ItemIds::FLINT_AND_STEEL || $held->getId() === ItemIds::FIRE_CHARGE) && $this->light($x, $y, $z, $clicked, $held)){
+            $player->swingArm(AnimatePacket::SWING_INTERACT);
+            return;
+        }
+
         if(!$player->isSneaking() || $held->isNull()){
             if($this->useBlock($x, $y, $z, $clicked)){
                 $player->swingArm(AnimatePacket::SWING_INTERACT);
@@ -117,6 +133,15 @@ class BlockPlacer{
         }
 
         if($held->isNull()){
+            return;
+        }
+
+        if($held->getId() === ItemIds::BONE_MEAL){
+            if($player->getGameMode()->allowsBuilding() && BoneMeal::grow($world, $x, $y, $z)){
+                $player->swingArm(AnimatePacket::SWING_INTERACT);
+                $this->useUpHeld($held);
+            }
+
             return;
         }
 
@@ -133,8 +158,24 @@ class BlockPlacer{
 
         $player->swingArm(AnimatePacket::SWING_BUILD);
 
-        if(!$player->getGameMode()->hasInstantBuild()){
-            $player->getInventory()->setItemInHand($held->getCount() > 1 ? $held->setCount($held->getCount() - 1) : Item::air());
+        $this->useUpHeld($held);
+    }
+
+    /**
+     * Takes one of the held item, outside creative.
+     */
+    private function useUpHeld(Item $held) : void{
+        if(!$this->player->getGameMode()->hasInstantBuild()){
+            $this->player->getInventory()->setItemInHand($held->getCount() > 1 ? $held->setCount($held->getCount() - 1) : Item::air());
+        }
+    }
+
+    /**
+     * Gives the player an item, it drops at their feet when there is no room.
+     */
+    private function give(Item $item) : void{
+        foreach($this->player->getInventory()->addItem($item) as $left){
+            $this->player->getWorld()->dropItem($this->player->getPosition(), $left);
         }
     }
 
@@ -148,6 +189,26 @@ class BlockPlacer{
         if($entity instanceof Sign){
             $this->useSign($entity, $block);
             return true;
+        }
+
+        if($entity instanceof Jukebox){
+            return $this->useJukebox($entity);
+        }
+
+        if($entity instanceof Lectern){
+            return $this->useLectern($entity);
+        }
+
+        if($entity instanceof FlowerPot){
+            return $this->useFlowerPot($entity);
+        }
+
+        if(Campfire::isCampfire($name)){
+            return $this->useCampfire($x, $y, $z, $block, $entity);
+        }
+
+        if($name === BlockIds::CAULDRON){
+            return Cauldrons::use($this->player, $x, $y, $z, $block);
         }
 
         if($this->player->getContainerOpener()->open($x, $y, $z, $block)){
@@ -350,6 +411,205 @@ class BlockPlacer{
         }
 
         return true;
+    }
+
+    /**
+     * Lights a campfire or candles that are out. False when the block does not light.
+     */
+    private function light(int $x, int $y, int $z, BlockState $block, Item $held) : bool{
+        $name = $block->getName();
+
+        $lit = match(true){
+            Campfire::isCampfire($name) && $block->getProperty(BlockProperties::EXTINGUISHED) === true => $block->withProperty(BlockProperties::EXTINGUISHED, false),
+            preg_match('/^minecraft:(\w+_)?candle(_cake)?$/D', $name) === 1 && $block->getProperty(BlockProperties::LIT) === false => $block->withProperty(BlockProperties::LIT, true),
+            default => null
+        };
+
+        if($lit === null || !$this->player->getGameMode()->allowsBuilding()){
+            return false;
+        }
+
+        $this->player->getWorld()->setBlock($x, $y, $z, $lit);
+
+        if($held->getId() === ItemIds::FIRE_CHARGE){
+            $this->player->getWorld()->broadcastPacket($x, $z, LevelEventPacket::create(LevelEvent::SOUND_BLAZE_FIREBALL, $x + 0.5, $y + 0.5, $z + 0.5));
+            $this->useUpHeld($held);
+        }else{
+            $this->playSound(LevelSoundEvent::IGNITE, $x, $y, $z, null);
+            $this->wearHeld();
+        }
+
+        return true;
+    }
+
+    /**
+     * A shovel puts a lit campfire out, raw food goes on it to cook.
+     */
+    private function useCampfire(int $x, int $y, int $z, BlockState $block, ?BlockEntity $entity) : bool{
+        $world = $this->player->getWorld();
+        $held = $this->player->getInventory()->getItemInHand();
+
+        if($held->isNull() || !$this->player->getGameMode()->allowsBuilding()){
+            return false;
+        }
+
+        if(!$entity instanceof Campfire){
+            $entity = new Campfire($x, $y, $z);
+            $world->addBlockEntity($entity);
+        }
+
+        if(ToolInfo::getType($held->getId()) === "shovel"){
+            if($entity->extinguish($world)){
+                $this->wearHeld();
+                return true;
+            }
+
+            return false;
+        }
+
+        if($entity->addItem($world, $held)){
+            $this->useUpHeld($held);
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Wears the held tool down by one use, unbreaking can save it.
+     */
+    private function wearHeld() : void{
+        $inventory = $this->player->getInventory();
+        $item = $inventory->getItemInHand();
+
+        if($this->player->getGameMode()->hasInstantBuild() || !$item->hasDurability()){
+            return;
+        }
+
+        $unbreaking = $item->getEnchantmentLevel(Enchantment::UNBREAKING);
+
+        if($unbreaking > 0 && mt_rand(0, $unbreaking) !== 0){
+            return;
+        }
+
+        if($item->getDamage() + 1 >= $item->getMaxDurability()){
+            $inventory->setItemInHand(Item::air());
+            $position = $this->player->getPosition();
+            $this->player->getNetworkSession()->sendDataPacket(LevelSoundEventPacket::create(LevelSoundEvent::BREAK, $position->x, $position->y, $position->z));
+            return;
+        }
+
+        $inventory->setItemInHand($item->setDamage($item->getDamage() + 1));
+    }
+
+    /**
+     * A disc goes in, or the one playing comes out.
+     */
+    private function useJukebox(Jukebox $jukebox) : bool{
+        $held = $this->player->getInventory()->getItemInHand();
+
+        if($jukebox->getRecord() !== null){
+            $jukebox->eject($this->player->getWorld());
+            return true;
+        }
+
+        if(!Jukebox::isDisc($held)){
+            return false;
+        }
+
+        $jukebox->insert($this->player->getWorld(), $held);
+        $this->useUpHeld($held);
+
+        return true;
+    }
+
+    /**
+     * A book is put on the lectern, or the one on it is opened.
+     */
+    private function useLectern(Lectern $lectern) : bool{
+        $world = $this->player->getWorld();
+        $held = $this->player->getInventory()->getItemInHand();
+        [$x, $y, $z] = [$lectern->getX(), $lectern->getY(), $lectern->getZ()];
+
+        if($lectern->getBook() !== null){
+            $this->player->getNetworkSession()->getInventoryManager()?->openScreen(ContainerWindow::TYPE_LECTERN, $x, $y, $z);
+            return true;
+        }
+
+        if(!Lectern::isBook($held)){
+            return false;
+        }
+
+        $lectern->setBook($held);
+        $this->useUpHeld($held);
+        $world->sendBlockEntity($lectern);
+        $world->getRedstoneUpdater()->update($x, $y, $z);
+        $this->playSound(LevelSoundEvent::ITEM_BOOK_PUT, $x, $y, $z, null);
+
+        return true;
+    }
+
+    /**
+     * The client turned a page of the book on a lectern.
+     */
+    public function turnLecternPage(int $x, int $y, int $z, int $page) : void{
+        if(!$this->isLoaded($x, $y, $z) || $this->player->getEyePosition()->distance(new Vector3($x + 0.5, $y + 0.5, $z + 0.5)) > ContainerOpener::MAX_DISTANCE){
+            return;
+        }
+
+        $world = $this->player->getWorld();
+        $lectern = $world->getBlockEntity($x, $y, $z);
+
+        if(!$lectern instanceof Lectern || $lectern->getBook() === null || $page < 0 || $page >= $lectern->getTotalPages() || $page === $lectern->getPage()){
+            return;
+        }
+
+        $lectern->setPage($page);
+        $world->sendBlockEntity($lectern);
+        $world->getRedstoneUpdater()->pulseLectern($x, $y, $z);
+        $world->getRedstoneUpdater()->update($x, $y, $z);
+    }
+
+    /**
+     * A plant goes in the pot, or the one in it comes out.
+     */
+    private function useFlowerPot(FlowerPot $pot) : bool{
+        $held = $this->player->getInventory()->getItemInHand();
+        $plant = $pot->getPlant();
+        $registry = $this->player->getNetworkSession()->getServer()->getBlockStateRegistry();
+        $blocks = $held->isNull() ? null : ItemBlocks::get($held->getId(), $registry);
+        $pottable = $blocks !== null && FlowerPot::canHold($blocks[0]);
+
+        if($plant !== null){
+            if($pottable){
+                return false;
+            }
+
+            $this->setPotPlant($pot, null);
+            $this->give(new Item($plant->getName()));
+            return true;
+        }
+
+        if(!$pottable){
+            return false;
+        }
+
+        $this->setPotPlant($pot, $registry->getDefaultState($blocks[0]));
+        $this->useUpHeld($held);
+
+        return true;
+    }
+
+    /**
+     * The client only redraws a pot when the block itself changes, update_bit is flipped for that.
+     */
+    private function setPotPlant(FlowerPot $pot, ?BlockState $plant) : void{
+        $world = $this->player->getWorld();
+        [$x, $y, $z] = [$pot->getX(), $pot->getY(), $pot->getZ()];
+
+        $pot->setPlant($plant);
+        $world->setBlock($x, $y, $z, $world->getBlock($x, $y, $z)->withProperty(BlockProperties::UPDATE_BIT, $plant !== null));
+        $world->sendBlockEntity($pot);
     }
 
     private function pairChest(Chest $chest, BlockState $state) : void{

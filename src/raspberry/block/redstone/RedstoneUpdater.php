@@ -11,6 +11,8 @@ use raspberry\block\BlockState;
 use raspberry\block\BlockBreakInfo;
 use raspberry\block\BlockCollision;
 use raspberry\block\BlockProperties;
+use raspberry\block\entity\Crafter;
+use raspberry\block\entity\Dispenser;
 use raspberry\block\entity\Comparator;
 use raspberry\block\entity\BlockEntityFactory;
 
@@ -60,6 +62,8 @@ class RedstoneUpdater{
     private const COMPARATOR_DELAY = 2;
     private const OBSERVER_DELAY = 2;
     private const LAMP_OFF_DELAY = 4;
+    private const DISPENSER_DELAY = 4;
+    private const LECTERN_PULSE = 2;
 
     /** a torch that turns off this many times within TORCH_BURNOUT_TICKS stays off for a while */
     private const TORCH_BURNOUT_COUNT = 8;
@@ -81,7 +85,7 @@ class RedstoneUpdater{
     ];
 
     /** blocks whose change can change the power of blocks two away */
-    private const POWER_BLOCKS = '/^minecraft:(redstone_wire|redstone_block|(unlit_)?redstone_torch|lever|\w+_button|\w+_pressure_plate|(powered|unpowered)_(repeater|comparator)|observer|daylight_detector(_inverted)?|trapped_chest)$/D';
+    private const POWER_BLOCKS = '/^minecraft:(redstone_wire|redstone_block|(unlit_)?redstone_torch|lever|\w+_button|\w+_pressure_plate|(powered|unpowered)_(repeater|comparator)|observer|daylight_detector(_inverted)?|trapped_chest|lectern)$/D';
 
     private const COPPER_BULB = '/^minecraft:(waxed_)?((exposed|weathered|oxidized)_)?copper_bulb$/D';
 
@@ -250,8 +254,25 @@ class RedstoneUpdater{
             $name === BlockIds::DAYLIGHT_DETECTOR, $name === BlockIds::DAYLIGHT_DETECTOR_INVERTED => $this->updateDaylightDetector($x, $y, $z, $block),
             preg_match(self::COPPER_BULB, $name) === 1 => $this->updateCopperBulb($x, $y, $z, $block),
             $block->hasProperty(BlockProperties::DOOR_HINGE_BIT), preg_match('/(trapdoor|fence_gate)$/D', $name) === 1 => $this->updateOpenable($x, $y, $z, $block),
+            $name === BlockIds::DISPENSER, $name === BlockIds::DROPPER, $name === BlockIds::CRAFTER => $this->updateTriggered($x, $y, $z, $block),
+            $name === BlockIds::HOPPER => $this->updateHopper($x, $y, $z, $block),
             default => null
         };
+    }
+
+    /**
+     * A lectern gives a short pulse when its page is turned.
+     */
+    public function pulseLectern(int $x, int $y, int $z) : void{
+        $block = $this->signal->getBlock($x, $y, $z);
+
+        if($block->getName() !== BlockIds::LECTERN || $block->getProperty(BlockProperties::POWERED_BIT) === true){
+            return;
+        }
+
+        $this->world->setBlock($x, $y, $z, $block->withProperty(BlockProperties::POWERED_BIT, true));
+        $this->schedule($x, $y, $z, self::LECTERN_PULSE);
+        $this->run();
     }
 
     /**
@@ -527,6 +548,39 @@ class RedstoneUpdater{
     }
 
     /**
+     * Dispensers, droppers and crafters fire once each time they get power.
+     */
+    private function updateTriggered(int $x, int $y, int $z, BlockState $block) : void{
+        $powered = $this->signal->getReceivedPower($x, $y, $z) > 0;
+        $triggered = $block->getProperty(BlockProperties::TRIGGERED_BIT) === true;
+
+        if($powered && !$triggered){
+            $this->world->setBlock($x, $y, $z, $block->withProperty(BlockProperties::TRIGGERED_BIT, true));
+            $this->schedule($x, $y, $z, self::DISPENSER_DELAY);
+        }elseif(!$powered && $triggered){
+            $this->world->setBlock($x, $y, $z, $block->withProperty(BlockProperties::TRIGGERED_BIT, false));
+        }
+    }
+
+    private function tickTriggered(int $x, int $y, int $z) : void{
+        $entity = $this->world->getBlockEntity($x, $y, $z);
+
+        if($entity instanceof Dispenser){
+            $entity->activate($this->world);
+        }elseif($entity instanceof Crafter){
+            $entity->craft($this->world);
+        }
+    }
+
+    private function updateHopper(int $x, int $y, int $z, BlockState $block) : void{
+        $powered = $this->signal->getReceivedPower($x, $y, $z) > 0;
+
+        if($powered !== ($block->getProperty(BlockProperties::TOGGLE_BIT) === true)){
+            $this->world->setBlock($x, $y, $z, $block->withProperty(BlockProperties::TOGGLE_BIT, $powered));
+        }
+    }
+
+    /**
      * Doors, trapdoors and fence gates open when they get power and close when it goes. They
      * only change when the power does, so one opened by hand stays open.
      */
@@ -650,6 +704,8 @@ class RedstoneUpdater{
                 $name === BlockIds::REDSTONE_TORCH, $name === BlockIds::UNLIT_REDSTONE_TORCH => $this->tickTorch($x, $y, $z, $block),
                 $name === BlockIds::LIT_REDSTONE_LAMP => $this->tickLamp($x, $y, $z, $block),
                 $name === BlockIds::OBSERVER => $this->tickObserver($x, $y, $z, $block),
+                $name === BlockIds::DISPENSER, $name === BlockIds::DROPPER, $name === BlockIds::CRAFTER => $this->tickTriggered($x, $y, $z),
+                $name === BlockIds::LECTERN => $this->world->setBlock($x, $y, $z, $block->withProperty(BlockProperties::POWERED_BIT, false)),
                 default => null
             };
 
