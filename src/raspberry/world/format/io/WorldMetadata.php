@@ -28,6 +28,8 @@ class WorldMetadata{
 
     public ?Vector3 $spawn = null;
 
+    public int $seed = 0;
+
     /**
      * @return array<string, string|int>
      */
@@ -38,7 +40,8 @@ class WorldMetadata{
             "generator" => $this->generator,
             "generatorSettings" => $this->generatorSettings,
             "createdAt" => $this->createdAt,
-            "blockDataVersion" => $this->blockDataVersion
+            "blockDataVersion" => $this->blockDataVersion,
+            "seed" => $this->seed
         ] + ($this->spawn === null ? [] : ["spawn" => [$this->spawn->x, $this->spawn->y, $this->spawn->z]]);
     }
 
@@ -63,6 +66,14 @@ class WorldMetadata{
         }
 
         $metadata = new self($data["name"], $data["generator"], $data["generatorSettings"], $data["createdAt"], $data["blockDataVersion"]);
+
+        if(isset($data["seed"])){
+            if(!is_int($data["seed"])){
+                throw new UnexpectedValueException("World metadata 'seed' must be a whole number");
+            }
+
+            $metadata->seed = $data["seed"];
+        }
 
         if(isset($data["spawn"])){
             $spawn = $data["spawn"];

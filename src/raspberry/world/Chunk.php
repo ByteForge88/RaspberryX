@@ -47,7 +47,7 @@ class Chunk{
     private int $x;
     private int $z;
 
-    /** @var array<int, BlockEntity> */
+    /** @var array<int, BlockEntity> keyed by blockIndex() */
     private array $blockEntities = [];
 
     private bool $changed = false;
@@ -78,6 +78,13 @@ class Chunk{
 
     public function getZ() : int{
         return $this->z;
+    }
+
+    /**
+     * @internal
+     */
+    public function getHandle() : int{
+        return $this->handle;
     }
 
     public function getRevision() : int{
@@ -230,7 +237,7 @@ class Chunk{
 
     /**
      * The blocks and biomes as the native side writes them, for saving. Per sub-chunk from the
-     * bottom: a layer count byte, each layer, then the biomes, each of those a u32 palette
+     * bottom: a layer count byte, each layer, then the biomes; each of those a u32 palette
      * count, the palette (u32 IDs) and, when there is more than one entry, 4096 u16 offsets.
      */
     public function exportStorage() : string{

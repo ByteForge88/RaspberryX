@@ -14,6 +14,7 @@ use raspberry\block\redstone\RedstoneUpdater;
 
 use raspberry\world\format\io\WorldMetadata;
 use raspberry\world\format\io\WorldProvider;
+use raspberry\world\generator\AsyncGenerator;
 use raspberry\world\generator\Generator;
 
 use raspberry\entity\Entity;
@@ -25,6 +26,8 @@ use raspberry\player\Player;
 
 use raspberry\math\Vector3;
 
+use raspberry\native\Native;
+
 use raspberry\network\mcpe\protocol\Packet;
 use raspberry\network\mcpe\protocol\BlockActorDataPacket;
 use raspberry\network\mcpe\protocol\SpawnParticleEffectPacket;
@@ -35,6 +38,7 @@ use InvalidArgumentException;
 use function count;
 use function floor;
 use function mt_rand;
+use function usleep;
 
 class World{
 
@@ -46,6 +50,9 @@ class World{
 
     /** @var array<string, Chunk> */
     private array $chunks = [];
+
+    /** @var array<string, list<Closure(Chunk) : void>> */
+    private array $generating = [];
 
     /** @var array<int, Entity> keyed by runtime ID */
     private array $entities = [];
@@ -109,6 +116,13 @@ class World{
             return $this->chunks[$key];
         }
 
+        if(isset($this->generating[$key])){
+            $this->waitForGeneration([$key]);
+            $generated = true;
+
+            return $this->chunks[$key];
+        }
+
         $chunk = $this->provider->loadChunk($chunkX, $chunkZ);
 
         if($chunk === null){
@@ -121,11 +135,66 @@ class World{
             $generated = true;
         }
 
-        return $this->chunks[$key] = $chunk;
+        return $this->chunks[$key] ??= $chunk;
     }
 
     /**
-     * Loads every chunk within $radius chunks of the given chunk (a square).
+     * Hands $onReady the chunk once it is there: right away when it is in memory or on disk,
+     * later when it has to be generated and the generator does that on a worker.
+     *
+     * @param Closure(Chunk) : void $onReady
+     */
+    public function requestChunk(int $chunkX, int $chunkZ, Closure $onReady) : void{
+        $key = self::chunkKey($chunkX, $chunkZ);
+
+        if(isset($this->chunks[$key])){
+            $onReady($this->chunks[$key]);
+            return;
+        }
+
+        if(isset($this->generating[$key])){
+            $this->generating[$key][] = $onReady;
+            return;
+        }
+
+        $generator = $this->generator;
+
+        if(!$generator instanceof AsyncGenerator){
+            $onReady($this->loadChunk($chunkX, $chunkZ));
+            return;
+        }
+
+        $chunk = $this->provider->loadChunk($chunkX, $chunkZ);
+
+        if($chunk !== null){
+            $onReady($this->chunks[$key] = $chunk);
+            return;
+        }
+
+        $this->generating[$key] = [$onReady];
+        $chunk = new Chunk($chunkX, $chunkZ);
+
+        $generator->generateChunkLater($chunk, function() use ($key, $chunk) : void{
+            $waiting = $this->generating[$key] ?? [];
+            unset($this->generating[$key]);
+
+            if($this->closed){
+                return;
+            }
+
+            $chunk->collectGarbage();
+            $chunk->setChanged();
+            $this->chunks[$key] ??= $chunk;
+
+            foreach($waiting as $onReady){
+                $onReady($this->chunks[$key]);
+            }
+        });
+    }
+
+    /**
+     * Loads every chunk within $radius chunks of the given chunk (a square). Chunks to be
+     * generated are made side by side when the generator can do that.
      *
      * @return array{loaded: int, generated: int} chunks read from disk / newly generated
      */
@@ -135,17 +204,50 @@ class World{
         }
 
         $result = ["loaded" => 0, "generated" => 0];
+        $pending = [];
 
         for($x = $centerX - $radius; $x <= $centerX + $radius; ++$x){
             for($z = $centerZ - $radius; $z <= $centerZ + $radius; ++$z){
-                if(!$this->isChunkLoaded($x, $z)){
+                if($this->isChunkLoaded($x, $z)){
+                    continue;
+                }
+
+                if(!$this->generator instanceof AsyncGenerator){
                     $this->loadChunk($x, $z, $generated);
                     ++$result[$generated ? "generated" : "loaded"];
+                    continue;
+                }
+
+                $key = self::chunkKey($x, $z);
+                $this->requestChunk($x, $z, static function(Chunk $chunk) : void{});
+
+                if(isset($this->generating[$key])){
+                    $pending[] = $key;
+                    ++$result["generated"];
+                }else{
+                    ++$result["loaded"];
                 }
             }
         }
 
+        $this->waitForGeneration($pending);
+
         return $result;
+    }
+
+    /**
+     * Blocks until the chunks are made, for when nothing can go on without them.
+     *
+     * @param list<string> $keys
+     */
+    private function waitForGeneration(array $keys) : void{
+        foreach($keys as $key){
+            while(isset($this->generating[$key])){
+                if(Native::poll() === 0){
+                    usleep(200);
+                }
+            }
+        }
     }
 
     /**
@@ -196,6 +298,7 @@ class World{
         }
 
         $saved = $this->save();
+        $this->generating = [];
 
         $this->provider->close();
         $this->chunks = [];
@@ -301,6 +404,13 @@ class World{
     public function getSpawnPosition() : Vector3{
         if($this->metadata->spawn !== null){
             return $this->metadata->spawn;
+        }
+
+        $spawn = $this->generator->getSpawn();
+
+        if($spawn !== null){
+            $this->setSpawnPosition($spawn);
+            return $spawn;
         }
 
         $chunk = $this->loadChunk(0, 0);

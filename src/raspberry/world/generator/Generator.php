@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace raspberry\world\generator;
 
+use raspberry\math\Vector3;
+
 use raspberry\world\Chunk;
 
 /**
@@ -24,5 +26,10 @@ interface Generator{
      * with the default biome; use $chunk->getX() / getZ() for its position.
      */
     public function generateChunk(Chunk $chunk) : void;
+
+    /**
+     * Where players first appear in a new world, null to stand on the top block at 0, 0.
+     */
+    public function getSpawn() : ?Vector3;
 
 }

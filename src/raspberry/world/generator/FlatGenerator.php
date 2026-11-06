@@ -9,8 +9,10 @@ use InvalidArgumentException;
 use raspberry\block\BlockState;
 use raspberry\block\BlockStateRegistry;
 
-use raspberry\world\biome\BiomeIds;
+use raspberry\math\Vector3;
+
 use raspberry\world\Chunk;
+use raspberry\world\biome\BiomeIds;
 
 use function count;
 use function explode;
@@ -30,7 +32,7 @@ class FlatGenerator implements Generator{
     private int $biomeId;
 
     /**
-     * @param list<array{BlockState, int}> $layers [block, thickness] pairs, bottom first
+     * @param list<array{BlockState, int}> $layers
      */
     public function __construct(array $layers, int $biomeId = BiomeIds::PLAINS){
         if($layers === []){
@@ -60,11 +62,6 @@ class FlatGenerator implements Generator{
         return self::fromPreset(self::DEFAULT_PRESET, $registry);
     }
 
-    /**
-     * Builds layers from a preset string, bottom layer first:
-     *   "minecraft:bedrock,2*minecraft:dirt,minecraft:grass_block"
-     * "N*" repeats a layer N times; the "minecraft:" prefix may be left out.
-     */
     public static function fromPreset(string $preset, BlockStateRegistry $registry) : self{
         if(trim($preset) === ""){
             $preset = self::DEFAULT_PRESET;
@@ -102,6 +99,10 @@ class FlatGenerator implements Generator{
      */
     public function getSurfaceY() : int{
         return self::BOTTOM_Y + count($this->column) - 1;
+    }
+
+    public function getSpawn() : ?Vector3{
+        return null;
     }
 
     public function generateChunk(Chunk $chunk) : void{

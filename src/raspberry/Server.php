@@ -158,6 +158,13 @@ use function pcntl_signal;
 use function sprintf;
 use function str_contains;
 use function array_keys;
+use function array_values;
+use function preg_match;
+use function preg_split;
+use function random_int;
+use function strcmp;
+use function trim;
+use function unpack;
 use function implode;
 use function sapi_windows_set_ctrl_handler;
 use function str_starts_with;
@@ -184,6 +191,7 @@ class Server{
         "world-name" => "world",
         "world-generator" => GeneratorFactory::FLAT,
         "flat-layers" => FlatGenerator::DEFAULT_PRESET,
+        "world-seed" => "",
         "spawn-chunk-radius" => 4,
         "auto-save-interval" => 300,
         "keep-inventory" => false,
@@ -874,6 +882,7 @@ class Server{
         $worldName = $this->properties->getString("world-name");
         $worldGenerator = $this->properties->getString("world-generator");
         $flatLayers = $this->properties->getString("flat-layers");
+        $worldSeed = self::parseSeed($this->properties->getString("world-seed"));
         $spawnChunkRadius = $this->properties->getInt("spawn-chunk-radius");
         $autoSaveInterval = $this->properties->getInt("auto-save-interval");
         $keepInventory = $this->properties->getBool("keep-inventory");
@@ -937,7 +946,7 @@ class Server{
         ]));
 
         $this->loadNative();
-        $this->loadDefaultWorld($worldName, $worldGenerator, $flatLayers, $spawnChunkRadius);
+        $this->loadDefaultWorld($worldName, $worldGenerator, $flatLayers, $worldSeed, $spawnChunkRadius);
 
         $listenAddress = str_contains($serverIp, ":") ? "[{$serverIp}]:{$serverPort}" : "{$serverIp}:{$serverPort}";
 
@@ -1007,7 +1016,7 @@ class Server{
         }
     }
 
-    private function loadDefaultWorld(string $worldName, string $generatorName, string $generatorSettings, int $spawnChunkRadius) : void{
+    private function loadDefaultWorld(string $worldName, string $generatorName, string $generatorSettings, int $seed, int $spawnChunkRadius) : void{
         if($this->worldManager->hasDefaultWorld()){
             return;
         }
@@ -1018,7 +1027,7 @@ class Server{
             $this->logger->info($this->language->translate("server.world.loading", ["world" => $world->getName(), "generator" => $world->getGenerator()->getName()]));
         }else{
             try{
-                $world = $this->worldManager->createWorld($worldName, $generatorName, $generatorSettings);
+                $world = $this->worldManager->createWorld($worldName, $generatorName, $generatorSettings, $seed);
             }catch(InvalidArgumentException $exception){
                 throw new UnexpectedValueException("Invalid world settings in server.properties: " . $exception->getMessage(), 0, $exception);
             }
@@ -1029,7 +1038,8 @@ class Server{
         $this->worldManager->setDefaultWorld($world);
 
         $start = hrtime(true);
-        $result = $world->loadChunksAround(0, 0, $spawnChunkRadius);
+        $spawn = $world->getSpawnPosition();
+        $result = $world->loadChunksAround($spawn->getFloorX() >> 4, $spawn->getFloorZ() >> 4, $spawnChunkRadius);
 
         if($result["generated"] > 0){
             $world->save();
@@ -1040,6 +1050,49 @@ class Server{
             "generated" => $result["generated"],
             "time" => sprintf("%.1f", (hrtime(true) - $start) / 1e6)
         ]));
+    }
+
+    /**
+     * A seed from server.properties: a number as it is, other text through Java's string hash
+     * like vanilla does it, nothing for a random one.
+     */
+    private static function parseSeed(string $seed) : int{
+        $seed = trim($seed);
+
+        if($seed === ""){
+            return random_int(PHP_INT_MIN, PHP_INT_MAX);
+        }
+
+        if(preg_match('/^([+-]?)0*(\d{1,19})$/D', $seed, $match) === 1){
+            $limit = $match[1] === "-" ? "9223372036854775808" : "9223372036854775807";
+
+            if(strlen($match[2]) < 19 || strcmp($match[2], $limit) <= 0){
+                return $match[1] === "-" ? ($match[2] === "9223372036854775808" ? PHP_INT_MIN : -(int) $match[2]) : (int) $match[2];
+            }
+        }
+
+        $hash = 0;
+
+        foreach(preg_split('//u', $seed, -1, PREG_SPLIT_NO_EMPTY) ?: [] as $character){
+            $code = self::codePoint($character);
+
+            foreach($code > 0xffff ? [0xd800 + (($code - 0x10000) >> 10), 0xdc00 + (($code - 0x10000) & 0x3ff)] : [$code] as $unit){
+                $hash = ($hash * 31 + $unit) & 0xffffffff;
+            }
+        }
+
+        return $hash >= 0x80000000 ? $hash - 0x100000000 : $hash;
+    }
+
+    private static function codePoint(string $character) : int{
+        $bytes = array_values(unpack("C*", $character));
+
+        return match(count($bytes)){
+            1 => $bytes[0],
+            2 => (($bytes[0] & 0x1f) << 6) | ($bytes[1] & 0x3f),
+            3 => (($bytes[0] & 0x0f) << 12) | (($bytes[1] & 0x3f) << 6) | ($bytes[2] & 0x3f),
+            default => (($bytes[0] & 0x07) << 18) | (($bytes[1] & 0x3f) << 12) | (($bytes[2] & 0x3f) << 6) | ($bytes[3] & 0x3f)
+        };
     }
 
     /**

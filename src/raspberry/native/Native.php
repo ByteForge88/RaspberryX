@@ -20,7 +20,7 @@ use const PHP_OS_FAMILY;
 class Native{
 
     /** the library has to speak this version of the functions below */
-    public const ABI_VERSION = 1;
+    public const ABI_VERSION = 3;
 
     private const HEADER = <<<'C'
         uint32_t rx_version(void);
@@ -40,6 +40,15 @@ class Native{
         int32_t rx_chunk_export(uint64_t chunk, char** out, size_t* out_length);
         int32_t rx_chunk_import(uint64_t chunk, const char* data, size_t length);
         uint64_t rx_chunk_encode(uint64_t chunk, int32_t chunk_x, int32_t chunk_z, uint64_t revision, const char* extra, size_t extra_length, int32_t threshold);
+        int32_t rx_chunk_copy(uint64_t from, uint64_t to);
+
+        void rx_generator_states(char** out, size_t* out_length);
+        uint64_t rx_old_generate(int64_t seed, const uint32_t* states, size_t count);
+        void rx_old_border(uint64_t chunk, int32_t chunk_x, int32_t chunk_z, uint32_t barrier);
+        uint64_t rx_pre_normal_new(int64_t seed, const uint32_t* states, size_t count);
+        void rx_pre_normal_free(uint64_t generator);
+        uint64_t rx_pre_normal_chunk(uint64_t generator, int32_t chunk_x, int32_t chunk_z);
+        uint64_t rx_pre_normal_spawn(uint64_t generator);
         C;
 
     private static ?FFI $ffi = null;

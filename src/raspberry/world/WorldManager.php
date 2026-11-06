@@ -21,9 +21,6 @@ use function preg_match;
 use function strtolower;
 use function time;
 
-/**
- * Owns every loaded world. Worlds live in <data>/worlds/<name>/.
- */
 class WorldManager{
 
     private string $worldsPath;
@@ -71,7 +68,7 @@ class WorldManager{
         $provider = new RaspberryWorldProvider($this->worldPath($name), $this->logger);
         $metadata = $provider->loadMetadata();
 
-        $generator = $this->generatorFactory->create($metadata->generator, $metadata->generatorSettings);
+        $generator = $this->generatorFactory->create($metadata->generator, $metadata->generatorSettings, $metadata->seed);
 
         return $this->worlds[strtolower($name)] = new World($metadata, $generator, $provider);
     }
@@ -79,7 +76,7 @@ class WorldManager{
     /**
      * Creates a new, empty world on disk. Chunks generate as they are loaded.
      */
-    public function createWorld(string $name, string $generatorName, string $generatorSettings = "") : World{
+    public function createWorld(string $name, string $generatorName, string $generatorSettings = "", int $seed = 0) : World{
         $this->checkNotLoaded($name);
 
         if($this->worldExists($name)){
@@ -87,9 +84,10 @@ class WorldManager{
         }
 
         //create the generator first, so invalid settings fail before anything is written
-        $generator = $this->generatorFactory->create($generatorName, $generatorSettings);
+        $generator = $this->generatorFactory->create($generatorName, $generatorSettings, $seed);
 
         $metadata = new WorldMetadata($name, $generatorName, $generatorSettings, time(), $this->blockDataVersion);
+        $metadata->seed = $seed;
 
         $provider = new RaspberryWorldProvider($this->worldPath($name), $this->logger);
         $provider->saveMetadata($metadata);

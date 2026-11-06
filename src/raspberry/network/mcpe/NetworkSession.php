@@ -96,6 +96,7 @@ use raspberry\Server;
 
 use raspberry\nbt\NbtException;
 
+use raspberry\world\Chunk;
 use raspberry\world\World;
 use raspberry\world\generator\GeneratorFactory;
 
@@ -1587,11 +1588,26 @@ class NetworkSession{
      * having it from then on, block changes before that go into a new encoding.
      */
     private function encodeChunk(World $world, int $x, int $z) : void{
-        $chunk = $world->loadChunk($x, $z);
         $key = $x . ":" . $z;
         $epoch = $this->chunkEpoch;
-        $revision = $chunk->getRevision();
         $this->encodingChunks[$key] = true;
+
+        $world->requestChunk($x, $z, function(Chunk $chunk) use ($world, $x, $z, $key, $epoch) : void{
+            if($epoch !== $this->chunkEpoch || !$this->isConnected()){
+                return;
+            }
+
+            if(!isset($this->wantedChunks[$key]) || $this->player?->getWorld() !== $world){
+                unset($this->encodingChunks[$key]);
+                return;
+            }
+
+            $this->encodeLoadedChunk($world, $chunk, $x, $z, $key, $epoch);
+        });
+    }
+
+    private function encodeLoadedChunk(World $world, Chunk $chunk, int $x, int $z, string $key, int $epoch) : void{
+        $revision = $chunk->getRevision();
 
         $chunk->encode($this->compression->isEnabled() ? $this->compression->getThreshold() : -1, function(string $batch) use ($world, $chunk, $x, $z, $key, $epoch, $revision) : void{
             if($epoch !== $this->chunkEpoch || !$this->isConnected()){

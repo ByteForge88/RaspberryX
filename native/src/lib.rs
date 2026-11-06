@@ -1,15 +1,19 @@
 //! The native half of RaspberryX. PHP loads this library through FFI and calls the functions
-//! below, heavy work runs on worker threads, and PHP collects what finished with rx_poll()
+//! below; heavy work runs on worker threads, and PHP collects what finished with rx_poll()
 //! every tick. src/raspberry/native/Native.php has the matching declarations.
 //!
 //! Chunks live here. PHP holds a handle to each and reads and writes blocks through it.
 //!
 //! Nothing here may unwind into PHP, so every function catches panics.
 
+pub mod biome;
 pub mod chunk;
 pub mod completions;
 pub mod encode;
+pub mod generator;
+pub mod noise;
 pub mod pool;
+pub mod random;
 
 use std::collections::HashMap;
 use std::panic::{catch_unwind, AssertUnwindSafe};
@@ -20,7 +24,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use chunk::{Chunk, Storage, SubChunk, MAX_LAYERS, SIZE, SUBCHUNKS};
 
 /// Bumped whenever a function below changes, PHP refuses a library it does not know.
-pub const ABI_VERSION: u32 = 1;
+pub const ABI_VERSION: u32 = 3;
 
 struct Entry {
     chunk: Chunk,
@@ -303,4 +307,140 @@ pub unsafe extern "C" fn rx_chunk_encode(handle: u64, chunk_x: i32, chunk_z: i32
             id
         }
     }
+}
+
+/// Copies the blocks and biomes of one chunk into another, cheaply: the sub-chunks are shared
+/// until either is written to.
+#[no_mangle]
+pub extern "C" fn rx_chunk_copy(from: u64, to: u64) -> i32 {
+    let Some(subchunks) = with_chunk(from, None, |entry| Some(entry.chunk.subchunks.clone())) else { return 0 };
+
+    with_chunk(to, 0, |entry| {
+        entry.chunk.subchunks = subchunks;
+        entry.chunk.version += 1;
+        1
+    })
+}
+
+/// The block states generators use, one per line, in the order rx_old_generate() wants their
+/// IDs in.
+#[no_mangle]
+pub unsafe extern "C" fn rx_generator_states(out: *mut *mut u8, out_length: *mut usize) {
+    give(generator::blocks::STATES.join("\n").into_bytes(), out, out_length);
+}
+
+fn adopt(chunk: Chunk) -> u64 {
+    let handle = NEXT_HANDLE.fetch_add(1, Ordering::Relaxed);
+    chunks().get_or_insert_with(HashMap::new).insert(handle, Entry { chunk, sent: None });
+    handle
+}
+
+/// Starts making a whole Old world on a worker. Its result is the spawn (three i32) and then
+/// a handle (u64) for each of the 256 chunks, x * 16 + z, which belong to PHP from then on.
+#[no_mangle]
+pub unsafe extern "C" fn rx_old_generate(seed: i64, states: *const u32, count: usize) -> u64 {
+    if states.is_null() || count != generator::blocks::count() {
+        return 0;
+    }
+
+    let states = std::slice::from_raw_parts(states, count).to_vec();
+    let id = completions::next_id();
+
+    pool::spawn(move || {
+        let generated = generator::old::generate(seed, &states);
+        let mut out = Vec::with_capacity(12 + generated.chunks.len() * 8);
+
+        for value in [generated.spawn.0, generated.spawn.1, generated.spawn.2] {
+            out.extend_from_slice(&value.to_le_bytes());
+        }
+
+        for chunk in generated.chunks {
+            out.extend_from_slice(&adopt(chunk).to_le_bytes());
+        }
+
+        completions::complete(id, out);
+    });
+
+    id
+}
+
+/// Fills a chunk outside an Old world: barriers where it borders the world, air elsewhere.
+#[no_mangle]
+pub extern "C" fn rx_old_border(handle: u64, chunk_x: i32, chunk_z: i32, barrier: u32) {
+    with_chunk(handle, (), |entry| generator::old::border(&mut entry.chunk, chunk_x, chunk_z, barrier));
+}
+
+/// A pre-normal generator and the state IDs of its blocks.
+struct PreNormalEntry {
+    generator: generator::pre_normal::PreNormal,
+    states: Vec<u32>,
+}
+
+static PRE_NORMAL: Mutex<Option<HashMap<u64, Arc<PreNormalEntry>>>> = Mutex::new(None);
+
+fn pre_normal(handle: u64) -> Option<Arc<PreNormalEntry>> {
+    PRE_NORMAL.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).as_ref().and_then(|map| map.get(&handle).cloned())
+}
+
+/// Runs a job on a worker and always completes it: with what it made, or with nothing when
+/// it failed, so PHP never waits forever.
+fn spawn_job(job: impl FnOnce() -> Vec<u8> + Send + 'static) -> u64 {
+    let id = completions::next_id();
+
+    pool::spawn(move || {
+        let result = catch_unwind(AssertUnwindSafe(job)).unwrap_or_default();
+        completions::complete(id, result);
+    });
+
+    id
+}
+
+/// Makes a pre-normal generator for a seed, with the state ID of each block in the order of
+/// rx_generator_states(). 0 when the states do not fit.
+#[no_mangle]
+pub unsafe extern "C" fn rx_pre_normal_new(seed: i64, states: *const u32, count: usize) -> u64 {
+    if states.is_null() || count != generator::blocks::count() {
+        return 0;
+    }
+
+    let states = std::slice::from_raw_parts(states, count).to_vec();
+
+    catch_unwind(|| {
+        let entry = PreNormalEntry { generator: generator::pre_normal::PreNormal::new(seed), states };
+        let handle = NEXT_HANDLE.fetch_add(1, Ordering::Relaxed);
+        PRE_NORMAL.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).get_or_insert_with(HashMap::new).insert(handle, Arc::new(entry));
+        handle
+    })
+    .unwrap_or(0)
+}
+
+/// Drops a generator. Jobs still running finish with the copy they hold.
+#[no_mangle]
+pub extern "C" fn rx_pre_normal_free(handle: u64) {
+    if let Some(map) = PRE_NORMAL.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).as_mut() {
+        map.remove(&handle);
+    }
+}
+
+/// Starts making a chunk on a worker. Its result is the handle (u64) of a new chunk that
+/// belongs to PHP from then on, or nothing when it failed. 0 for an unknown generator.
+#[no_mangle]
+pub extern "C" fn rx_pre_normal_chunk(handle: u64, chunk_x: i32, chunk_z: i32) -> u64 {
+    let Some(entry) = pre_normal(handle) else { return 0 };
+
+    spawn_job(move || {
+        let chunk = entry.generator.chunk(chunk_x, chunk_z, &entry.states);
+        adopt(chunk).to_le_bytes().to_vec()
+    })
+}
+
+/// Starts looking for the spawn on a worker. Its result is X, Y and Z (three i32).
+#[no_mangle]
+pub extern "C" fn rx_pre_normal_spawn(handle: u64) -> u64 {
+    let Some(entry) = pre_normal(handle) else { return 0 };
+
+    spawn_job(move || {
+        let (x, y, z) = entry.generator.spawn();
+        [x, y, z].iter().flat_map(|value| value.to_le_bytes()).collect()
+    })
 }

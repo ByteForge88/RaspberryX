@@ -12,9 +12,9 @@
     "react/http": "^1.11.1",
     "firebase/php-jwt": "^7.2.1",
     "ext-zlib": "*",
-    "ext-ffi": "*",
     "symfony/filesystem": "*",
-    "symfony/yaml": "*"
+    "symfony/yaml": "*",
+    "ext-ffi": "*"
   },
   "suggest": {
     "ext-pcntl": "Recommended for signal handling on Linux."
