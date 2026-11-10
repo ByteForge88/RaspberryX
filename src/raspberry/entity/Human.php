@@ -68,6 +68,14 @@ class Human extends Living{
         return self::EYE_HEIGHT;
     }
 
+    public function getWidth() : float{
+        return self::WIDTH;
+    }
+
+    public function getHeight() : float{
+        return self::HEIGHT;
+    }
+
     public function getUuid() : Uuid{
         return $this->uuid;
     }
@@ -170,6 +178,10 @@ class Human extends Living{
             $this->heal(1.0);
             $this->exhaust(6.0);
         }
+    }
+
+    public function isUsingItem() : bool{
+        return false;
     }
 
     /**

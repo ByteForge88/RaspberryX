@@ -12,6 +12,9 @@ use raspberry\world\World;
 
 use LogicException;
 
+use function max;
+use function sqrt;
+
 /**
  * Anything that exists in a world and can move: players, mobs, dropped items, arrows...
  *
@@ -82,6 +85,29 @@ abstract class Entity{
      */
     public function tick(int $currentTick) : void{
 
+    }
+
+    /**
+     * Size of the box the entity takes up, centered on its feet; 0 for entities that have none.
+     */
+    public function getWidth() : float{
+        return 0.0;
+    }
+
+    public function getHeight() : float{
+        return 0.0;
+    }
+
+    /**
+     * How far $point is from the entity's box, 0 when it is inside.
+     */
+    public function distanceToBox(Vector3 $point) : float{
+        $half = $this->getWidth() / 2;
+        $dx = max($this->position->x - $half - $point->x, 0.0, $point->x - $this->position->x - $half);
+        $dy = max($this->position->y - $point->y, 0.0, $point->y - $this->position->y - $this->getHeight());
+        $dz = max($this->position->z - $half - $point->z, 0.0, $point->z - $this->position->z - $half);
+
+        return sqrt($dx * $dx + $dy * $dy + $dz * $dz);
     }
 
     public function getEyePosition() : Vector3{

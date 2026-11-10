@@ -66,6 +66,49 @@ enum Effect : int{
     }
 
     /**
+     * The key of its name in the game's language files, like "potion.moveSpeed".
+     */
+    public function getTranslationKey() : string{
+        return match($this){
+            self::SPEED => "potion.moveSpeed",
+            self::SLOWNESS => "potion.moveSlowdown",
+            self::HASTE => "potion.digSpeed",
+            self::MINING_FATIGUE => "potion.digSlowDown",
+            self::STRENGTH => "potion.damageBoost",
+            self::INSTANT_HEALTH => "potion.heal",
+            self::INSTANT_DAMAGE => "potion.harm",
+            self::JUMP_BOOST => "potion.jump",
+            self::NAUSEA => "potion.confusion",
+            self::REGENERATION => "potion.regeneration",
+            self::RESISTANCE => "potion.resistance",
+            self::FIRE_RESISTANCE => "potion.fireResistance",
+            self::WATER_BREATHING => "potion.waterBreathing",
+            self::INVISIBILITY => "potion.invisibility",
+            self::BLINDNESS => "potion.blindness",
+            self::NIGHT_VISION => "potion.nightVision",
+            self::HUNGER => "potion.hunger",
+            self::WEAKNESS => "potion.weakness",
+            self::POISON, self::FATAL_POISON => "potion.poison",
+            self::WITHER => "potion.wither",
+            self::HEALTH_BOOST => "potion.healthBoost",
+            self::ABSORPTION => "potion.absorption",
+            self::SATURATION => "potion.saturation",
+            self::LEVITATION => "potion.levitation",
+            self::CONDUIT_POWER => "potion.conduitPower",
+            self::SLOW_FALLING => "potion.slowFalling",
+            self::BAD_OMEN => "effect.badOmen",
+            self::VILLAGE_HERO => "effect.villageHero",
+            self::DARKNESS => "effect.darkness",
+            self::TRIAL_OMEN => "effect.trial_omen",
+            self::WIND_CHARGED => "potion.windCharged",
+            self::WEAVING => "potion.weaving",
+            self::OOZING => "potion.oozing",
+            self::INFESTED => "potion.infested",
+            self::RAID_OMEN => "effect.raid_omen"
+        };
+    }
+
+    /**
      * The color its particles get, 0xRRGGBB.
      */
     public function getColor() : int{

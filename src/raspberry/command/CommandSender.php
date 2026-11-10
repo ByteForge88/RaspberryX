@@ -12,4 +12,6 @@ interface CommandSender extends Permissible{
 
     public function sendMessage(string $message) : void;
 
+    public function sendCommandOutput(CommandOutput $output) : void;
+
 }

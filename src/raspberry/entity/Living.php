@@ -13,8 +13,14 @@ use raspberry\math\Vector3;
 
 use raspberry\world\World;
 
+use function cos;
+use function deg2rad;
+use function intdiv;
 use function max;
 use function min;
+use function mt_rand;
+use function sin;
+use function sqrt;
 
 abstract class Living extends Entity{
 
@@ -23,6 +29,16 @@ abstract class Living extends Entity{
     protected float $health = 20.0;
 
     public const DEFAULT_MOVEMENT_SPEED = 0.1;
+
+    public const INVULNERABLE_TICKS = 10;
+
+    public const KNOCKBACK = 0.4;
+
+    public const MAX_AIR = 300;
+
+    private const AIR_REFILL = 4;
+
+    private const DROWNING_DAMAGE = 2.0;
 
     protected ?DamageSource $lastDamageSource = null;
 
@@ -33,9 +49,206 @@ abstract class Living extends Entity{
 
     protected EffectManager $effects;
 
+    protected int $invulnerableTicks = 0;
+
+    protected float $lastDamage = 0.0;
+
+    protected bool $lastHitFresh = false;
+
+    protected Vector3 $motion;
+
+    protected int $fireTicks = 0;
+
+    protected int $air = self::MAX_AIR;
+
+    protected bool $breathing = true;
+
     public function __construct(World $world, Vector3 $position){
         parent::__construct($world, $position);
         $this->effects = new EffectManager($this);
+        $this->motion = new Vector3(0, 0, 0);
+    }
+
+    public function tick(int $currentTick) : void{
+        $this->tickInvulnerability();
+        $this->tickFire();
+        $this->tickAir();
+    }
+
+    public function isOnFire() : bool{
+        return $this->fireTicks > 0;
+    }
+
+    public function getFireTicks() : int{
+        return $this->fireTicks;
+    }
+
+    /**
+     * Sets the entity burning for $seconds, unless it already burns for longer.
+     */
+    public function setOnFire(int $seconds) : void{
+        $ticks = $seconds * 20;
+
+        if($ticks <= $this->fireTicks){
+            return;
+        }
+
+        $wasBurning = $this->isOnFire();
+        $this->fireTicks = $ticks;
+
+        if(!$wasBurning){
+            $this->onFireChanged();
+        }
+    }
+
+    public function extinguish() : void{
+        if($this->fireTicks > 0){
+            $this->fireTicks = 0;
+            $this->onFireChanged();
+        }
+    }
+
+    protected function tickFire() : void{
+        if($this->fireTicks <= 0){
+            return;
+        }
+
+        if($this->isInWater()){
+            $this->extinguish();
+            return;
+        }
+
+        if($this->fireTicks % 20 === 0){
+            $this->damage(new DamageSource(DamageSource::CAUSE_FIRE_TICK, 1.0));
+        }
+
+        if(--$this->fireTicks === 0){
+            $this->onFireChanged();
+        }
+    }
+
+    protected function onFireChanged() : void{
+    }
+
+    public function isInWater() : bool{
+        return false;
+    }
+
+    public function isHeadInWater() : bool{
+        return false;
+    }
+
+    public function getAir() : int{
+        return max(0, $this->air);
+    }
+
+    public function setAir(int $air) : void{
+        $this->air = min($air, self::MAX_AIR);
+        $this->onAirChanged();
+    }
+
+    public function isBreathing() : bool{
+        return $this->breathing;
+    }
+
+    public function canBreatheUnderwater() : bool{
+        return $this->effects->has(Effect::WATER_BREATHING) || $this->effects->has(Effect::CONDUIT_POWER);
+    }
+
+    protected function tickAir() : void{
+        $before = $this->air;
+        $bubbles = intdiv($this->getAir() + 29, 30);
+        $wasBreathing = $this->breathing;
+        $this->breathing = !$this->isHeadInWater() || $this->canBreatheUnderwater();
+
+        if($this->breathing){
+            $this->air = min(self::MAX_AIR, max(0, $this->air) + self::AIR_REFILL);
+        }else{
+            $respiration = $this->getRespirationLevel();
+
+            if($respiration === 0 || mt_rand(0, $respiration) === 0){
+                --$this->air;
+            }
+
+            if($this->air <= -20){
+                $this->air = 0;
+                $this->damage(new DamageSource(DamageSource::CAUSE_DROWNING, self::DROWNING_DAMAGE));
+            }
+        }
+
+        if($wasBreathing !== $this->breathing || $bubbles !== intdiv($this->getAir() + 29, 30) || ($this->air === self::MAX_AIR && $before !== self::MAX_AIR)){
+            $this->onAirChanged();
+        }
+    }
+
+    protected function getRespirationLevel() : int{
+        return 0;
+    }
+
+    protected function onAirChanged() : void{
+
+    }
+
+    protected function tickInvulnerability() : void{
+        if($this->invulnerableTicks > 0){
+            --$this->invulnerableTicks;
+        }
+    }
+
+    public function isInvulnerable() : bool{
+        return $this->invulnerableTicks > 0;
+    }
+
+    public function getInvulnerableTicks() : int{
+        return $this->invulnerableTicks;
+    }
+
+    public function wasLastHitFresh() : bool{
+        return $this->lastHitFresh;
+    }
+
+    public function isUndead() : bool{
+        return false;
+    }
+
+    public function isArthropod() : bool{
+        return false;
+    }
+
+    public function getKnockbackResistance() : float{
+        return 0.0;
+    }
+
+    public function getMotion() : Vector3{
+        return $this->motion;
+    }
+
+    public function setMotion(Vector3 $motion) : void{
+        $this->motion = $motion;
+    }
+
+    public function knockBack(float $x, float $z, float $force = self::KNOCKBACK, float $vertical = self::KNOCKBACK, float $extra = 0.0, float $yaw = 0.0) : void{
+        $length = sqrt($x * $x + $z * $z);
+        $resistance = min(1.0, $this->getKnockbackResistance());
+
+        if($length < 0.0001 || $resistance >= 1.0){
+            return;
+        }
+
+        $force *= 1 - $resistance;
+        $vertical *= 1 - $resistance;
+        $extra *= 1 - $resistance;
+
+        $motionX = $x / $length * $force;
+        $motionZ = $z / $length * $force;
+
+        if($extra > 0){
+            $radians = deg2rad($yaw);
+            $motionX = $motionX / 2 - sin($radians) * $extra;
+            $motionZ = $motionZ / 2 + cos($radians) * $extra;
+        }
+
+        $this->setMotion(new Vector3($motionX, $vertical, $motionZ));
     }
 
     public function getEffects() : EffectManager{
@@ -61,29 +274,50 @@ abstract class Living extends Entity{
         $this->setHealth(0.0);
     }
 
-
     /**
-     * Hurts the entity. Absorption is used up before health. Does nothing when the entity is dead
-     * or cannot be hurt by this source (see canBeDamagedBy())
+     * @return bool
      */
-    public function damage(DamageSource $source) : void{
+    public function damage(DamageSource $source) : bool{
         if(!$this->isAlive() || $source->getAmount() <= 0 || !$this->canBeDamagedBy($source)){
-            return;
+            return false;
         }
 
         $amount = $this->reduceDamage($source);
 
         if($amount <= 0){
-            return;
+            return false;
+        }
+
+        $fresh = true;
+
+        if($this->invulnerableTicks > 0 && !$source->bypassesGameMode()){
+            if($amount <= $this->lastDamage){
+                return false;
+            }
+
+            $taken = $amount - $this->lastDamage;
+            $this->lastDamage = $amount;
+            $amount = $taken;
+            $fresh = false;
+        }else{
+            $this->lastDamage = $amount;
+            $this->invulnerableTicks = self::INVULNERABLE_TICKS;
         }
 
         $absorbed = min($amount, $this->absorption);
         $this->absorption -= $absorbed;
 
         $this->lastDamageSource = $source;
-        $this->onDamaged($source);
+        $this->lastHitFresh = $fresh;
+        $this->onHurt($source);
+
+        if($fresh){
+            $this->onDamaged($source);
+        }
 
         $this->setHealth($this->health - ($amount - $absorbed));
+
+        return true;
     }
 
     /**
@@ -138,17 +372,50 @@ abstract class Living extends Entity{
         return !$this->effects->has(Effect::FIRE_RESISTANCE) || !$source->isFire();
     }
 
-    /**
-     * Resistance takes a fifth off for each level, five levels stop everything but the void.
-     */
     protected function reduceDamage(DamageSource $source) : float{
-        $resistance = $this->effects->getLevel(Effect::RESISTANCE);
+        $amount = $source->getAmount();
 
-        if($resistance === 0 || $source->bypassesGameMode()){
-            return $source->getAmount();
+        if($source->bypassesGameMode()){
+            return $amount;
         }
 
-        return $source->getAmount() * max(0.0, 1.0 - 0.2 * $resistance);
+        if($source->isReducedByArmor()){
+            [$defense, $toughness] = $this->getArmorValues();
+
+            if($defense > 0){
+                $points = max($defense / 5, $defense - 4 * $amount / ($toughness + 8));
+                $amount *= 1 - min(20.0, $points) / 25;
+            }
+        }
+
+        $resistance = $this->effects->getLevel(Effect::RESISTANCE);
+
+        if($resistance > 0){
+            $amount *= max(0.0, 1.0 - 0.2 * $resistance);
+        }
+
+        $protection = min(20, $this->getProtectionPoints($source));
+
+        if($protection > 0){
+            $amount *= 1 - $protection / 25;
+        }
+
+        return max(0.0, $amount);
+    }
+
+    /**
+     * @return array{int, float}
+     */
+    protected function getArmorValues() : array{
+        return [0, 0.0];
+    }
+
+    protected function getProtectionPoints(DamageSource $source) : int{
+        return 0;
+    }
+
+    protected function onHurt(DamageSource $source) : void{
+
     }
 
     /**

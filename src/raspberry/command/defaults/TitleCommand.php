@@ -6,43 +6,37 @@ namespace raspberry\command\defaults;
 
 use raspberry\command\Command;
 use raspberry\command\CommandEnum;
+use raspberry\command\CommandOutput;
 use raspberry\command\CommandParameter;
 use raspberry\command\CommandSender;
 
 use raspberry\player\Player;
 
-use function count;
-
 class TitleCommand extends Command{
 
     public function __construct(){
-        parent::__construct("title");
+        parent::__construct("title", "commands.title.description", "raspberry.command.title");
 
-        $this->setDescription($this->translate("command.title.description"));
-        $this->setPermission("raspberry.command.title");
+        $this->addOverload(CommandParameter::target("player"), CommandParameter::enum("clear", new CommandEnum("TitleClear", ["clear"])));
 
-        //overload 0: /title <player> clear
-        $this->setArgument(0, CommandParameter::target("player"));
-        $this->setArgument(1, CommandParameter::enum("clear", new CommandEnum("TitleClear", ["clear"])));
+        $this->addOverload(CommandParameter::target("player"), CommandParameter::enum("reset", new CommandEnum("TitleReset", ["reset"])));
 
-        //overload 1: /title <player> reset
-        $this->setArgument(0, CommandParameter::target("player"), 1);
-        $this->setArgument(1, CommandParameter::enum("reset", new CommandEnum("TitleReset", ["reset"])), 1);
+        $this->addOverload(
+            CommandParameter::target("player"),
+            CommandParameter::enum("titleLocation", new CommandEnum("TitleSet", ["title", "subtitle", "actionbar"])),
+            CommandParameter::message("titleText")
+        );
 
-        //overload 2: /title <player> title|subtitle|actionbar <text>
-        $this->setArgument(0, CommandParameter::target("player"), 2);
-        $this->setArgument(1, CommandParameter::enum("titleLocation", new CommandEnum("TitleSet", ["title", "subtitle", "actionbar"])), 2);
-        $this->setArgument(2, CommandParameter::message("titleText"), 2);
-
-        //overload 3: /title <player> times <fadeIn> <stay> <fadeOut>
-        $this->setArgument(0, CommandParameter::target("player"), 3);
-        $this->setArgument(1, CommandParameter::enum("times", new CommandEnum("TitleTimes", ["times"])), 3);
-        $this->setArgument(2, CommandParameter::int("fadeIn"), 3);
-        $this->setArgument(3, CommandParameter::int("stay"), 3);
-        $this->setArgument(4, CommandParameter::int("fadeOut"), 3);
+        $this->addOverload(
+            CommandParameter::target("player"),
+            CommandParameter::enum("times", new CommandEnum("TitleTimes", ["times"])),
+            CommandParameter::int("fadeIn"),
+            CommandParameter::int("stay"),
+            CommandParameter::int("fadeOut")
+        );
     }
 
-    public function onSent(CommandSender $sender, array $args) : void{
+    public function onSent(CommandSender $sender, CommandOutput $output, array $args) : void{
         /** @var list<Player> $players */
         $players = $args["player"];
 
@@ -57,6 +51,6 @@ class TitleCommand extends Command{
             };
         }
 
-        $sender->sendMessage($this->translate("command.title.done", ["count" => count($players)]));
+        $output->success("commands.title.success");
     }
 }

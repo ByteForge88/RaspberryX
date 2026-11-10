@@ -9,6 +9,7 @@ use raspberry\block\BlockIds;
 use raspberry\command\Command;
 use raspberry\command\CommandEnum;
 use raspberry\command\CommandException;
+use raspberry\command\CommandOutput;
 use raspberry\command\CommandParameter;
 use raspberry\command\CommandSender;
 
@@ -22,8 +23,8 @@ use function atan2;
 use function count;
 use function max;
 use function min;
+use function number_format;
 use function rad2deg;
-use function round;
 use function sqrt;
 use function str_starts_with;
 use function substr;
@@ -31,16 +32,12 @@ use function substr;
 class TeleportCommand extends Command{
 
     public function __construct(){
-        parent::__construct("teleport");
-
-        $this->setDescription($this->translate("command.teleport.description"));
-        $this->setPermission("raspberry.command.teleport");
-        $this->setAliases(["tp"]);
+        parent::__construct("teleport", "commands.tp.description", "raspberry.command.teleport", ["tp"]);
 
         $facing = new CommandEnum("TeleportFacing", ["facing"]);
         $flags = [CommandParameter::bool("checkForBlocks", true), CommandParameter::bool("forceProvidedPositionOnDimensionChange", true)];
 
-        $overloads = [
+        $this->setOverloads([
             [CommandParameter::position("destination"), ...$flags],
             [CommandParameter::position("destination"), CommandParameter::value("yRot", true), CommandParameter::value("xRot", true), ...$flags],
             [CommandParameter::position("destination"), CommandParameter::enum("facing", $facing), CommandParameter::position("lookAtPosition"), ...$flags],
@@ -51,24 +48,12 @@ class TeleportCommand extends Command{
             [CommandParameter::target("victim"), CommandParameter::position("destination"), CommandParameter::enum("facing", $facing), CommandParameter::target("lookAtEntity"), ...$flags],
             [CommandParameter::target("destination")],
             [CommandParameter::target("victim"), CommandParameter::target("destination"), ...$flags]
-        ];
-
-        foreach($overloads as $index => $overload){
-            foreach($overload as $position => $argument){
-                $this->setArgument($position, $argument, $index);
-            }
-        }
+        ]);
     }
 
-    public function onSent(CommandSender $sender, array $args) : void{
-        if(isset($args["victim"])){
-            /** @var list<Player> $victims */
-            $victims = $args["victim"];
-        }elseif($sender instanceof Player){
-            $victims = [$sender];
-        }else{
-            throw new CommandException($this->translate("command.teleport.noPlayer"));
-        }
+    public function onSent(CommandSender $sender, CommandOutput $output, array $args) : void{
+        /** @var list<Player> $victims */
+        $victims = $this->playersOrSelf($sender, $args, "victim");
 
         $destination = $args["destination"];
         $target = null;
@@ -97,7 +82,7 @@ class TeleportCommand extends Command{
             $victimWorld = $world ?? $victim->getWorld();
 
             if(($args["checkForBlocks"] ?? false) && !$this->isFree($victimWorld, $destination)){
-                $sender->sendMessage($this->translate("command.teleport.blocked", ["player" => $victim->getName()]));
+                $output->error("commands.tp.safeTeleportFail", [$victim->getName(), $target?->getName() ?? self::coordinates($destination)]);
                 continue;
             }
 
@@ -111,14 +96,9 @@ class TeleportCommand extends Command{
             $victim->teleport($destination, $yaw, $pitch, $victimWorld);
 
             if($target !== null){
-                $sender->sendMessage($this->translate("command.teleport.player", ["player" => $victim->getName(), "target" => $target->getName()]));
+                $output->success("commands.tp.success", [$victim->getName(), $target->getName()]);
             }else{
-                $sender->sendMessage($this->translate("command.teleport.position", [
-                    "player" => $victim->getName(),
-                    "x" => round($destination->x, 2),
-                    "y" => round($destination->y, 2),
-                    "z" => round($destination->z, 2)
-                ]));
+                $output->success("commands.tp.success.coordinates", [$victim->getName(), self::number($destination->x), self::number($destination->y), self::number($destination->z)]);
             }
         }
     }
@@ -128,10 +108,18 @@ class TeleportCommand extends Command{
      */
     private function single(array $players) : Player{
         if(count($players) !== 1){
-            throw new CommandException($this->translate("command.teleport.tooMany"));
+            throw new CommandException("commands.generic.tooManyTargets");
         }
 
         return $players[0];
+    }
+
+    private static function number(float $value) : string{
+        return number_format($value, 2, ".", "");
+    }
+
+    private static function coordinates(Vector3 $position) : string{
+        return self::number($position->x) . ", " . self::number($position->y) . ", " . self::number($position->z);
     }
 
     private function rotation(string $value, float $current) : float{

@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace raspberry\network\mcpe\convert;
 
-use raspberry\command\CommandEnum;
 use raspberry\command\CommandMap;
 use raspberry\command\CommandParameter;
 use raspberry\command\CommandSender;
@@ -18,11 +17,28 @@ use raspberry\network\mcpe\protocol\types\command\CommandParameterData;
 use function array_unique;
 use function array_values;
 use function count;
+use function sort;
 
 class CommandDataAdapter{
 
     public static function createAvailableCommands(CommandMap $commandMap, CommandSender $sender) : AvailableCommandsPacket{
         $packet = new AvailableCommandsPacket();
+        $commands = [];
+        $names = [];
+
+        foreach($commandMap->getCommands() as $command){
+            if($command->testPermission($sender)){
+                $commands[] = $command;
+                $names[] = $command->getLabel();
+
+                foreach($command->getAliases() as $alias){
+                    $names[] = $alias;
+                }
+            }
+        }
+
+        $names = array_values(array_unique($names));
+        sort($names);
 
         /** @var array<string, int> $enumIndices */
         $enumIndices = [];
@@ -31,11 +47,7 @@ class CommandDataAdapter{
         /** @var array<string, int> $postfixIndices */
         $postfixIndices = [];
 
-        foreach($commandMap->getCommands() as $command){
-            if(!$command->testPermission($sender)){
-                continue;
-            }
-
+        foreach($commands as $command){
             $data = new CommandData($command->getLabel(), $command->getDescription());
 
             if($command->getAliases() !== []){
@@ -51,7 +63,7 @@ class CommandDataAdapter{
                 foreach($overload as $parameter){
                     $parameters[] = new CommandParameterData(
                         $parameter->getName(),
-                        self::getParameterType($packet, $parameter, $enumIndices, $softEnumIndices, $postfixIndices),
+                        self::getParameterType($packet, $parameter, $names, $enumIndices, $softEnumIndices, $postfixIndices),
                         $parameter->isOptional()
                     );
                 }
@@ -66,11 +78,12 @@ class CommandDataAdapter{
     }
 
     /**
+     * @param list<string>       $commandNames
      * @param array<string, int> $enumIndices
      * @param array<string, int> $softEnumIndices
      * @param array<string, int> $postfixIndices
      */
-    private static function getParameterType(AvailableCommandsPacket $packet, CommandParameter $parameter, array &$enumIndices, array &$softEnumIndices, array &$postfixIndices) : int{
+    private static function getParameterType(AvailableCommandsPacket $packet, CommandParameter $parameter, array $commandNames, array &$enumIndices, array &$softEnumIndices, array &$postfixIndices) : int{
         $postfix = $parameter->getPostfix();
 
         if($postfix !== null){
@@ -88,23 +101,24 @@ class CommandDataAdapter{
             return AvailableCommandsPacket::ARG_FLAG_VALID | $parameter->getType();
         }
 
+        $values = $enum->isDynamic() ? $commandNames : $enum->getValues();
+
         if($enum->isSoft()){
-            return AvailableCommandsPacket::ARG_FLAG_VALID | AvailableCommandsPacket::ARG_FLAG_SOFT_ENUM | self::addEnum($packet->softEnums, $softEnumIndices, $enum);
+            return AvailableCommandsPacket::ARG_FLAG_VALID | AvailableCommandsPacket::ARG_FLAG_SOFT_ENUM | self::addEnum($packet->softEnums, $softEnumIndices, $enum->getName(), $values);
         }
 
-        return AvailableCommandsPacket::ARG_FLAG_VALID | AvailableCommandsPacket::ARG_FLAG_ENUM | self::addEnum($packet->enums, $enumIndices, $enum);
+        return AvailableCommandsPacket::ARG_FLAG_VALID | AvailableCommandsPacket::ARG_FLAG_ENUM | self::addEnum($packet->enums, $enumIndices, $enum->getName(), $values);
     }
 
     /**
      * @param list<CommandEnumData> $enums
      * @param array<string, int>    $indices
+     * @param list<string>          $values
      */
-    private static function addEnum(array &$enums, array &$indices, CommandEnum $enum) : int{
-        $name = $enum->getName();
-
+    private static function addEnum(array &$enums, array &$indices, string $name, array $values) : int{
         if(!isset($indices[$name])){
             $indices[$name] = count($enums);
-            $enums[] = new CommandEnumData($name, $enum->getValues());
+            $enums[] = new CommandEnumData($name, $values);
         }
 
         return $indices[$name];

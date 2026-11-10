@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace raspberry\player;
 
+use raspberry\entity\Entity;
 use raspberry\entity\Human;
+use raspberry\entity\Living;
 use raspberry\entity\Skin;
 use raspberry\entity\damage\DamageSource;
 use raspberry\entity\object\ItemEntity;
@@ -16,6 +18,9 @@ use raspberry\inventory\Inventory;
 use raspberry\inventory\PlayerInventory;
 
 use raspberry\item\Item;
+use raspberry\item\ItemIds;
+use raspberry\item\ToolInfo;
+use raspberry\item\ArmorInfo;
 use raspberry\item\ItemSerializer;
 use raspberry\item\enchantment\Enchantment;
 
@@ -30,17 +35,22 @@ use raspberry\block\BlockIds;
 use raspberry\block\BlockCollision;
 use raspberry\block\BlockProperties;
 
+use raspberry\command\CommandOutput;
 use raspberry\command\CommandSender;
+
+use raspberry\lang\Translation;
 
 use raspberry\math\Vector3;
 
 use raspberry\network\mcpe\auth\AuthenticatedLogin;
 use raspberry\network\mcpe\NetworkSession;
+use raspberry\network\mcpe\protocol\Packet;
 use raspberry\network\mcpe\protocol\ActorEventPacket;
 use raspberry\network\mcpe\protocol\AnimatePacket;
 use raspberry\network\mcpe\protocol\LevelEventPacket;
 use raspberry\network\mcpe\protocol\LevelSoundEventPacket;
 use raspberry\network\mcpe\protocol\MobEffectPacket;
+use raspberry\network\mcpe\protocol\SetActorMotionPacket;
 use raspberry\network\mcpe\protocol\SetTitlePacket;
 use raspberry\network\mcpe\protocol\TextPacket;
 use raspberry\network\mcpe\protocol\ToastRequestPacket;
@@ -52,6 +62,7 @@ use raspberry\permission\PermissibleTrait;
 use raspberry\permission\PermissionManager;
 
 use raspberry\utils\Uuid;
+use raspberry\utils\TextFormat;
 
 use raspberry\world\Chunk;
 use raspberry\world\World;
@@ -88,10 +99,28 @@ class Player extends Human implements CommandSender{
     private const SUFFOCATION_DAMAGE = 1.0;
     private const SUFFOCATION_TICKS = 10;
 
-    private const FIRE_DAMAGE_TICKS = 10;
+    private const FIRE_SECONDS = 8;
+    private const LAVA_SECONDS = 15;
+
+    private const TURTLE_BREATHING_TICKS = 200;
 
     /** falls up to this many blocks do no damage */
     public const SAFE_FALL_DISTANCE = 3.0;
+
+    /** how far a hit reaches from the eyes to the target's box, with some room for lag */
+    public const ATTACK_REACH = 3.0;
+    public const CREATIVE_ATTACK_REACH = 5.0;
+    private const REACH_LEEWAY = 1.5;
+
+    /** a hit while falling does half as much again */
+    public const CRITICAL_MULTIPLIER = 1.5;
+
+    /** extra push from a sprinting hit, and from each level of knockback */
+    public const SPRINT_KNOCKBACK = 0.5;
+
+    /** what sharpness adds per level on Bedrock; smite and bane of arthropods add 2.5 */
+    public const SHARPNESS_DAMAGE = 1.25;
+    public const SMITE_DAMAGE = 2.5;
 
     public const ENDER_CHEST_SIZE = 27;
 
@@ -143,11 +172,11 @@ class Player extends Human implements CommandSender{
     /** blocks fallen since the player last stood on something */
     private float $fallDistance = 0.0;
 
+    private bool $onGround = true;
+
     private int $lastVoidDamageTick = 0;
 
     private int $lastSuffocationTick = 0;
-
-    private int $lastFireDamageTick = 0;
 
     private int $xpLevel = 0;
 
@@ -187,6 +216,8 @@ class Player extends Human implements CommandSender{
     private ContainerOpener $containerOpener;
 
     private ItemUser $itemUser;
+
+    private ?MovementCheck $movementCheck = null;
 
     public function __construct(World $world, Vector3 $position, NetworkSession $session, AuthenticatedLogin $identity, GameMode $gameMode, Skin $skin){
         $this->session = $session;
@@ -236,7 +267,7 @@ class Player extends Human implements CommandSender{
         foreach($data->getListTag("ActiveEffects")?->getValue() ?? [] as $tag){
             $effect = $tag instanceof CompoundTag ? Effect::tryFrom($tag->getByte("Id", 0) ?? 0) : null;
 
-            if($effect !== null && !$effect->isInstant() && ($duration = $tag->getInt("Duration", 0) ?? 0) > 0){
+            if($effect !== null && !$effect->isInstant() && (($duration = $tag->getInt("Duration", 0) ?? 0) > 0 || $duration === EffectInstance::INFINITE)){
                 $this->effects->add(new EffectInstance($effect, $duration, $tag->getByte("Amplifier", 0) ?? 0, $tag->getByte("Ambient", 0) === 1, $tag->getByte("ShowParticles", 1) !== 0), true);
             }
         }
@@ -248,6 +279,8 @@ class Player extends Human implements CommandSender{
         $this->food = max(0, min($data->getInt("FoodLevel", self::MAX_FOOD), self::MAX_FOOD));
         $this->saturation = max(0.0, min($data->getFloat("FoodSaturationLevel", self::DEFAULT_SATURATION), $this->food));
         $this->exhaustion = max(0.0, min($data->getFloat("FoodExhaustionLevel", 0.0), self::MAX_EXHAUSTION));
+        $this->air = max(0, min($data->getShort("Air", self::MAX_AIR) ?? self::MAX_AIR, self::MAX_AIR));
+        $this->fireTicks = max(0, $data->getShort("Fire", 0) ?? 0);
         $this->xpProgress = max(0.0, min($data->getFloat("XpP", 0.0) ?? 0.0, 1.0));
         $this->xpLevel = max(0, min($data->getInt("XpLevel", 0) ?? 0, self::MAX_XP_LEVEL));
         $this->enchantmentSeed = $data->getInt("EnchantmentSeed") ?? mt_rand();
@@ -303,6 +336,8 @@ class Player extends Human implements CommandSender{
             ->setInt("FoodLevel", $this->dead ? self::MAX_FOOD : $this->food)
             ->setFloat("FoodSaturationLevel", $this->dead ? self::DEFAULT_SATURATION : $this->saturation)
             ->setFloat("FoodExhaustionLevel", $this->dead ? 0.0 : $this->exhaustion)
+            ->setShort("Air", $this->dead ? self::MAX_AIR : $this->getAir())
+            ->setShort("Fire", $this->dead ? 0 : min($this->fireTicks, 32767))
             ->setFloat("XpP", $this->xpProgress)
             ->setInt("XpLevel", $this->xpLevel)
             ->setInt("EnchantmentSeed", $this->enchantmentSeed)
@@ -436,6 +471,10 @@ class Player extends Human implements CommandSender{
 
     public function getItemUser() : ItemUser{
         return $this->itemUser;
+    }
+
+    public function getMovementCheck() : MovementCheck{
+        return $this->movementCheck ??= new MovementCheck($this);
     }
 
     public function getXpLevel() : int{
@@ -589,6 +628,7 @@ class Player extends Human implements CommandSender{
 
         $this->gameMode = $gameMode;
         $this->flying = $gameMode->forcesFlying() || ($this->flying && $gameMode->allowsFlying());
+        $this->movementCheck?->reset();
 
         if($this->spawned){
             $this->session->sendGameMode();
@@ -623,12 +663,31 @@ class Player extends Human implements CommandSender{
      * @internal
      */
     public function onClientFlightToggle(bool $flying) : void{
-        if(($flying && !$this->gameMode->allowsFlying()) || (!$flying && $this->gameMode->forcesFlying())){
+        if($flying && !$this->gameMode->allowsFlying()){
+            if($this->session->getServer()->isCheatsAllowed()){
+                $this->flying = true;
+                return;
+            }
+
+            $this->kickForFlying();
+            return;
+        }
+
+        if(!$flying && $this->gameMode->forcesFlying()){
             $this->session->sendAbilities();
             return;
         }
 
         $this->flying = $flying;
+    }
+
+    /**
+     * @internal
+     */
+    public function kickForFlying() : void{
+        $server = $this->session->getServer();
+        $server->getLogger()->info($server->getLanguage()->translate("player.kicked.flying", ["player" => $this->getName()]));
+        $this->kick($server->getLanguage()->translate("disconnect.flying"));
     }
 
     public function isVisibleTo(Player $player) : bool{
@@ -646,6 +705,7 @@ class Player extends Human implements CommandSender{
 
         parent::teleport($position, $yaw, $pitch, $world);
         $this->fallDistance = 0.0;
+        $this->movementCheck?->reset();
 
         if($this->spawned){
             $this->session->onTeleport($changesWorld);
@@ -794,6 +854,8 @@ class Player extends Human implements CommandSender{
         }
 
         $this->effects->tick();
+        $this->tickInvulnerability();
+        $this->tickFire();
 
         if($this->dead){
             return;
@@ -815,11 +877,9 @@ class Player extends Human implements CommandSender{
             $this->damage(new DamageSource(DamageSource::CAUSE_SUFFOCATION, self::SUFFOCATION_DAMAGE));
         }
 
-        if($currentTick - $this->lastFireDamageTick >= self::FIRE_DAMAGE_TICKS && ($fire = $this->getFireAtFeet()) !== null){
-            $this->lastFireDamageTick = $currentTick;
-            $this->damage($fire);
-        }
-
+        $this->tickBlockContact();
+        $this->tickTurtleHelmet();
+        $this->tickAir();
         $this->containerOpener->tick();
     }
 
@@ -837,25 +897,113 @@ class Player extends Human implements CommandSender{
         return $y >= Chunk::MIN_Y && $y <= Chunk::MAX_Y && $this->world->isChunkLoaded($x >> 4, $z >> 4) && BlockCollision::isFullCube($this->world->getBlock($x, $y, $z));
     }
 
-    /**
-     * The damage from what the player stands in: a lit campfire burns, a soul campfire twice as
-     * much, and a cauldron of lava like lava does.
-     */
-    private function getFireAtFeet() : ?DamageSource{
-        [$x, $y, $z] = [$this->position->getFloorX(), $this->position->getFloorY(), $this->position->getFloorZ()];
-
-        if(!$this->gameMode->hasCollision() || $y < Chunk::MIN_Y || $y > Chunk::MAX_Y || !$this->world->isChunkLoaded($x >> 4, $z >> 4)){
-            return null;
+    private function tickBlockContact() : void{
+        if(!$this->gameMode->hasCollision() || $this->gameMode->isInvulnerable()){
+            return;
         }
 
-        $block = $this->world->getBlock($x, $y, $z);
+        $half = $this->getWidth() / 2 - 0.001;
+        [$minX, $minY, $minZ] = [$this->position->x - $half, $this->position->y + 0.001, $this->position->z - $half];
+        [$maxX, $maxY, $maxZ] = [$this->position->x + $half, $this->position->y + $this->getHeight() - 0.001, $this->position->z + $half];
+        $hurt = null;
+        $burn = 0;
+        $wet = false;
 
-        return match(true){
-            $block->getName() === BlockIds::CAMPFIRE && $block->getProperty(BlockProperties::EXTINGUISHED) === false => new DamageSource(DamageSource::CAUSE_FIRE, 1.0),
-            $block->getName() === BlockIds::SOUL_CAMPFIRE && $block->getProperty(BlockProperties::EXTINGUISHED) === false => new DamageSource(DamageSource::CAUSE_FIRE, 2.0),
-            $block->getName() === BlockIds::CAULDRON && $block->getProperty(BlockProperties::CAULDRON_LIQUID) === "lava" && $block->getProperty(BlockProperties::FILL_LEVEL) > 0 => new DamageSource(DamageSource::CAUSE_LAVA, 4.0),
-            default => null
-        };
+        for($x = (int) floor($minX); $x <= (int) floor($maxX); ++$x){
+            for($z = (int) floor($minZ); $z <= (int) floor($maxZ); ++$z){
+                $chunk = $this->world->getChunk($x >> 4, $z >> 4);
+
+                if($chunk === null){
+                    continue;
+                }
+
+                for($y = max(Chunk::MIN_Y, (int) floor($minY - 0.01)); $y <= min(Chunk::MAX_Y, (int) floor($maxY)); ++$y){
+                    $block = $chunk->getBlock($x & 15, $y, $z & 15);
+                    $inside = $y + 1 > $minY;
+
+                    [$cause, $amount, $seconds] = match(true){
+                        $block->getName() === BlockIds::CACTUS => [DamageSource::CAUSE_CONTACT, 1.0, 0],
+                        !$inside => [null, 0.0, 0],
+                        $block->getName() === BlockIds::FIRE => [DamageSource::CAUSE_FIRE, 1.0, self::FIRE_SECONDS],
+                        $block->getName() === BlockIds::SOUL_FIRE => [DamageSource::CAUSE_FIRE, 2.0, self::FIRE_SECONDS],
+                        $block->getName() === BlockIds::LAVA, $block->getName() === BlockIds::FLOWING_LAVA => [DamageSource::CAUSE_LAVA, 4.0, self::LAVA_SECONDS],
+                        $block->getName() === BlockIds::CAMPFIRE && $block->getProperty(BlockProperties::EXTINGUISHED) === false => [DamageSource::CAUSE_FIRE, 1.0, 0],
+                        $block->getName() === BlockIds::SOUL_CAMPFIRE && $block->getProperty(BlockProperties::EXTINGUISHED) === false => [DamageSource::CAUSE_FIRE, 2.0, 0],
+                        $block->getName() === BlockIds::CAULDRON && $block->getProperty(BlockProperties::FILL_LEVEL) > 0 => $block->getProperty(BlockProperties::CAULDRON_LIQUID) === "lava" ? [DamageSource::CAUSE_LAVA, 4.0, self::LAVA_SECONDS] : [null, -1.0, 0],
+                        $block->getName() === BlockIds::POWDER_SNOW => [null, -1.0, 0],
+                        default => [null, 0.0, 0]
+                    };
+
+                    if($amount < 0){
+                        $wet = true;
+                    }elseif($cause !== null && ($hurt === null || $amount > $hurt->getAmount())){
+                        $hurt = new DamageSource($cause, $amount);
+                    }
+
+                    $burn = max($burn, $seconds);
+                }
+            }
+        }
+
+        $below = $this->position->add(0, -0.2, 0);
+
+        if($hurt === null && $this->onGround && !$this->sneaking && $this->armorInventory->getBoots()->getEnchantmentLevel(Enchantment::FROST_WALKER) === 0 && $below->getFloorY() >= Chunk::MIN_Y && $this->world->isChunkLoaded($below->getFloorX() >> 4, $below->getFloorZ() >> 4) && $this->world->getBlock($below->getFloorX(), $below->getFloorY(), $below->getFloorZ())->getName() === BlockIds::MAGMA){
+            $hurt = new DamageSource(DamageSource::CAUSE_MAGMA, 1.0);
+        }
+
+        if($wet){
+            $this->extinguish();
+        }elseif($burn > 0){
+            $this->setOnFire($burn);
+        }
+
+        if($hurt !== null){
+            $this->damage($hurt);
+        }
+    }
+
+    private function tickTurtleHelmet() : void{
+        if($this->armorInventory->getHelmet()->getId() !== ItemIds::TURTLE_HELMET || $this->isHeadInWater()){
+            return;
+        }
+
+        if(($this->effects->get(Effect::WATER_BREATHING)?->getDuration() ?? 0) <= self::TURTLE_BREATHING_TICKS - 20){
+            $this->effects->add(new EffectInstance(Effect::WATER_BREATHING, self::TURTLE_BREATHING_TICKS, 0, false, false));
+        }
+    }
+
+    public function canBreatheUnderwater() : bool{
+        if($this->gameMode->isInvulnerable() || parent::canBreatheUnderwater()){
+            return true;
+        }
+
+        $eyes = $this->getEyePosition();
+        $y = $eyes->getFloorY();
+
+        return $y >= Chunk::MIN_Y && $y <= Chunk::MAX_Y && $this->world->getChunk($eyes->getFloorX() >> 4, $eyes->getFloorZ() >> 4)?->getBlock($eyes->getFloorX() & 15, $y, $eyes->getFloorZ() & 15)->getName() === BlockIds::BUBBLE_COLUMN;
+    }
+
+    protected function getRespirationLevel() : int{
+        return $this->armorInventory->getHelmet()->getEnchantmentLevel(Enchantment::RESPIRATION);
+    }
+
+    protected function onAirChanged() : void{
+        if($this->spawned){
+            $this->session->sendOwnMetadata();
+        }
+    }
+
+    public function isUsingItem() : bool{
+        return $this->itemUser->isUsing();
+    }
+
+    /**
+     * @internal
+     */
+    public function onUsingItemChanged() : void{
+        if($this->spawned){
+            $this->broadcastEffectVisuals();
+        }
     }
 
     /**
@@ -866,12 +1014,15 @@ class Player extends Human implements CommandSender{
      */
     public function onClientMove(Vector3 $from, bool $onGround, bool $jumped) : void{
         $dx = $this->position->x - $from->x;
+        $dy = $this->position->y - $from->y;
         $dz = $this->position->z - $from->z;
         $horizontal = sqrt($dx * $dx + $dz * $dz);
 
-        if($this->swimming){
+        if($this->swimming || $this->isHeadInWater()){
+            $this->exhaust(0.01 * sqrt($horizontal * $horizontal + $dy * $dy));
+        }elseif($this->isInWater()){
             $this->exhaust(0.01 * $horizontal);
-        }elseif($this->sprinting){
+        }elseif($this->sprinting && $onGround){
             $this->exhaust(0.1 * $horizontal);
         }
 
@@ -879,7 +1030,267 @@ class Player extends Human implements CommandSender{
             $this->exhaust($this->sprinting ? 0.2 : 0.05);
         }
 
+        $this->onGround = $onGround;
         $this->updateFallDistance($this->position->y - $from->y, $onGround);
+    }
+
+    public function isOnGround() : bool{
+        return $this->onGround;
+    }
+
+    public function attackEntity(Entity $target) : bool{
+        if($this->dead || !$this->gameMode->allowsInteraction() || $target === $this || !$target instanceof Living || !$target->isAlive() || $target->isClosed() || $target->getWorld() !== $this->world){
+            return false;
+        }
+
+        $reach = ($this->gameMode === GameMode::CREATIVE ? self::CREATIVE_ATTACK_REACH : self::ATTACK_REACH) + self::REACH_LEEWAY;
+
+        if($target->distanceToBox($this->getEyePosition()) > $reach){
+            return false;
+        }
+
+        if($target instanceof self && (!$this->session->getServer()->isPvpEnabled() || !$target->isSpawned())){
+            return false;
+        }
+
+        $this->swingArm(AnimatePacket::SWING_ATTACK);
+        $this->exhaust(0.1);
+
+        $held = $this->inventory->getItemInHand();
+        $damage = ToolInfo::getAttackDamage($held->getId());
+        $damage += 3.0 * $this->effects->getLevel(Effect::STRENGTH);
+        $damage = max(0.0, $damage - 4.0 * $this->effects->getLevel(Effect::WEAKNESS));
+        $critical = $this->isCriticalHit();
+
+        if($critical){
+            $damage *= self::CRITICAL_MULTIPLIER;
+        }
+
+        $bonus = self::getEnchantmentDamage($held, $target);
+        $damage += $bonus;
+        $position = $target->getPosition();
+
+        if(!$target->damage(new DamageSource(DamageSource::CAUSE_ENTITY_ATTACK, $damage, $this))){
+            $this->broadcastNear($target, LevelSoundEventPacket::create(LevelSoundEvent::ATTACK_NODAMAGE, $position->x, $position->y, $position->z));
+            return false;
+        }
+
+        if($target->wasLastHitFresh()){
+            $to = $target->getPosition();
+            $extra = self::SPRINT_KNOCKBACK * ($held->getEnchantmentLevel(Enchantment::KNOCKBACK) + ($this->sprinting ? 1 : 0));
+            $target->knockBack($to->x - $this->position->x, $to->z - $this->position->z, extra: $extra, yaw: $this->yaw);
+        }
+
+        $fireAspect = $held->getEnchantmentLevel(Enchantment::FIRE_ASPECT);
+
+        if($fireAspect > 0 && $target->isAlive()){
+            $target->setOnFire(4 * $fireAspect);
+        }
+
+        $bane = $held->getEnchantmentLevel(Enchantment::BANE_OF_ARTHROPODS);
+
+        if($bane > 0 && $target->isArthropod() && $target->isAlive()){
+            $target->getEffects()->add(new EffectInstance(Effect::SLOWNESS, 20 + mt_rand(0, 10 * $bane), 3));
+        }
+
+        $this->broadcastNear($target, LevelSoundEventPacket::create(LevelSoundEvent::ATTACK_STRONG, $position->x, $position->y, $position->z));
+
+        if($critical){
+            $this->broadcastNear($target, AnimatePacket::create(AnimatePacket::ACTION_CRITICAL_HIT, $target->getId()));
+        }
+
+        if($bonus > 0){
+            $this->broadcastNear($target, AnimatePacket::create(AnimatePacket::ACTION_MAGIC_CRITICAL_HIT, $target->getId()));
+        }
+
+        if(!$this->gameMode->hasInstantBuild()){
+            $this->wearHeld(ToolInfo::getAttackWear($held->getId()));
+        }
+
+        return true;
+    }
+
+    /**
+     * What the weapon's enchantments add against $target: sharpness against anything, smite
+     * against the undead, bane of arthropods against spiders and their kind.
+     */
+    public static function getEnchantmentDamage(Item $weapon, Living $target) : float{
+        $bonus = self::SHARPNESS_DAMAGE * $weapon->getEnchantmentLevel(Enchantment::SHARPNESS);
+
+        if($target->isUndead()){
+            $bonus += self::SMITE_DAMAGE * $weapon->getEnchantmentLevel(Enchantment::SMITE);
+        }
+
+        if($target->isArthropod()){
+            $bonus += self::SMITE_DAMAGE * $weapon->getEnchantmentLevel(Enchantment::BANE_OF_ARTHROPODS);
+        }
+
+        return $bonus;
+    }
+
+    protected function getArmorValues() : array{
+        $defense = 0;
+        $toughness = 0.0;
+
+        foreach($this->armorInventory->getContents() as $item){
+            $defense += ArmorInfo::getDefense($item->getId());
+            $toughness += ArmorInfo::getToughness($item->getId());
+        }
+
+        return [$defense, $toughness];
+    }
+
+    protected function getProtectionPoints(DamageSource $source) : int{
+        $points = 0;
+
+        foreach($this->armorInventory->getContents() as $item){
+            if($source->getCause() !== DamageSource::CAUSE_STARVATION){
+                $points += $item->getEnchantmentLevel(Enchantment::PROTECTION);
+            }
+
+            $points += match(true){
+                $source->isFire() => 2 * $item->getEnchantmentLevel(Enchantment::FIRE_PROTECTION),
+                $source->getCause() === DamageSource::CAUSE_BLOCK_EXPLOSION, $source->getCause() === DamageSource::CAUSE_ENTITY_EXPLOSION => 2 * $item->getEnchantmentLevel(Enchantment::BLAST_PROTECTION),
+                $source->getCause() === DamageSource::CAUSE_PROJECTILE => 2 * $item->getEnchantmentLevel(Enchantment::PROJECTILE_PROTECTION),
+                $source->getCause() === DamageSource::CAUSE_FALL => 3 * $item->getEnchantmentLevel(Enchantment::FEATHER_FALLING),
+                default => 0
+            };
+        }
+
+        return $points;
+    }
+
+    public function getKnockbackResistance() : float{
+        $resistance = 0.0;
+
+        foreach($this->armorInventory->getContents() as $item){
+            $resistance += ArmorInfo::getKnockbackResistance($item->getId());
+        }
+
+        return $resistance;
+    }
+
+    /**
+     * Armor that stopped some of the hit wears by a quarter of it, at least 1; thorns may hit
+     * the attacker back.
+     */
+    protected function onHurt(DamageSource $source) : void{
+        if(!$source->isReducedByArmor() || $this->gameMode->hasInstantBuild()){
+            return;
+        }
+
+        $attacker = $source->getAttacker();
+        $hitsBack = $attacker instanceof Living && $attacker !== $this && $source->getCause() !== DamageSource::CAUSE_THORNS && ($source->getCause() === DamageSource::CAUSE_ENTITY_ATTACK || $source->getCause() === DamageSource::CAUSE_PROJECTILE);
+        $wear = max(1, (int) floor($source->getAmount() / 4));
+
+        foreach($this->armorInventory->getContents() as $slot => $item){
+            if(ArmorInfo::getDefense($item->getId()) <= 0){
+                continue;
+            }
+
+            $thorns = $hitsBack ? $item->getEnchantmentLevel(Enchantment::THORNS) : 0;
+            $pieceWear = $wear;
+
+            if($thorns > 0 && mt_rand(0, 99) < 15 * $thorns){
+                $attacker->damage(new DamageSource(DamageSource::CAUSE_THORNS, $thorns > 10 ? $thorns - 10 : mt_rand(1, 4), $this));
+                $pieceWear += 2;
+            }
+
+            $this->wearArmor($slot, $item, $pieceWear);
+        }
+    }
+
+    private function wearArmor(int $slot, Item $item, int $amount) : void{
+        if(!$item->hasDurability()){
+            return;
+        }
+
+        $unbreaking = $item->getEnchantmentLevel(Enchantment::UNBREAKING);
+        $taken = 0;
+
+        for($i = 0; $i < $amount; ++$i){
+            if($unbreaking === 0 || mt_rand(1, 100) <= 60 + intdiv(40, $unbreaking + 1)){
+                ++$taken;
+            }
+        }
+
+        if($taken === 0){
+            return;
+        }
+
+        if($item->getDamage() + $taken >= $item->getMaxDurability()){
+            $this->armorInventory->setItem($slot, Item::air());
+            $this->session->sendDataPacket(LevelSoundEventPacket::create(LevelSoundEvent::BREAK, $this->position->x, $this->position->y, $this->position->z));
+            return;
+        }
+
+        $this->armorInventory->setItem($slot, $item->setDamage($item->getDamage() + $taken));
+    }
+
+    protected function onFireChanged() : void{
+        if($this->spawned){
+            $this->broadcastEffectVisuals();
+        }
+    }
+
+    /**
+     * Falling, not standing, swimming, flying or blind: the next hit is a critical one.
+     */
+    public function isCriticalHit() : bool{
+        return !$this->onGround && $this->fallDistance > 0 && !$this->flying && !$this->isInWater() && !$this->effects->has(Effect::BLINDNESS);
+    }
+
+    /**
+     * The player's own client moves the player, so a push has to go to it.
+     */
+    public function setMotion(Vector3 $motion) : void{
+        parent::setMotion($motion);
+        $this->getMovementCheck()->onPushed($motion);
+
+        if($this->spawned){
+            $this->session->sendDataPacket(SetActorMotionPacket::create($this->id, $motion->x, $motion->y, $motion->z, $this->session->getLastInputTick()));
+        }
+    }
+
+    /**
+     * Sends $packet to everyone who sees $entity, the player and $entity included.
+     */
+    private function broadcastNear(Entity $entity, Packet $packet) : void{
+        $targets = $entity->getViewers();
+        $targets[$this->id] = $this;
+
+        if($entity instanceof self){
+            $targets[$entity->getId()] = $entity;
+        }
+
+        foreach($targets as $player){
+            $player->getNetworkSession()->sendDataPacket($packet);
+        }
+    }
+
+    /**
+     * Wears the held item down by $amount uses, unbreaking can save it.
+     */
+    private function wearHeld(int $amount) : void{
+        $item = $this->inventory->getItemInHand();
+
+        if(!$item->hasDurability()){
+            return;
+        }
+
+        $unbreaking = $item->getEnchantmentLevel(Enchantment::UNBREAKING);
+
+        if($unbreaking > 0 && mt_rand(0, $unbreaking) !== 0){
+            return;
+        }
+
+        if($item->getDamage() + $amount >= $item->getMaxDurability()){
+            $this->inventory->setItemInHand(Item::air());
+            $this->session->sendDataPacket(LevelSoundEventPacket::create(LevelSoundEvent::BREAK, $this->position->x, $this->position->y, $this->position->z));
+            return;
+        }
+
+        $this->inventory->setItemInHand($item->setDamage($item->getDamage() + $amount));
     }
 
     private function updateFallDistance(float $dy, bool $onGround) : void{
@@ -907,17 +1318,29 @@ class Player extends Human implements CommandSender{
      * Water at the feet or the head breaks a fall.
      */
     public function isInWater() : bool{
-        $x = $this->position->getFloorX();
-        $z = $this->position->getFloorZ();
+        return $this->isWaterAt($this->position->getFloorX(), $this->position->getFloorY(), $this->position->getFloorZ()) || $this->isHeadInWater();
+    }
 
-        foreach([$this->position->getFloorY(), (int) floor($this->position->y + $this->getEyeHeight())] as $y){
-            if($y < Chunk::MIN_Y || $y > Chunk::MAX_Y){
-                continue;
-            }
+    public function isHeadInWater() : bool{
+        $eyes = $this->getEyePosition();
 
-            $name = $this->world->getBlock($x, $y, $z)->getName();
+        return $this->isWaterAt($eyes->getFloorX(), $eyes->getFloorY(), $eyes->getFloorZ());
+    }
 
-            if($name === BlockIds::WATER || $name === BlockIds::FLOWING_WATER){
+    /**
+     * Water, or a block standing in water like kelp or a waterlogged slab.
+     */
+    private function isWaterAt(int $x, int $y, int $z) : bool{
+        $chunk = $this->world->getChunk($x >> 4, $z >> 4);
+
+        if($chunk === null || $y < Chunk::MIN_Y || $y > Chunk::MAX_Y){
+            return false;
+        }
+
+        foreach([0, 1] as $layer){
+            $name = $chunk->getBlock($x & 15, $y, $z & 15, $layer)->getName();
+
+            if($name === BlockIds::WATER || $name === BlockIds::FLOWING_WATER || $name === BlockIds::BUBBLE_COLUMN || $name === BlockIds::KELP || $name === BlockIds::SEAGRASS){
                 return true;
             }
         }
@@ -968,6 +1391,7 @@ class Player extends Human implements CommandSender{
         }
 
         $this->dead = false;
+        $this->fireTicks = 0;
         $this->resetVitals();
         $this->flying = $this->gameMode->forcesFlying();
         $this->swimming = false;
@@ -990,6 +1414,8 @@ class Player extends Human implements CommandSender{
         $this->saturation = self::DEFAULT_SATURATION;
         $this->exhaustion = 0.0;
         $this->foodTickTimer = 1;
+        $this->air = self::MAX_AIR;
+        $this->breathing = true;
         $this->fallDistance = 0.0;
     }
 
@@ -1064,6 +1490,21 @@ class Player extends Human implements CommandSender{
      */
     public function sendTranslation(string $message, array $parameters = []) : void{
         $this->session->sendTranslation($message, $parameters);
+    }
+
+    public function sendCommandOutput(CommandOutput $output) : void{
+        $language = $this->session->getServer()->getLanguage();
+
+        foreach($output->getMessages() as $message){
+            $text = $message->getMessage();
+            $color = $message->isSuccess() ? "" : TextFormat::RED;
+
+            if($text instanceof Translation){
+                $this->sendTranslation($color . "%" . $text->getKey(), Translation::toClientParams($text->getParams(), $language));
+            }else{
+                $this->sendMessage($color . $text);
+            }
+        }
     }
 
     /**

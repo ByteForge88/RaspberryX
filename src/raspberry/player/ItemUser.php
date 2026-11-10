@@ -97,6 +97,7 @@ class ItemUser{
 
         if($ticks !== null){
             $this->using = [$player->getInventory()->getHeldSlot(), $id, $this->getTick(), $ticks];
+            $player->onUsingItemChanged();
         }
     }
 
@@ -106,6 +107,11 @@ class ItemUser{
     public function release(int $action) : void{
         $using = $this->using;
         $this->using = null;
+        $player = $this->player;
+
+        if($using !== null){
+            $player->onUsingItemChanged();
+        }
 
         if($action !== self::CONSUME || $using === null){
             return;

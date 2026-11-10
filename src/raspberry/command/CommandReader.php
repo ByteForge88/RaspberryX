@@ -9,9 +9,6 @@ use function strlen;
 use function substr;
 use function trim;
 
-/**
- * Reads arguments one at a time from the text after a command name.
- */
 class CommandReader{
 
     private string $input;
@@ -20,6 +17,19 @@ class CommandReader{
 
     public function __construct(string $input){
         $this->input = $input;
+    }
+
+    public function getInput() : string{
+        return $this->input;
+    }
+
+    /**
+     * Where the next argument starts, after any whitespace.
+     */
+    public function getPosition() : int{
+        $this->skipWhitespace();
+
+        return $this->position;
     }
 
     /**
@@ -32,13 +42,11 @@ class CommandReader{
     }
 
     /**
-     * Reads one word, or "text in quotes" (with \" and \\ escapes) as one word.
-     *
-     * @throws InvalidCommandSyntaxException when nothing is left or a quote is never closed
+     * @throws InvalidCommandSyntaxException
      */
     public function readWord() : string{
         if($this->atEnd()){
-            throw new InvalidCommandSyntaxException();
+            throw new InvalidCommandSyntaxException($this->position);
         }
 
         if($this->input[$this->position] === '"'){
@@ -60,7 +68,7 @@ class CommandReader{
      */
     public function readTarget() : string{
         if($this->atEnd()){
-            throw new InvalidCommandSyntaxException();
+            throw new InvalidCommandSyntaxException($this->position);
         }
 
         if($this->input[$this->position] !== "@"){
@@ -79,7 +87,7 @@ class CommandReader{
         }
 
         if($this->position < $length && !self::isWhitespace($this->input[$this->position])){
-            throw new InvalidCommandSyntaxException();
+            throw new InvalidCommandSyntaxException($start);
         }
 
         return substr($this->input, $start, $this->position - $start);
@@ -96,15 +104,11 @@ class CommandReader{
     }
 
     /**
-     * Reads a {...} or [...] block, including nested brackets and quoted strings, e.g. JSON.
-     *
-     * @param string $openers which of "{" and "[" the block may start with
-     *
-     * @throws InvalidCommandSyntaxException when there is no such block or it is never closed
+     * @throws InvalidCommandSyntaxException
      */
     public function readBracketed(string $openers) : string{
         if($this->atEnd() || !str_contains($openers, $this->input[$this->position])){
-            throw new InvalidCommandSyntaxException();
+            throw new InvalidCommandSyntaxException($this->position);
         }
 
         $start = $this->position;
@@ -132,10 +136,11 @@ class CommandReader{
             }
         }
 
-        throw new InvalidCommandSyntaxException();
+        throw new InvalidCommandSyntaxException($start);
     }
 
     private function readQuoted() : string{
+        $start = $this->position;
         $value = "";
         ++$this->position;
 
@@ -152,7 +157,7 @@ class CommandReader{
             }
         }
 
-        throw new InvalidCommandSyntaxException();
+        throw new InvalidCommandSyntaxException($start);
     }
 
     private function skipWhitespace() : void{

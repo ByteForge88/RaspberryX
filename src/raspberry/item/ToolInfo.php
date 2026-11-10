@@ -19,7 +19,59 @@ class ToolInfo{
         "netherite" => [5, 9.0]
     ];
 
+    /** @var array<string, float> */
+    private const SWORD_DAMAGE = [
+        "wooden" => 5.0,
+        "golden" => 5.0,
+        "stone" => 6.0,
+        "copper" => 6.0,
+        "iron" => 7.0,
+        "diamond" => 8.0,
+        "netherite" => 9.0
+    ];
+
+    /** @var array<string, float> */
+    private const TOOL_PENALTY = [
+        "sword" => 0.0,
+        "axe" => 1.0,
+        "pickaxe" => 3.0,
+        "shovel" => 3.0,
+        "hoe" => 3.0
+    ];
+
+    public const HAND_DAMAGE = 1.0;
+
     private function __construct(){
+    }
+
+    /**
+     * How much a hit with $id does before armor and effects, the Bedrock numbers: a fist does
+     * 1, a diamond sword 8.
+     */
+    public static function getAttackDamage(string $id) : float{
+        if($id === ItemIds::TRIDENT){
+            return 9.0;
+        }
+
+        if($id === ItemIds::MACE){
+            return 6.0;
+        }
+
+        if(preg_match('/^minecraft:([a-z]+)_(pickaxe|axe|shovel|hoe|sword)$/D', $id, $matches) === 1 && isset(self::SWORD_DAMAGE[$matches[1]])){
+            return self::SWORD_DAMAGE[$matches[1]] - self::TOOL_PENALTY[$matches[2]];
+        }
+
+        return self::HAND_DAMAGE;
+    }
+
+    /**
+     * Durability a hit costs: weapons wear by 1, tools that are not made for it by 2.
+     */
+    public static function getAttackWear(string $id) : int{
+        return match(self::getType($id)){
+            "pickaxe", "axe", "shovel", "hoe" => 2,
+            default => 1
+        };
     }
 
     /**

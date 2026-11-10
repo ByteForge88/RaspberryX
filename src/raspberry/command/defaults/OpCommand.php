@@ -5,37 +5,37 @@ declare(strict_types=1);
 namespace raspberry\command\defaults;
 
 use raspberry\command\Command;
+use raspberry\command\CommandException;
+use raspberry\command\CommandOutput;
 use raspberry\command\CommandParameter;
 use raspberry\command\CommandSender;
 
-use raspberry\player\Player;
-
-use raspberry\utils\TextFormat;
+use raspberry\Server;
 
 class OpCommand extends Command{
 
     public function __construct(){
-        parent::__construct("op");
+        parent::__construct("op", "commands.op.description", "raspberry.command.op");
 
-        $this->setDescription($this->translate("command.op.description"));
-        $this->setPermission("raspberry.command.op");
-
-        $this->setArgument(0, CommandParameter::target("player"));
+        $this->addOverload(CommandParameter::target("player", false, false));
     }
 
-    public function onSent(CommandSender $sender, array $args) : void{
-        /** @var list<Player> $players */
-        $players = $args["player"];
+    public function onSent(CommandSender $sender, CommandOutput $output, array $args) : void{
+        $players = Server::getInstance()->getCommandMap()->selectPlayers($sender, $args["player"]);
+
+        if($players === []){
+            throw new CommandException("commands.generic.noTargetMatch");
+        }
 
         foreach($players as $player){
             if($player->isOp()){
-                $sender->sendMessage(TextFormat::RED . $this->translate("command.op.already", ["player" => $player->getName()]));
+                $output->error("commands.op.failed", [$player->getName()]);
                 continue;
             }
 
             $player->setOp(true);
-            $player->sendMessage(TextFormat::GRAY . $this->translate("command.op.notice"));
-            $sender->sendMessage($this->translate("command.op.done", ["player" => $player->getName()]));
+            $player->sendTranslation("%commands.op.message");
+            $output->success("commands.op.success", [$player->getName()]);
         }
     }
 }

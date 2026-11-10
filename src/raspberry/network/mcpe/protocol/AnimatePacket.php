@@ -12,10 +12,13 @@ use UnexpectedValueException;
 class AnimatePacket implements Packet{
 
     public const ACTION_SWING_ARM = 1;
+    public const ACTION_CRITICAL_HIT = 4;
+    public const ACTION_MAGIC_CRITICAL_HIT = 5;
 
     public const SWING_BUILD = "build";
     public const SWING_MINE = "mine";
     public const SWING_INTERACT = "interact";
+    public const SWING_ATTACK = "attack";
 
     public int $action = self::ACTION_SWING_ARM;
 

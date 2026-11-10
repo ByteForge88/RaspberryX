@@ -4,11 +4,15 @@ declare(strict_types=1);
 
 namespace raspberry\lang;
 
+use ArgumentCountError;
 use InvalidArgumentException;
 use RuntimeException;
 use UnexpectedValueException;
+use ValueError;
 
+use function array_is_list;
 use function array_keys;
+use function array_map;
 use function dirname;
 use function file_get_contents;
 use function implode;
@@ -18,6 +22,7 @@ use function ksort;
 use function preg_match;
 use function preg_split;
 use function scandir;
+use function sprintf;
 use function str_starts_with;
 use function strpos;
 use function strtr;
@@ -62,13 +67,23 @@ final class Language{
     }
 
     /**
-     * @param array<string, string|int|float> $params placeholder => value
+     * @param array<string, string|int|float>|list<string|int|float|Translation> $params
      */
     public function translate(string $key, array $params = []) : string{
         $message = $this->messages[$key] ?? $this->fallback[$key] ?? $key;
 
         if($params === []){
             return $message;
+        }
+
+        if(array_is_list($params)){
+            $values = array_map(fn(string|int|float|Translation $value) => $value instanceof Translation ? $this->translateObject($value) : $value, $params);
+
+            try{
+                return sprintf($message, ...$values);
+            }catch(ArgumentCountError|ValueError){
+                return $message;
+            }
         }
 
         $replacements = [];
@@ -82,6 +97,10 @@ final class Language{
 
     public static function isAvailable(string $code) : bool{
         return preg_match('/^[a-z]{2}_[A-Z]{2}$/D', $code) === 1 && is_file(self::path($code));
+    }
+
+    public function translateObject(Translation $translation) : string{
+        return $this->translate($translation->getKey(), $translation->getParams());
     }
 
     /**

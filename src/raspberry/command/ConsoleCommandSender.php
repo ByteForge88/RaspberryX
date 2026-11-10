@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace raspberry\command;
 
+use raspberry\lang\Language;
+
 use raspberry\permission\PermissibleTrait;
 use raspberry\permission\PermissionLevel;
 use raspberry\permission\PermissionManager;
 
 use raspberry\utils\Logger;
+use raspberry\utils\TextFormat;
 
 class ConsoleCommandSender implements CommandSender{
     use PermissibleTrait;
@@ -17,9 +20,12 @@ class ConsoleCommandSender implements CommandSender{
 
     private PermissionManager $permissionManager;
 
-    public function __construct(Logger $logger, PermissionManager $permissionManager){
+    private Language $language;
+
+    public function __construct(Logger $logger, PermissionManager $permissionManager, Language $language){
         $this->logger = $logger;
         $this->permissionManager = $permissionManager;
+        $this->language = $language;
     }
 
     public function getName() : string{
@@ -28,6 +34,12 @@ class ConsoleCommandSender implements CommandSender{
 
     public function sendMessage(string $message) : void{
         $this->logger->info($message);
+    }
+
+    public function sendCommandOutput(CommandOutput $output) : void{
+        foreach($output->getMessages() as $message){
+            $this->logger->info(($message->isSuccess() ? "" : TextFormat::RED) . $message->toText($this->language));
+        }
     }
 
     public function getPermissionLevel() : PermissionLevel{

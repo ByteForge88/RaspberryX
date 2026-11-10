@@ -4,19 +4,22 @@ declare(strict_types=1);
 
 namespace raspberry\command;
 
-use raspberry\Server;
+use raspberry\player\Player;
 
-use raspberry\utils\TextFormat;
+use raspberry\Server;
 
 use LogicException;
 use InvalidArgumentException;
 
-use function explode;
 use function is_string;
 use function ksort;
 use function ltrim;
+use function min;
 use function preg_split;
+use function str_ends_with;
+use function strlen;
 use function strtolower;
+use function substr;
 use function trim;
 
 class CommandMap{
@@ -36,9 +39,6 @@ class CommandMap{
         $this->parser = new CommandArgumentParser($server);
     }
 
-    /**
-     * Registers a command under $name, which becomes its label: what players type to run it.
-     */
     public function registerCommand(string $name, Command $command) : void{
         if($command->isRegistered()){
             throw new LogicException("Command \"{$command->getName()}\" is already registered");
@@ -64,9 +64,6 @@ class CommandMap{
     }
 
     /**
-     * Registers several commands. A string key is used as the name to register under; otherwise
-     * the command's own name is used.
-     *
      * @param array<int|string, Command> $commands
      */
     public function registerAllCommands(array $commands) : void{
@@ -96,48 +93,71 @@ class CommandMap{
     }
 
     /**
-     * @return array<string, Command> label => command, sorted, without aliases
+     * @return array<string, Command>
      */
     public function getCommands() : array{
         return $this->commands;
     }
 
-    /**
-     * Runs a command line like "kick Steve griefing" or "/say hi".
-     *
-     * @return bool false when the command does not exist
-     */
-    public function dispatch(CommandSender $sender, string $commandLine) : bool{
-        $parts = preg_split('/\s+/u', ltrim(trim($commandLine), "/"), 2) ?: [""];
+    public function dispatch(CommandSender $sender, string $commandLine) : CommandOutput{
+        $output = new CommandOutput();
+        $line = ltrim(trim($commandLine), "/");
+        $parts = preg_split('/\s+/u', $line, 2) ?: [""];
         $name = $parts[0];
 
         if($name === ""){
-            return true;
+            return $output;
         }
 
-        $language = $this->server->getLanguage();
         $command = $this->getCommand($name);
 
-        if($command === null){
-            $sender->sendMessage(TextFormat::RED . $language->translate("command.unknown", ["command" => $name]));
-            return false;
+        if($command === null || !$command->testPermission($sender)){
+            $output->error("commands.generic.unknown", [$name]);
+            return $output;
         }
 
-        if(!$command->testPermission($sender)){
-            $sender->sendMessage(TextFormat::RED . $language->translate("command.noPermission"));
-            return true;
-        }
+        $arguments = $parts[1] ?? "";
 
         try{
-            $command->onSent($sender, $this->parser->parse($sender, $command, $parts[1] ?? ""));
-        }catch(InvalidCommandSyntaxException){
-            foreach(explode("\n", $command->getUsage()) as $line){
-                $sender->sendMessage(TextFormat::RED . $language->translate("command.usage", ["usage" => $line]));
-            }
+            $command->onSent($sender, $output, $this->parser->parse($sender, $command, $arguments));
+        }catch(InvalidCommandSyntaxException $exception){
+            $output->error("commands.generic.syntax", self::syntaxErrorParts($name, $arguments, $exception->getOffset()));
         }catch(CommandException $exception){
-            $sender->sendMessage(TextFormat::RED . $exception->getMessage());
+            $output->addException($exception);
         }
 
-        return true;
+        return $output;
+    }
+
+    /**
+     * @return list<Player>
+     * @throws CommandException
+     */
+    public function selectPlayers(CommandSender $sender, string $target) : array{
+        return $this->parser->selectPlayers($sender, $target);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private static function syntaxErrorParts(string $name, string $arguments, int $offset) : array{
+        $offset = $offset < 0 ? strlen($arguments) : min($offset, strlen($arguments));
+        $end = $offset;
+
+        while($end < strlen($arguments) && $arguments[$end] !== " "){
+            ++$end;
+        }
+
+        $before = $name . " " . substr($arguments, 0, $offset);
+
+        if($end === $offset && !str_ends_with($before, " ")){
+            $before .= " ";
+        }
+
+        return [
+            $before,
+            substr($arguments, $offset, $end - $offset),
+            substr($arguments, $end)
+        ];
     }
 }

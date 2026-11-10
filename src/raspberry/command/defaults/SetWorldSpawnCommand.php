@@ -6,6 +6,7 @@ namespace raspberry\command\defaults;
 
 use raspberry\command\Command;
 use raspberry\command\CommandException;
+use raspberry\command\CommandOutput;
 use raspberry\command\CommandParameter;
 use raspberry\command\CommandSender;
 
@@ -18,27 +19,23 @@ use raspberry\Server;
 class SetWorldSpawnCommand extends Command{
 
     public function __construct(){
-        parent::__construct("setworldspawn");
+        parent::__construct("setworldspawn", "commands.setworldspawn.description", "raspberry.command.setworldspawn");
 
-        $this->setDescription($this->translate("command.setworldspawn.description"));
-        $this->setPermission("raspberry.command.setworldspawn");
-
-        $this->setArgument(0, CommandParameter::position("spawnPoint", true));
+        $this->addOverload(CommandParameter::position("spawnPoint", true));
     }
 
-    public function onSent(CommandSender $sender, array $args) : void{
+    public function onSent(CommandSender $sender, CommandOutput $output, array $args) : void{
         if(isset($args["spawnPoint"])){
             $position = $args["spawnPoint"];
         }elseif($sender instanceof Player){
             $position = $sender->getPosition();
         }else{
-            throw new CommandException($this->translate("command.setworldspawn.noPosition"));
+            throw CommandException::text($this->text("command.setworldspawn.noPosition"));
         }
 
         $server = Server::getInstance();
         $world = $sender instanceof Player ? $sender->getWorld() : $server->getWorldManager()->getDefaultWorld();
         $spawn = new Vector3($position->getFloorX() + 0.5, (float) $position->getFloorY(), $position->getFloorZ() + 0.5);
-
         $world->setSpawnPosition($spawn);
 
         foreach($server->getInGamePlayers() as $player){
@@ -47,10 +44,6 @@ class SetWorldSpawnCommand extends Command{
             }
         }
 
-        $sender->sendMessage($this->translate("command.setworldspawn.done", [
-            "x" => $spawn->getFloorX(),
-            "y" => $spawn->getFloorY(),
-            "z" => $spawn->getFloorZ()
-        ]));
+        $output->success("commands.setworldspawn.success", [$spawn->getFloorX(), $spawn->getFloorY(), $spawn->getFloorZ()]);
     }
 }

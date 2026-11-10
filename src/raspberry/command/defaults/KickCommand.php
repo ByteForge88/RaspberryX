@@ -5,32 +5,42 @@ declare(strict_types=1);
 namespace raspberry\command\defaults;
 
 use raspberry\command\Command;
+use raspberry\command\CommandOutput;
 use raspberry\command\CommandParameter;
 use raspberry\command\CommandSender;
 
-use raspberry\player\Player;
+use raspberry\Server;
 
 class KickCommand extends Command{
 
     public function __construct(){
-        parent::__construct("kick");
+        parent::__construct("kick", "commands.kick.description", "raspberry.command.kick");
 
-        $this->setDescription($this->translate("command.kick.description"));
-        $this->setPermission("raspberry.command.kick");
-
-        $this->setArgument(0, CommandParameter::target("name"));
-        $this->setArgument(1, CommandParameter::message("reason", true));
+        $this->addOverload(CommandParameter::target("name", false, false), CommandParameter::message("reason", true));
     }
 
-    public function onSent(CommandSender $sender, array $args) : void{
-        $reason = $args["reason"] ?? $this->translate("command.kick.default");
+    public function onSent(CommandSender $sender, CommandOutput $output, array $args) : void{
+        $players = Server::getInstance()->getCommandMap()->selectPlayers($sender, $args["name"]);
+        $reason = $args["reason"] ?? null;
 
-        /** @var list<Player> $players */
-        $players = $args["name"];
+        if($players === []){
+            $output->error("commands.kick.not.found", [$args["name"]]);
+            return;
+        }
 
         foreach($players as $player){
-            $player->kick($reason);
-            $sender->sendMessage($this->translate("command.kick.done", ["player" => $player->getName(), "reason" => $reason]));
+            if($player === $sender){
+                $output->error("commands.kick.not.yourself");
+                continue;
+            }
+
+            $player->kick($reason ?? $this->text("command.kick.default"));
+
+            if($reason === null){
+                $output->success("commands.kick.success", [$player->getName()]);
+            }else{
+                $output->success("commands.kick.success.reason", [$player->getName(), $reason]);
+            }
         }
     }
 }

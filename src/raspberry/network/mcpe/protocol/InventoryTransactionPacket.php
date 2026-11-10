@@ -9,6 +9,7 @@ use raspberry\network\encoding\BinaryWriter;
 
 use raspberry\network\mcpe\protocol\types\inventory\TransactionAction;
 use raspberry\network\mcpe\protocol\types\inventory\UseItemData;
+use raspberry\network\mcpe\protocol\types\inventory\UseItemOnEntityData;
 use raspberry\network\mcpe\serializer\ItemStackSerializer;
 
 use UnexpectedValueException;
@@ -39,6 +40,9 @@ class InventoryTransactionPacket implements Packet{
     /** set for TYPE_USE_ITEM */
     public ?UseItemData $useItem = null;
 
+    /** set for TYPE_USE_ITEM_ON_ENTITY */
+    public ?UseItemOnEntityData $useItemOnEntity = null;
+
     /** set for TYPE_RELEASE_ITEM: 0 let go (a bow), 1 finished eating or drinking */
     public ?int $releaseAction = null;
 
@@ -56,19 +60,20 @@ class InventoryTransactionPacket implements Packet{
         $this->type = $reader->readUnsignedVarInt();
         $this->actions = self::readActions($reader);
         $this->useItem = null;
+        $this->useItemOnEntity = null;
         $this->releaseAction = null;
 
         match($this->type){
             self::TYPE_NORMAL, self::TYPE_MISMATCH => null,
             self::TYPE_USE_ITEM => $this->useItem = UseItemData::read($reader),
-            self::TYPE_USE_ITEM_ON_ENTITY => self::skipUseItemOnEntity($reader),
+            self::TYPE_USE_ITEM_ON_ENTITY => $this->useItemOnEntity = UseItemOnEntityData::read($reader),
             self::TYPE_RELEASE_ITEM => $this->releaseAction = self::readReleaseItem($reader),
             default => throw new UnexpectedValueException("Unknown inventory transaction type {$this->type}")
         };
     }
 
     /**
-     * @return array<int, list<int>> container ID => slots
+     * @return array<int, list<int>>
      */
     public static function readLegacySlots(BinaryReader $reader) : array{
         $legacySlots = [];
@@ -107,23 +112,12 @@ class InventoryTransactionPacket implements Packet{
         return $actions;
     }
 
-    private static function skipUseItemOnEntity(BinaryReader $reader) : void{
-        $reader->readUnsignedVarLong(); //target
-        $reader->readVarInt(); //action
-        $reader->readVarInt(); //hotbar slot
-        $reader->readByte(); //hand
-        ItemStackSerializer::readInstance($reader);
-        self::skipVector($reader);
-        self::skipVector($reader);
-    }
-
     private static function readReleaseItem(BinaryReader $reader) : int{
         $action = $reader->readVarInt();
         $reader->readVarInt(); //hotbar slot
         ItemStackSerializer::readInstance($reader);
         self::skipVector($reader); //head position
         $reader->readByte(); //hand
-
         return $action;
     }
 

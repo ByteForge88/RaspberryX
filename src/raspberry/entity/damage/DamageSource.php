@@ -32,6 +32,8 @@ class DamageSource{
     public const CAUSE_STARVATION = 15;
     public const CAUSE_FALLING_BLOCK = 16;
     public const CAUSE_WITHER = 17;
+    public const CAUSE_THORNS = 18;
+    public const CAUSE_MAGMA = 19;
 
     private int $cause;
 
@@ -40,7 +42,7 @@ class DamageSource{
     private ?Entity $attacker;
 
     public function __construct(int $cause, float $amount, ?Entity $attacker = null){
-        if($cause < self::CAUSE_CONTACT || $cause > self::CAUSE_WITHER){
+        if($cause < self::CAUSE_CONTACT || $cause > self::CAUSE_THORNS){
             throw new InvalidArgumentException("Unknown damage cause {$cause}");
         }
 
@@ -78,7 +80,7 @@ class DamageSource{
     }
 
     public function isFire() : bool{
-        return $this->cause === self::CAUSE_FIRE || $this->cause === self::CAUSE_FIRE_TICK || $this->cause === self::CAUSE_LAVA;
+        return $this->cause === self::CAUSE_FIRE || $this->cause === self::CAUSE_FIRE_TICK || $this->cause === self::CAUSE_LAVA || $this->cause === self::CAUSE_MAGMA;
     }
 
     public function isReducedByArmor() : bool{
@@ -89,7 +91,9 @@ class DamageSource{
             self::CAUSE_FIRE,
             self::CAUSE_LAVA,
             self::CAUSE_BLOCK_EXPLOSION,
-            self::CAUSE_ENTITY_EXPLOSION => true,
+            self::CAUSE_ENTITY_EXPLOSION,
+            self::CAUSE_THORNS,
+            self::CAUSE_MAGMA => true,
             default => false
         };
     }
@@ -111,6 +115,8 @@ class DamageSource{
             self::CAUSE_STARVATION => "death.attack.starve",
             self::CAUSE_FALLING_BLOCK => "death.attack.fallingBlock",
             self::CAUSE_WITHER => "death.attack.wither",
+            self::CAUSE_THORNS => "death.attack.thorns",
+            self::CAUSE_MAGMA => "death.attack.magma",
             default => "death.attack.generic"
         };
     }

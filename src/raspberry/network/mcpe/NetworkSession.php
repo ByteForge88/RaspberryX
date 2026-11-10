@@ -44,6 +44,7 @@ use raspberry\network\mcpe\protocol\MoveActorAbsolutePacket;
 use raspberry\network\mcpe\protocol\PlayerListPacket;
 use raspberry\network\mcpe\protocol\RemoveActorPacket;
 use raspberry\network\mcpe\protocol\TextPacket;
+use raspberry\network\mcpe\protocol\CommandOutputPacket;
 use raspberry\network\mcpe\protocol\CommandRequestPacket;
 use raspberry\network\mcpe\protocol\SetPlayerGameTypePacket;
 use raspberry\network\mcpe\protocol\SetActorDataPacket;
@@ -63,6 +64,8 @@ use raspberry\network\mcpe\protocol\types\PlayerBlockAction;
 use raspberry\network\mcpe\protocol\types\inventory\ContainerIds;
 use raspberry\network\mcpe\protocol\types\inventory\TransactionAction;
 use raspberry\network\mcpe\protocol\types\inventory\UseItemData;
+use raspberry\network\mcpe\protocol\types\inventory\UseItemOnEntityData;
+use raspberry\network\mcpe\protocol\types\command\CommandOutputMessage;
 use raspberry\network\mcpe\auth\AuthenticatedLogin;
 use raspberry\network\mcpe\compression\PacketCompression;
 use raspberry\network\mcpe\resourcepack\ResourcePackNegotiation;
@@ -86,11 +89,14 @@ use raspberry\inventory\PlayerInventory;
 use raspberry\item\Item;
 use raspberry\item\Potion;
 
+use raspberry\lang\Translation;
+
 use InvalidArgumentException;
 
 use raspberry\math\Vector3;
 
 use raspberry\player\Player;
+use raspberry\player\MovementCheck;
 
 use raspberry\Server;
 
@@ -201,6 +207,11 @@ class NetworkSession{
     /** where the client was teleported to, its movement is ignored until it arrives there */
     private ?Vector3 $pendingTeleport = null;
 
+    private int $lastInputTick = 0;
+
+    /** the client says it glides with an elytra */
+    private bool $gliding = false;
+
     private int $pendingTeleportTick = 0;
 
     private ?int $lastChunkX = null;
@@ -216,6 +227,10 @@ class NetworkSession{
         $this->id = $id;
         $this->signalingClaims = $signalingClaims;
         $this->compression = new PacketCompression();
+    }
+
+    public function getLastInputTick() : int{
+        return $this->lastInputTick;
     }
 
     public function getServer() : Server{
@@ -912,7 +927,6 @@ class NetworkSession{
 
         foreach([EntityMetadata::FLAG_HAS_GRAVITY,
             EntityMetadata::FLAG_CAN_CLIMB,
-            EntityMetadata::FLAG_BREATHING,
             EntityMetadata::FLAG_HAS_COLLISION,
             EntityMetadata::FLAG_SHOW_NAME,
             EntityMetadata::FLAG_ALWAYS_SHOW_NAME
@@ -920,6 +934,9 @@ class NetworkSession{
             $metadata->setFlag($flag);
         }
 
+        $metadata->setFlag(EntityMetadata::FLAG_ON_FIRE, $human->isOnFire());
+        $metadata->setFlag(EntityMetadata::FLAG_BREATHING, $human->isBreathing());
+        $metadata->setFlag(EntityMetadata::FLAG_USING_ITEM, $human->isUsingItem());
         $metadata->setLong(EntityMetadata::KEY_FLAGS_TWO, 0);
         $metadata->setByte(EntityMetadata::KEY_PLAYER_FLAGS, 0);
         $metadata->setString(EntityMetadata::KEY_NAME, $human->getNameTag());
@@ -927,8 +944,8 @@ class NetworkSession{
         $metadata->setFloat(EntityMetadata::KEY_WIDTH, Human::WIDTH);
         $metadata->setFloat(EntityMetadata::KEY_HEIGHT, Human::HEIGHT);
         $metadata->setFloat(EntityMetadata::KEY_SCALE, 1.0);
-        $metadata->setShort(EntityMetadata::KEY_AIR_SUPPLY, 300);
-        $metadata->setShort(EntityMetadata::KEY_AIR_SUPPLY_MAX, 300);
+        $metadata->setShort(EntityMetadata::KEY_AIR_SUPPLY, $human->getAir());
+        $metadata->setShort(EntityMetadata::KEY_AIR_SUPPLY_MAX, Human::MAX_AIR);
         $metadata->setByte(EntityMetadata::KEY_COLOR_INDEX, 0);
         self::addEffectMetadata($metadata, $human);
         return $metadata;
@@ -1040,6 +1057,8 @@ class NetworkSession{
             $player->getItemUser()->useInAir();
         }elseif($packet->releaseAction !== null){
             $player->getItemUser()->release($packet->releaseAction);
+        }elseif($packet->useItemOnEntity !== null){
+            $this->handleUseItemOnEntity($player, $packet->useItemOnEntity);
         }
 
         foreach($packet->legacySlots as $containerId => $slots){
@@ -1050,6 +1069,21 @@ class NetworkSession{
                     $manager->sendSlot($player->getInventory(), $slot);
                 }
             }
+        }
+    }
+
+    /**
+     * A hit on an entity. Right clicks on entities come with the mobs that react to them.
+     */
+    private function handleUseItemOnEntity(Player $player, UseItemOnEntityData $data) : void{
+        if($data->action !== UseItemOnEntityData::ACTION_ATTACK){
+            return;
+        }
+
+        $target = $player->getWorld()->getEntity($data->targetRuntimeId);
+
+        if($target !== null){
+            $player->attackEntity($target);
         }
     }
 
@@ -1149,7 +1183,20 @@ class NetworkSession{
             "command" => $packet->command
         ]));
 
-        $this->server->dispatchCommand($player, $packet->command);
+        $output = $this->server->dispatchCommand($player, $packet->command, false);
+        $messages = [];
+
+        foreach($output->getMessages() as $message){
+            $text = $message->getMessage();
+
+            $messages[] = $text instanceof Translation
+                ? new CommandOutputMessage($text->getKey(), $message->isSuccess(), Translation::toClientParams($text->getParams(), $this->server->getLanguage()))
+                : new CommandOutputMessage($text, $message->isSuccess());
+        }
+
+        if($messages !== []){
+            $this->sendDataPacket(CommandOutputPacket::create($packet->origin, $output->getSuccessCount(), $messages));
+        }
     }
 
     private function handleText(TextPacket $packet) : void{
@@ -1405,6 +1452,7 @@ class NetworkSession{
             return;
         }
 
+        $this->lastInputTick = $packet->tick;
         $position = new Vector3($packet->x, round($packet->y - $player->getEyeHeight(), 4), $packet->z);
 
         if($this->pendingTeleport !== null){
@@ -1417,8 +1465,19 @@ class NetworkSession{
 
         if($packet->hasFlag(PlayerAuthInputPacket::FLAG_START_FLYING)){
             $player->onClientFlightToggle(true);
+
+            if(!$this->isConnected()){
+                return;
+            }
+
         }elseif($packet->hasFlag(PlayerAuthInputPacket::FLAG_STOP_FLYING)){
             $player->onClientFlightToggle(false);
+        }
+
+        if($packet->hasFlag(PlayerAuthInputPacket::FLAG_START_GLIDING)){
+            $this->gliding = true;
+        }elseif($packet->hasFlag(PlayerAuthInputPacket::FLAG_STOP_GLIDING)){
+            $this->gliding = false;
         }
 
         if($packet->hasFlag(PlayerAuthInputPacket::FLAG_START_SPRINTING)){
@@ -1436,9 +1495,23 @@ class NetworkSession{
         }
 
         $from = $player->getPosition();
-        $player->move($position, $packet->yaw, $packet->pitch);
-
         $onGround = $packet->hasFlag(PlayerAuthInputPacket::FLAG_VERTICAL_COLLISION) && $position->y <= $from->y;
+
+        $verdict = $player->getMovementCheck()->check($from, $position, $packet->tick, $onGround, $this->gliding, $this->server->isCheatsAllowed());
+
+        if($verdict === MovementCheck::FLYING){
+            $player->kickForFlying();
+            return;
+        }
+
+        if($verdict === MovementCheck::CORRECT){
+            $this->server->getLogger()->debug("Moved {$player->getName()} back from {$position} to {$from}");
+            $player->teleport($from);
+            $player->getMovementCheck()->reset(0);
+            return;
+        }
+
+        $player->move($position, $packet->yaw, $packet->pitch);
         $player->onClientMove($from, $onGround, $packet->hasFlag(PlayerAuthInputPacket::FLAG_START_JUMPING));
 
         if($player->isDead()){

@@ -11,6 +11,9 @@ class EffectInstance{
 
     public const MAX_DURATION = 2147483647;
 
+    /** never runs out, like /effect ... infinite */
+    public const INFINITE = -1;
+
     private Effect $effect;
 
     private int $duration;
@@ -28,7 +31,7 @@ class EffectInstance{
      */
     public function __construct(Effect $effect, int $duration, int $amplifier = 0, bool $ambient = false, bool $visible = true){
         $this->effect = $effect;
-        $this->duration = max(0, min($duration, self::MAX_DURATION));
+        $this->duration = $duration === self::INFINITE ? self::INFINITE : max(0, min($duration, self::MAX_DURATION));
         $this->amplifier = max(0, min($amplifier, 255));
         $this->ambient = $ambient;
         $this->visible = $visible;
@@ -43,8 +46,16 @@ class EffectInstance{
     }
 
     public function setDuration(int $duration) : self{
-        $this->duration = max(0, min($duration, self::MAX_DURATION));
+        $this->duration = $duration === self::INFINITE ? self::INFINITE : max(0, min($duration, self::MAX_DURATION));
         return $this;
+    }
+
+    public function isInfinite() : bool{
+        return $this->duration === self::INFINITE;
+    }
+
+    public function getRemaining() : int{
+        return $this->duration === self::INFINITE ? PHP_INT_MAX : $this->duration;
     }
 
     public function getAmplifier() : int{

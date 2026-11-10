@@ -18,6 +18,9 @@ class EffectManager{
     /** @var array<int, EffectInstance> */
     private array $effects = [];
 
+    /** counts ticks for infinite effects, which have no duration to time poison and the like by */
+    private int $ticks = 0;
+
     public function __construct(Living $entity){
         $this->entity = $entity;
     }
@@ -55,7 +58,7 @@ class EffectManager{
 
         $old = $this->effects[$type->value] ?? null;
 
-        if(!$force && $old !== null && ($old->getAmplifier() > $effect->getAmplifier() || ($old->getAmplifier() === $effect->getAmplifier() && $old->getDuration() > $effect->getDuration()))){
+        if(!$force && $old !== null && ($old->getRemaining() > $effect->getRemaining() || ($old->getAmplifier() === $effect->getAmplifier() && $old->getRemaining() > $effect->getRemaining()))){
             return false;
         }
 
@@ -84,10 +87,12 @@ class EffectManager{
      * Runs one tick of every effect and takes away the ones that ran out.
      */
     public function tick() : void{
+        ++$this->ticks;
+
         foreach($this->effects as $effect){
             $this->applyTick($effect);
 
-            if(!isset($this->effects[$effect->getEffect()->value])){
+            if(!isset($this->effects[$effect->getEffect()->value]) || $effect->isInfinite()){
                 continue;
             }
 
@@ -116,7 +121,7 @@ class EffectManager{
     private function applyTick(EffectInstance $effect) : void{
         $entity = $this->entity;
         $amplifier = $effect->getAmplifier();
-        $duration = $effect->getDuration();
+        $duration = $effect->isInfinite() ? $this->ticks : $effect->getDuration();
 
         match($effect->getEffect()){
             Effect::REGENERATION => self::every($duration, 50, $amplifier) && $entity->getHealth() < $entity->getMaxHealth() ? $entity->heal(1.0) : null,

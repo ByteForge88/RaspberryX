@@ -4,17 +4,17 @@ declare(strict_types=1);
 
 namespace raspberry\command;
 
+use raspberry\player\Player;
+
 use raspberry\Server;
 
 use LogicException;
 use InvalidArgumentException;
 
 use function array_map;
-use function array_splice;
 use function array_values;
 use function count;
 use function implode;
-use function ksort;
 use function preg_match;
 use function strtolower;
 
@@ -26,62 +26,37 @@ abstract class Command{
 
     private string $description;
 
-    private ?string $usage = null;
-
-    private ?string $permission = null;
+    private ?string $permission;
 
     /** @var list<list<CommandParameter>> */
-    private array $overloads;
+    private array $overloads = [];
 
     /** @var list<string> */
-    private array $aliases;
+    private array $aliases = [];
 
     private bool $registered = false;
 
     /**
-     * The permission is set with setPermission(); without one, everyone can use the command.
-     *
-     * @param list<list<CommandParameter>> $overloads each list is one way to use the command, tried in order;
-     *                                                [[]] means the command takes no arguments
-     * @param list<string>                 $aliases
+     * @param string       $description a key from the game's language files, like "commands.give.description", or plain text
+     * @param string|null  $permission  null lets everyone use the command
+     * @param list<string> $aliases
      */
-    public function __construct(string $name, string $description = "", array $overloads = [[]], array $aliases = []){
+    public function __construct(string $name, string $description = "", ?string $permission = null, array $aliases = []){
         $this->name = self::checkName($name);
         $this->label = $this->name;
         $this->description = $description;
-        $this->overloads = [[]];
-        $this->aliases = [];
+        $this->permission = $permission;
 
-        $this->setOverloads($overloads);
         $this->setAliases($aliases);
     }
 
     /**
-     * The name the command was created with. It never changes, so plugins can always find their command by it.
+     * The name the command was created with. It never changes, so it always finds the command.
      */
     public function getName() : string{
         return $this->name;
     }
 
-    /**
-     * Changes the command's name. Also changes the label when the label was still the old name.
-     */
-    public function setName(string $name) : void{
-        $this->checkNotRegistered();
-
-        $name = self::checkName($name);
-
-        if($this->label === $this->name){
-            $this->label = $name;
-        }
-
-        $this->name = $name;
-    }
-
-    /**
-     * What players type to run the command, without the slash. The same as the name unless it was
-     * changed, e.g. by CommandMap::registerCommand() to avoid a clash with another command.
-     */
     public function getLabel() : string{
         return $this->label;
     }
@@ -98,31 +73,6 @@ abstract class Command{
 
     public function setDescription(string $description) : void{
         $this->description = $description;
-    }
-
-    /**
-     * The usage text shown when the arguments are wrong. Made from the arguments unless setUsage() was used.
-     * One line per overload, e.g. "/kick <name: target> [reason: message]".
-     */
-    public function getUsage() : string{
-        if($this->usage !== null){
-            return $this->usage;
-        }
-
-        $lines = [];
-
-        foreach($this->overloads as $overload){
-            $lines[] = implode(" ", ["/" . $this->label, ...array_map(fn(CommandParameter $parameter) => $parameter->getUsage(), $overload)]);
-        }
-
-        return implode("\n", $lines);
-    }
-
-    /**
-     * @param string|null $usage null to go back to the usage made from the arguments
-     */
-    public function setUsage(?string $usage) : void{
-        $this->usage = $usage;
     }
 
     public function getPermission() : ?string{
@@ -150,68 +100,40 @@ abstract class Command{
     }
 
     /**
-     * @return list<list<CommandParameter>>
+     * @return list<list<CommandParameter>> [[]] when the command takes no arguments
      */
     public function getOverloads() : array{
-        return $this->overloads;
+        return $this->overloads === [] ? [[]] : $this->overloads;
+    }
+
+    protected function addOverload(CommandParameter ...$parameters) : void{
+        $parameters = array_values($parameters);
+        $this->checkOverload($parameters);
+        $this->overloads[] = $parameters;
     }
 
     /**
      * @param list<list<CommandParameter>> $overloads
      */
     protected function setOverloads(array $overloads) : void{
-        if($overloads === []){
-            $overloads = [[]];
-        }
+        $this->overloads = [];
 
         foreach($overloads as $overload){
-            $this->checkOverload($overload);
+            $this->addOverload(...$overload);
         }
-
-        $this->overloads = array_values(array_map(array_values(...), $overloads));
     }
 
     /**
-     * Puts an argument at $position, replacing the one already there. Positions start at 0 and must not
-     * leave a gap. Using the next overload number ($overload = count(getOverloads())) adds a new overload,
-     * which is another way to use the command.
+     * @return list<string>
      */
-    protected function setArgument(int $position, CommandParameter $argument, int $overload = 0) : void{
-        if($overload < 0 || $overload > count($this->overloads)){
-            throw new InvalidArgumentException("Overload {$overload} does not exist, the next new overload is " . count($this->overloads));
+    public function getUsage() : array{
+        $lines = [];
+
+        foreach($this->getOverloads() as $overload){
+            $lines[] = implode(" ", ["/" . $this->label, ...array_map(fn(CommandParameter $parameter) => $parameter->getUsage(), $overload)]);
         }
 
-        $arguments = $this->overloads[$overload] ?? [];
-
-        if($position < 0 || $position > count($arguments)){
-            throw new InvalidArgumentException("Argument position {$position} leaves a gap, the next free position is " . count($arguments));
-        }
-
-        $arguments[$position] = $argument;
-        ksort($arguments);
-
-        $this->replaceOverload($overload, $arguments);
-    }
-
-    /**
-     * Removes the argument at $position; the arguments after it move one place to the left.
-     */
-    protected function clearArgument(int $position, int $overload = 0) : void{
-        if(!isset($this->overloads[$overload][$position])){
-            throw new InvalidArgumentException("Overload {$overload} has no argument at position {$position}");
-        }
-
-        $arguments = $this->overloads[$overload];
-        array_splice($arguments, $position, 1);
-
-        $this->replaceOverload($overload, $arguments);
-    }
-
-    /**
-     * Removes every argument and overload, so the command takes no arguments.
-     */
-    protected function clearAllArguments() : void{
-        $this->overloads = [[]];
+        return $lines;
     }
 
     public function testPermission(CommandSender $sender) : bool{
@@ -219,7 +141,7 @@ abstract class Command{
     }
 
     /**
-     * @internal called by CommandMap; the name, label and aliases cannot change while registered
+     * @internal
      */
     public function setRegistered(bool $registered) : void{
         $this->registered = $registered;
@@ -230,34 +152,33 @@ abstract class Command{
     }
 
     /**
-     * Runs the command. $args holds the arguments of the overload that matched, by name;
-     * optional arguments that were left out are missing. See CommandParameter for the value types.
-     *
      * @param array<string, mixed> $args
-     *
-     * @throws CommandException to stop with a message
+     * @throws CommandException
      */
-    abstract public function onSent(CommandSender $sender, array $args) : void;
+    abstract public function onSent(CommandSender $sender, CommandOutput $output, array $args) : void;
+
+    /**
+     * @param array<string, mixed> $args
+     * @return list<Player>
+     */
+    protected function playersOrSelf(CommandSender $sender, array $args, string $name) : array{
+        if(isset($args[$name])){
+            return $args[$name];
+        }
+
+        return $sender instanceof Player ? [$sender] : throw new CommandException("commands.generic.noTargetMatch");
+    }
 
     /**
      * @param array<string, string|int|float> $params
      */
-    protected function translate(string $key, array $params = []) : string{
+    protected function text(string $key, array $params = []) : string{
         return Server::getInstance()->getLanguage()->translate($key, $params);
-    }
-
-    /**
-     * @param list<CommandParameter> $arguments
-     */
-    private function replaceOverload(int $overload, array $arguments) : void{
-        $arguments = array_values($arguments);
-        $this->checkOverload($arguments);
-        $this->overloads[$overload] = $arguments;
     }
 
     private function checkNotRegistered() : void{
         if($this->registered){
-            throw new LogicException("The name, label and aliases of \"{$this->name}\" cannot change while it is registered");
+            throw new LogicException("The label and aliases of \"{$this->name}\" cannot change while it is registered");
         }
     }
 
@@ -277,14 +198,9 @@ abstract class Command{
     private function checkOverload(array $overload) : void{
         $optional = false;
         $names = [];
-        $index = 0;
         $last = count($overload) - 1;
 
-        foreach($overload as $parameter){
-            if(!$parameter instanceof CommandParameter){
-                throw new InvalidArgumentException("Arguments of \"{$this->name}\" must be CommandParameter objects");
-            }
-
+        foreach($overload as $index => $parameter){
             if(isset($names[$parameter->getName()])){
                 throw new InvalidArgumentException("Command \"{$this->name}\" has two arguments named \"{$parameter->getName()}\" in one overload");
             }
@@ -299,7 +215,6 @@ abstract class Command{
 
             $names[$parameter->getName()] = true;
             $optional = $parameter->isOptional();
-            ++$index;
         }
     }
 }

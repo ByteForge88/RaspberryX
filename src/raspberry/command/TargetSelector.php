@@ -72,7 +72,7 @@ class TargetSelector{
 
         if($type === "s" || $type === "initiator"){
             if(!$sender instanceof Player){
-                throw new CommandException($this->translate("command.notPlayer"));
+                throw CommandException::text($this->translate("command.notPlayer"));
             }
 
             $candidates = [$sender];
@@ -173,7 +173,7 @@ class TargetSelector{
             $value = $this->single($arguments, "c");
 
             if(preg_match('/^[+-]?\d{1,9}$/D', $value) !== 1 || (int) $value === 0){
-                throw new CommandException($this->translate("command.selector.invalid", ["argument" => "c", "value" => $value]));
+                throw CommandException::text($this->translate("command.selector.invalid", ["argument" => "c", "value" => $value]));
             }
 
             $count = (int) $value;
@@ -259,7 +259,7 @@ class TargetSelector{
             return $this->server->getDefaultGameMode();
         }
 
-        return GameMode::fromString($value) ?? throw new CommandException($this->translate("command.selector.invalid", ["argument" => "m", "value" => $value]));
+        return GameMode::fromString($value) ?? throw CommandException::text($this->translate("command.selector.invalid", ["argument" => "m", "value" => $value]));
     }
 
     /**
@@ -278,7 +278,7 @@ class TargetSelector{
             $separator = strpos($part, "=");
 
             if($separator === false){
-                throw new CommandException($this->translate("command.selector.invalid", ["argument" => trim($part), "value" => ""]));
+                throw CommandException::text($this->translate("command.selector.invalid", ["argument" => trim($part), "value" => ""]));
             }
 
             $key = strtolower(trim(substr($part, 0, $separator)));
@@ -294,15 +294,15 @@ class TargetSelector{
             }
 
             if(in_array($key, self::NOT_SUPPORTED_YET, true)){
-                throw new CommandException($this->translate("command.selector.unsupported", ["argument" => $key]));
+                throw CommandException::text($this->translate("command.selector.unsupported", ["argument" => $key]));
             }
 
             if(!in_array($key, self::ARGUMENTS, true)){
-                throw new CommandException($this->translate("command.selector.unknown", ["argument" => $key]));
+                throw CommandException::text($this->translate("command.selector.unknown", ["argument" => $key]));
             }
 
             if($negated && !in_array($key, self::REPEATABLE, true)){
-                throw new CommandException($this->translate("command.selector.invalid", ["argument" => $key, "value" => "!" . $value]));
+                throw CommandException::text($this->translate("command.selector.invalid", ["argument" => $key, "value" => "!" . $value]));
             }
 
             $arguments[$key][] = [$value, $negated];
@@ -312,7 +312,7 @@ class TargetSelector{
             $positives = count(array_filter($values, fn(array $entry) => !$entry[1]));
 
             if(count($values) > 1 && (!in_array($key, self::REPEATABLE, true) || ($positives > 1 && $key !== "family"))){
-                throw new CommandException($this->translate("command.selector.duplicate", ["argument" => $key]));
+                throw CommandException::text($this->translate("command.selector.duplicate", ["argument" => $key]));
             }
         }
 
@@ -404,7 +404,7 @@ class TargetSelector{
         }
 
         if(!is_numeric($value)){
-            throw new CommandException($this->translate("command.selector.invalid", ["argument" => $argument, "value" => $value]));
+            throw CommandException::text($this->translate("command.selector.invalid", ["argument" => $argument, "value" => $value]));
         }
 
         return (float) $value;

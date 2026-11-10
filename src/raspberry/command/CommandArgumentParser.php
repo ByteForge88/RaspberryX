@@ -21,6 +21,7 @@ use function implode;
 use function in_array;
 use function is_array;
 use function json_decode;
+use function max;
 use function ltrim;
 use function preg_match;
 use function preg_match_all;
@@ -52,16 +53,18 @@ class CommandArgumentParser{
     /**
      * @return array<string, mixed>
      *
-     * @throws InvalidCommandSyntaxException when no overload fits
-     * @throws CommandException when a selector matches no players
+     * @throws InvalidCommandSyntaxException
+     * @throws CommandException
      */
     public function parse(CommandSender $sender, Command $command, string $input) : array{
         $failure = null;
+        $furthest = -1;
 
         foreach($command->getOverloads() as $overload){
             try{
                 $args = $this->readOverload($sender, $overload, new CommandReader($input));
-            }catch(InvalidCommandSyntaxException){
+            }catch(InvalidCommandSyntaxException $exception){
+                $furthest = max($furthest, $exception->getOffset());
                 continue;
             }
 
@@ -72,7 +75,29 @@ class CommandArgumentParser{
             }
         }
 
-        throw $failure ?? new InvalidCommandSyntaxException();
+        throw $failure ?? new InvalidCommandSyntaxException($furthest);
+    }
+
+    /**
+     * @return list<Player>
+     * @throws CommandException
+     */
+    public function selectPlayers(CommandSender $sender, string $target) : array{
+        if($target === "*"){
+            return $this->server->getInGamePlayers();
+        }
+
+        if(str_starts_with($target, "@")){
+            try{
+                return $this->targetSelector->select($sender, $target);
+            }catch(InvalidCommandSyntaxException){
+                throw new CommandException("commands.generic.noTargetMatch");
+            }
+        }
+
+        $player = $this->server->getPlayerByPrefix($target);
+
+        return $player === null ? [] : [$player];
     }
 
     /**
@@ -84,19 +109,25 @@ class CommandArgumentParser{
         $args = [];
 
         foreach($overload as $parameter){
+            $start = $reader->getPosition();
+
             if($reader->atEnd()){
                 if($parameter->isOptional()){
                     break;
                 }
 
-                throw new InvalidCommandSyntaxException();
+                throw new InvalidCommandSyntaxException($start);
             }
 
-            $args[$parameter->getName()] = $this->readArgument($sender, $parameter, $reader);
+            try{
+                $args[$parameter->getName()] = $this->readArgument($sender, $parameter, $reader);
+            }catch(InvalidCommandSyntaxException $exception){
+                throw new InvalidCommandSyntaxException(max($start, $exception->getOffset()));
+            }
         }
 
         if(!$reader->atEnd()){
-            throw new InvalidCommandSyntaxException();
+            throw new InvalidCommandSyntaxException($reader->getPosition());
         }
 
         return $args;
@@ -161,11 +192,11 @@ class CommandArgumentParser{
 
             $type = $parameter->getType();
 
-            if($type === Packet::ARG_TYPE_TARGET || $type === Packet::ARG_TYPE_WILDCARD_TARGET){
-                $players = $args[$name] === "*" ? $this->server->getInGamePlayers() : $this->selectPlayers($sender, $args[$name]);
+            if(($type === Packet::ARG_TYPE_TARGET || $type === Packet::ARG_TYPE_WILDCARD_TARGET) && $parameter->resolvesTargets()){
+                $players = $this->selectPlayers($sender, $args[$name]);
 
                 if($players === []){
-                    throw new CommandException($this->server->getLanguage()->translate("command.noTargets"));
+                    throw new CommandException("commands.generic.noTargetMatch");
                 }
 
                 $args[$name] = $players;
@@ -175,19 +206,6 @@ class CommandArgumentParser{
         }
 
         return $args;
-    }
-
-    /**
-     * @return list<Player>
-     */
-    private function selectPlayers(CommandSender $sender, string $target) : array{
-        if(str_starts_with($target, "@")){
-            return $this->targetSelector->select($sender, $target);
-        }
-
-        $player = $this->server->getPlayerByPrefix($target);
-
-        return $player === null ? [] : [$player];
     }
 
     /**

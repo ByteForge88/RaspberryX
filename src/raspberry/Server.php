@@ -42,12 +42,14 @@ use raspberry\network\mcpe\protocol\TextPacket;
 use raspberry\network\mcpe\protocol\SetTitlePacket;
 use raspberry\network\mcpe\protocol\ToastRequestPacket;
 use raspberry\network\mcpe\protocol\AvailableCommandsPacket;
+use raspberry\network\mcpe\protocol\CommandOutputPacket;
 use raspberry\network\mcpe\protocol\CommandRequestPacket;
 use raspberry\network\mcpe\protocol\UpdateSoftEnumPacket;
 use raspberry\network\mcpe\protocol\SetPlayerGameTypePacket;
 use raspberry\network\mcpe\protocol\UpdateAbilitiesPacket;
 use raspberry\network\mcpe\protocol\UpdateAttributesPacket;
 use raspberry\network\mcpe\protocol\SetActorDataPacket;
+use raspberry\network\mcpe\protocol\SetActorMotionPacket;
 use raspberry\network\mcpe\protocol\ActorEventPacket;
 use raspberry\network\mcpe\protocol\DeathInfoPacket;
 use raspberry\network\mcpe\protocol\MovePlayerPacket;
@@ -88,6 +90,7 @@ use raspberry\network\nethernet\NetherNetTransport;
 
 use raspberry\command\CommandEnum;
 use raspberry\command\CommandMap;
+use raspberry\command\CommandOutput;
 use raspberry\command\CommandSender;
 use raspberry\command\ConsoleCommandSender;
 
@@ -189,12 +192,14 @@ class Server{
         "difficulty" => "normal",
         "view-distance" => 8,
         "world-name" => "world",
-        "world-generator" => GeneratorFactory::FLAT,
+        "world-generator" => GeneratorFactory::DEFAULT,
         "flat-layers" => FlatGenerator::DEFAULT_PRESET,
         "world-seed" => "",
         "spawn-chunk-radius" => 4,
         "auto-save-interval" => 300,
         "keep-inventory" => false,
+        "pvp" => true,
+        "allow-cheats" => false,
         "debug-logging" => false
     ];
 
@@ -224,6 +229,10 @@ class Server{
     private Difficulty $difficulty = Difficulty::NORMAL;
 
     private bool $keepInventory = false;
+
+    private bool $pvp = true;
+
+    private bool $allowCheats = false;
 
     private PacketRegistry $packetRegistry;
     private PacketTranslator $packetTranslator;
@@ -331,7 +340,7 @@ class Server{
         $this->registerPermissions();
 
         $this->commandMap = new CommandMap($this);
-        $this->consoleSender = new ConsoleCommandSender($this->logger, $this->permissionManager);
+        $this->consoleSender = new ConsoleCommandSender($this->logger, $this->permissionManager, $this->language);
         $this->registerCommands();
     }
 
@@ -377,21 +386,24 @@ class Server{
     }
 
     /**
-     * Runs a command line like "kick Steve griefing". Errors inside a command are logged, never fatal.
-     *
-     * @return bool false when the command does not exist
+     * @param bool $sendOutput
      */
-    public function dispatchCommand(CommandSender $sender, string $commandLine) : bool{
+    public function dispatchCommand(CommandSender $sender, string $commandLine, bool $sendOutput = true) : CommandOutput{
         try{
-            return $this->commandMap->dispatch($sender, $commandLine);
+            $output = $this->commandMap->dispatch($sender, $commandLine);
         }catch(Throwable $exception){
             $this->logger->error("Error while running \"{$commandLine}\": " . $exception::class . ": " . $exception->getMessage());
             $this->logger->debug($exception->getTraceAsString());
 
-            $sender->sendMessage(TextFormat::RED . $this->language->translate("command.error"));
-
-            return true;
+            $output = new CommandOutput();
+            $output->error("commands.generic.exception");
         }
+
+        if($sendOutput){
+            $sender->sendCommandOutput($output);
+        }
+
+        return $output;
     }
 
     /**
@@ -516,6 +528,20 @@ class Server{
      */
     public function isKeepInventory() : bool{
         return $this->keepInventory;
+    }
+
+    /**
+     * Whether players can hurt each other.
+     */
+    public function isPvpEnabled() : bool{
+        return $this->pvp;
+    }
+
+    /**
+     * Whether players may fly outside creative without being kicked, as modified clients do.
+     */
+    public function isCheatsAllowed() : bool{
+        return $this->allowCheats;
     }
 
     /**
@@ -767,6 +793,7 @@ class Server{
             ToastRequestPacket::class,
             AvailableCommandsPacket::class,
             CommandRequestPacket::class,
+            CommandOutputPacket::class,
             UpdateSoftEnumPacket::class,
             SetPlayerGameTypePacket::class,
             UpdateAbilitiesPacket::class,
@@ -806,7 +833,8 @@ class Server{
             LecternUpdatePacket::class,
             PlayerToggleCrafterSlotRequestPacket::class,
             MobEffectPacket::class,
-            AddActorPacket::class
+            AddActorPacket::class,
+            SetActorMotionPacket::class
         ] as $packet){
             $this->packetRegistry->register($packet);
         }
@@ -886,6 +914,8 @@ class Server{
         $spawnChunkRadius = $this->properties->getInt("spawn-chunk-radius");
         $autoSaveInterval = $this->properties->getInt("auto-save-interval");
         $keepInventory = $this->properties->getBool("keep-inventory");
+        $pvp = $this->properties->getBool("pvp");
+        $allowCheats = $this->properties->getBool("allow-cheats");
 
         if($serverName === ""){
             throw new UnexpectedValueException("server-name cannot be empty");
@@ -933,6 +963,8 @@ class Server{
         $this->difficulty = $difficulty;
         $this->viewDistance = $viewDistance;
         $this->keepInventory = $keepInventory;
+        $this->pvp = $pvp;
+        $this->allowCheats = $allowCheats;
         $this->autoSaveTicks = $autoSaveInterval * self::TICKS_PER_SECOND;
 
         $this->logger->info($this->language->translate("server.starting", [
