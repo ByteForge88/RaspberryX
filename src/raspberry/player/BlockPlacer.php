@@ -24,6 +24,8 @@ use raspberry\block\entity\BlockEntityFactory;
 
 use raspberry\entity\Human;
 
+use raspberry\event\block\BlockPlaceEvent;
+
 use raspberry\item\Item;
 use raspberry\item\ItemIds;
 use raspberry\item\ToolInfo;
@@ -379,6 +381,13 @@ class BlockPlacer{
             if($this->isInsidePlayer($block, $bx, $by, $bz)){
                 return false;
             }
+        }
+
+        $event = new BlockPlaceEvent($this->player, $state, new Vector3($x, $y, $z), $held);
+        $event->call();
+
+        if($event->isCancelled()){
+            return false;
         }
 
         foreach($blocks as [$bx, $by, $bz, $block]){

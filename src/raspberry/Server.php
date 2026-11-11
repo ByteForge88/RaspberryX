@@ -10,9 +10,11 @@ use raspberry\network\mcpe\auth\LoginAuthenticator;
 use raspberry\network\mcpe\convert\ItemTranslator;
 use raspberry\network\mcpe\convert\BlockTranslator;
 use raspberry\network\mcpe\convert\ItemTypeDictionary;
+use raspberry\network\mcpe\convert\BiomeDefinitionAdapter;
 use raspberry\network\mcpe\NetworkSession;
 use raspberry\network\mcpe\protocol\ChunkRadiusUpdatedPacket;
 use raspberry\network\mcpe\protocol\CreativeContentPacket;
+use raspberry\network\mcpe\protocol\BiomeDefinitionListPacket;
 use raspberry\network\mcpe\protocol\DisconnectPacket;
 use raspberry\network\mcpe\protocol\ItemRegistryPacket;
 use raspberry\network\mcpe\protocol\JigsawStructureDataPacket;
@@ -109,11 +111,17 @@ use raspberry\command\defaults\StopCommand;
 use raspberry\command\defaults\TellCommand;
 use raspberry\command\defaults\TitleCommand;
 use raspberry\command\defaults\VersionCommand;
+use raspberry\command\defaults\PluginsCommand;
 use raspberry\command\defaults\ClearCommand;
 use raspberry\command\defaults\EffectCommand;
 use raspberry\command\defaults\GiveCommand;
 
 use raspberry\console\ConsoleReader;
+
+use raspberry\event\player\PlayerChatEvent;
+use raspberry\event\player\PlayerDeathEvent;
+use raspberry\event\player\PlayerJoinEvent;
+use raspberry\event\player\PlayerQuitEvent;
 
 use raspberry\permission\OperatorList;
 use raspberry\permission\PermissionManager;
@@ -121,6 +129,9 @@ use raspberry\permission\PermissionManager;
 use raspberry\player\GameMode;
 use raspberry\player\Player;
 use raspberry\player\PlayerDataStorage;
+
+use raspberry\plugin\PluginLoadOrder;
+use raspberry\plugin\PluginManager;
 
 use raspberry\crafting\CraftingManager;
 use raspberry\inventory\CreativeInventory;
@@ -133,6 +144,7 @@ use raspberry\world\generator\FlatGenerator;
 use raspberry\world\generator\GeneratorFactory;
 
 use raspberry\lang\Language;
+use raspberry\lang\Translation;
 
 use raspberry\utils\Config;
 use raspberry\utils\Logger;
@@ -179,6 +191,9 @@ class Server{
     //TODO: create ServerInfo.php and move this
     public const NAME = "RaspberryX";
     public const VERSION = "1.0.0-ALPHA1";
+    public const PLUGIN_API = self::VERSION;
+
+    public const IS_DEVELOPMENT = true;
 
     public const LICENSE = "GNU Lesser General Public License v3.0";
 
@@ -256,6 +271,8 @@ class Server{
 
     private CraftingDataPacket $craftingData;
 
+    private BiomeDefinitionListPacket $biomeDefinitions;
+
     /** @var list<Item> the creative items in the order of the creative content */
     private array $creativeItems = [];
 
@@ -275,6 +292,8 @@ class Server{
     private ConsoleCommandSender $consoleSender;
 
     private ?ConsoleReader $consoleReader = null;
+
+    private PluginManager $pluginManager;
 
     protected static ?self $instance = null;
 
@@ -324,6 +343,7 @@ class Server{
         $this->creativeContent = $this->itemTranslator->buildCreativeContent(new CreativeInventory(), $this->creativeItems);
         $this->craftingManager = new CraftingManager();
         $this->craftingData = $this->itemTranslator->buildCraftingData($this->craftingManager);
+        $this->biomeDefinitions = BiomeDefinitionAdapter::createDefinitionList();
 
         $this->worldManager = new WorldManager(
             Path::join($this->dataPath, "worlds"),
@@ -342,6 +362,10 @@ class Server{
         $this->commandMap = new CommandMap($this);
         $this->consoleSender = new ConsoleCommandSender($this->logger, $this->permissionManager, $this->language);
         $this->registerCommands();
+
+        $this->pluginManager = new PluginManager($this, Path::join($this->dataPath, "plugin_data"));
+        $this->pluginManager->loadPlugins(Path::join($this->dataPath, "plugins"));
+        $this->pluginManager->enablePlugins(PluginLoadOrder::STARTUP);
     }
 
     public function getPermissionManager() : PermissionManager{
@@ -379,6 +403,10 @@ class Server{
 
     public function getCommandMap() : CommandMap{
         return $this->commandMap;
+    }
+
+    public function getPluginManager() : PluginManager{
+        return $this->pluginManager;
     }
 
     public function getConsoleSender() : ConsoleCommandSender{
@@ -465,6 +493,10 @@ class Server{
 
     public function getCraftingData() : CraftingDataPacket{
         return $this->craftingData;
+    }
+
+    public function getBiomeDefinitions() : BiomeDefinitionListPacket{
+        return $this->biomeDefinitions;
     }
 
     public function getCreativeItem(int $networkId) : ?Item{
@@ -640,17 +672,23 @@ class Server{
                 $player->spawnTo($other);
             }
         }
-        $this->broadcastTranslation(TextFormat::YELLOW . "%multiplayer.player.joined", [$player->getName()]);
+
+        $event = new PlayerJoinEvent($player, new Translation("multiplayer.player.joined", [$player->getName()]));
+        $event->call();
+        $this->broadcastEventMessage($event->getJoinMessage(), TextFormat::YELLOW);
     }
 
     /**
      * Called by NetworkSession when an in-game player disconnects, before the player is closed.
      */
-    public function onPlayerQuit(Player $player) : void{
+    public function onPlayerQuit(Player $player, string $reason = "") : void{
+        $event = new PlayerQuitEvent($player, new Translation("multiplayer.player.left", [$player->getName()]), $reason);
+        $event->call();
+
         $player->moveUIItemsToInventory();
         $this->savePlayer($player);
         $player->despawnFromAll();
-        $this->broadcastTranslation(TextFormat::YELLOW . "%multiplayer.player.left", [$player->getName()], $player);
+        $this->broadcastEventMessage($event->getQuitMessage(), TextFormat::YELLOW, $player);
 
         foreach($this->getInGamePlayers() as $other){
             if($other !== $player){
@@ -659,24 +697,52 @@ class Server{
         }
     }
 
-    /**
-     * Called by Player when they die. $cause is the translation key of the death message.
-     *
-     * @param list<string> $parameters the player's name, then the attacker's when there is one
-     */
     public function onPlayerDeath(Player $player, string $cause, array $parameters) : void{
-        $this->logger->info($this->language->translate($cause, ["player" => $parameters[0], "attacker" => $parameters[1] ?? ""]));
-        $this->broadcastTranslation("%" . $cause, $parameters);
+        $default = new Translation($cause, $parameters);
+        $event = new PlayerDeathEvent($player, $player->getLastDamageSource(), $default);
+        $event->call();
+        $message = $event->getDeathMessage();
+
+        if($message === $default){
+            $this->logger->info($this->language->translate($cause, ["player" => $parameters[0], "attacker" => $parameters[1] ?? ""]));
+        }elseif($message !== null){
+            $this->logger->info($message instanceof Translation ? $this->language->translateObject($message) : $message);
+        }
+
+        $this->broadcastEventMessage($message, "");
     }
 
-    /**
-     * Called by NetworkSession with an already cleaned-up chat message.
-     */
     public function onPlayerChat(Player $player, string $message) : void{
-        $line = "<" . $player->getName() . "> " . $message;
+        $event = new PlayerChatEvent($player, $message, $this->getInGamePlayers());
+        $event->call();
 
+        if($event->isCancelled()){
+            return;
+        }
+
+        $line = $event->getLine();
         $this->logger->info($line);
-        $this->broadcastMessage($line);
+
+        foreach($event->getRecipients() as $recipient){
+            $recipient->sendMessage($line);
+        }
+    }
+
+    private function broadcastEventMessage(Translation|string|null $message, string $color, ?Player $except = null) : void{
+        if($message instanceof Translation){
+            $this->broadcastTranslation($color . "%" . $message->getKey(), Translation::toClientParams($message->getParams(), $this->language), $except);
+            return;
+        }
+
+        if($message === null){
+            return;
+        }
+
+        foreach($this->getInGamePlayers() as $player){
+            if($player !== $except){
+                $player->sendMessage($message);
+            }
+        }
     }
 
     /**
@@ -776,6 +842,7 @@ class Server{
             JigsawStructureDataPacket::class,
             VoxelShapesPacket::class,
             StartGamePacket::class,
+            BiomeDefinitionListPacket::class,
             ItemRegistryPacket::class,
             RequestChunkRadiusPacket::class,
             ChunkRadiusUpdatedPacket::class,
@@ -848,6 +915,7 @@ class Server{
             "list" => true,
             "tell" => true,
             "version" => true,
+            "plugins" => true,
             "say" => "op",
             "kick" => "op",
             "title" => "op",
@@ -891,7 +959,8 @@ class Server{
             new EffectCommand(),
             new SaveAllCommand(),
             new StopCommand(),
-            new VersionCommand()
+            new VersionCommand(),
+            new PluginsCommand()
         ]);
     }
 
@@ -979,6 +1048,7 @@ class Server{
 
         $this->loadNative();
         $this->loadDefaultWorld($worldName, $worldGenerator, $flatLayers, $worldSeed, $spawnChunkRadius);
+        $this->pluginManager->enablePlugins(PluginLoadOrder::POSTWORLD);
 
         $listenAddress = str_contains($serverIp, ":") ? "[{$serverIp}]:{$serverPort}" : "{$serverIp}:{$serverPort}";
 
@@ -1042,6 +1112,7 @@ class Server{
             $this->running = false;
 
             $this->consoleReader?->close();
+            $this->pluginManager->disablePlugins();
             $this->disconnectAll();
             $this->transport->shutdown();
             $this->shutdown();
@@ -1212,6 +1283,8 @@ class Server{
         foreach($this->worldManager->getWorlds() as $world){
             $world->tick($this->currentTick);
         }
+
+        $this->pluginManager->tick($this->currentTick);
 
         if($this->autoSaveTicks > 0 && $this->currentTick % $this->autoSaveTicks === 0){
             $this->saveWorlds(false);

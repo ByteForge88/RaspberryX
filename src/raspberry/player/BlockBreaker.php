@@ -11,6 +11,8 @@ use raspberry\block\BlockState;
 use raspberry\block\StairsShape;
 use raspberry\block\entity\Lectern;
 
+use raspberry\event\block\BlockBreakEvent;
+
 use raspberry\item\Item;
 use raspberry\item\ToolInfo;
 use raspberry\item\enchantment\Enchantment;
@@ -277,6 +279,14 @@ class BlockBreaker{
         $held = $player->getInventory()->getItemInHand();
         $entity = $world->getBlockEntity($x, $y, $z);
 
+        $event = new BlockBreakEvent($player, $block, new Vector3($x, $y, $z), $player->getGameMode()->hasInstantBuild() ? [] : $info->getDrops($block, $held));
+        $event->call();
+
+        if($event->isCancelled()){
+            $player->getNetworkSession()->sendBlock($x, $y, $z, $block);
+            return;
+        }
+
         $world->setBlock($x, $y, $z, $this->air());
         $particles = LevelEventPacket::create(LevelEvent::PARTICLES_DESTROY_BLOCK, $x + 0.5, $y + 0.5, $z + 0.5, $this->getNetworkId($block));
         $this->broadcast($particles, $x, $z);
@@ -309,7 +319,7 @@ class BlockBreaker{
             return;
         }
 
-        $drops = $info->getDrops($block, $held);
+        $drops = $event->getDrops();
 
         foreach($entity?->getDrops($drops) ?? $drops as $drop){
             $world->dropItem(new Vector3($x + 0.5, $y + 0.5, $z + 0.5), $drop);

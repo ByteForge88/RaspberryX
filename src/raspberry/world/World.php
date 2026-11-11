@@ -12,6 +12,9 @@ use raspberry\block\entity\TickableBlockEntity;
 use raspberry\block\entity\ContainerBlockEntity;
 use raspberry\block\redstone\RedstoneUpdater;
 
+use raspberry\world\biome\Biome;
+use raspberry\world\biome\BiomeRegistry;
+
 use raspberry\world\format\io\WorldMetadata;
 use raspberry\world\format\io\WorldProvider;
 use raspberry\world\generator\AsyncGenerator;
@@ -305,6 +308,10 @@ class World{
         $this->closed = true;
 
         return $saved;
+    }
+
+    public function getBiome(int $x, int $y, int $z) : Biome{
+        return BiomeRegistry::get($this->loadChunk($x >> 4, $z >> 4)->getBiome($x & 15, $y, $z & 15));
     }
 
     public function getBlock(int $x, int $y, int $z) : BlockState{

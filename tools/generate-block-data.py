@@ -18,6 +18,9 @@ Outputs:
   resources/vanilla/block_breaking.json     hardness, tool and drops of every block
   resources/vanilla/item_blocks.json        the block an item places, when it is not the block of the same name
   resources/vanilla/furnace_data.json       how long fuels burn and the experience smelting gives (hand-written tables)
+  resources/vanilla/furnace_data.json       how long fuels burn and the experience smelting gives (hand-written tables)
+  resources/vanilla/biome_definitions.json  climate, height and tags of every biome, from behavior_pack/biomes and resource_pack/biomes
+  src/raspberry/world/biome/BiomeTags.php   one constant per biome tag
 
   src/raspberry/network/mcpe/protocol/types/ParticleEffect.php  ---⌍
                                                                    ¦
@@ -39,7 +42,8 @@ Usage:
   python tools/generate-block-data.py --input path/to/folder --version 1.26.60.5
 
 Info:
-  the folder holds the mojang-*.json files, en_US.lang, LevelSoundEvent.json and the "recipes", "blocks" and "particles" folders)
+  the folder holds the mojang-*.json files, en_US.lang, LevelSoundEvent.json and the "recipes", "blocks", "particles" and "biomes" folders
+  ("biomes" holds both the *.biome.json and the *.client_biome.json files)
 """
 
 import argparse
@@ -60,6 +64,8 @@ BLOCK_IDS_PHP = ROOT / "src" / "raspberry" / "block" / "BlockIds.php"
 BLOCK_PROPERTIES_PHP = ROOT / "src" / "raspberry" / "block" / "BlockProperties.php"
 BLOCK_STATES_JSON = ROOT / "resources" / "vanilla" / "block_states.json"
 BIOME_IDS_PHP = ROOT / "src" / "raspberry" / "world" / "biome" / "BiomeIds.php"
+BIOME_TAGS_PHP = ROOT / "src" / "raspberry" / "world" / "biome" / "BiomeTags.php"
+BIOME_DEFINITIONS_JSON = ROOT / "resources" / "vanilla" / "biome_definitions.json"
 ITEM_REGISTRY_JSON = ROOT / "resources" / "vanilla" / "item_registry.json"
 ITEM_IDS_PHP = ROOT / "src" / "raspberry" / "item" / "ItemIds.php"
 ITEM_NAMES_JSON = ROOT / "resources" / "vanilla" / "item_names.json"
@@ -206,6 +212,95 @@ def read_biomes(source):
         seen_ids[biome_id] = name
 
     return biomes
+
+
+BIOME_HEIGHTS = {
+    "default": (0.1, 0.2),
+    "default_mutated": (0.2, 0.4),
+    "taiga": (0.2, 0.2),
+    "mountains": (0.45, 0.3),
+    "highlands": (1.5, 0.025),
+    "extreme": (1.0, 0.5),
+    "less_extreme": (0.8, 0.4),
+    "beach": (0.0, 0.025),
+    "stone_beach": (0.1, 0.8),
+    "lowlands": (0.125, 0.05),
+    "mushroom": (0.2, 0.3),
+    "river": (-0.5, 0.0),
+    "ocean": (-1.0, 0.1),
+    "deep_ocean": (-1.8, 0.1),
+    "swamp": (-0.2, 0.1),
+}
+
+DEFAULT_WATER_COLOR = "#44AFF5"
+DEFAULT_WATER_OPACITY = 0.65
+
+
+def read_biome_definitions(biomes, files):
+    behavior = {}
+    client = {}
+
+    for file_name, text in files:
+        data = json.loads(text)
+
+        if "minecraft:biome" in data:
+            target, body = behavior, data["minecraft:biome"]
+        elif "minecraft:client_biome" in data:
+            target, body = client, data["minecraft:client_biome"]
+        else:
+            continue
+
+        target[body["description"]["identifier"]] = body.get("components", {})
+
+    definitions = {}
+
+    for name, components in behavior.items():
+        if name not in biomes:
+            fail(f"biome {name} has a definition but no ID in mojang-biomes.json")
+
+        climate = components.get("minecraft:climate", {})
+        height = components.get("minecraft:overworld_height", {})
+        tags = components.get("minecraft:tags", {}).get("tags", [])
+
+        if "noise_params" in height:
+            depth, scale = height["noise_params"]
+        else:
+            noise = height.get("noise_type", "default")
+
+            if noise not in BIOME_HEIGHTS:
+                fail(f"biome {name} has unknown height noise_type {noise}")
+
+            depth, scale = BIOME_HEIGHTS[noise]
+
+        water = client.get(name, {}).get("minecraft:water_appearance", {})
+        color = water.get("surface_color", DEFAULT_WATER_COLOR)
+
+        if re.fullmatch(r"#[0-9a-fA-F]{6}", color) is None:
+            fail(f"biome {name} has water color {color!r}, expected #RRGGBB")
+
+        alpha = int(water.get("surface_opacity", DEFAULT_WATER_OPACITY) * 255)
+        downfall = float(climate.get("downfall", 0.5))
+        snow = climate.get("snow_accumulation", [0.0, 0.125])
+
+        definitions[name] = {
+            "id": biomes[name],
+            "temperature": float(climate.get("temperature", 0.5)),
+            "downfall": downfall,
+            "snow_accumulation": [float(snow[0]), float(snow[1])],
+            "depth": float(depth),
+            "scale": float(scale),
+            "map_water_color": (alpha << 24) | int(color[1:], 16),
+            "rain": downfall > 0 and "the_end" not in tags,
+            "tags": tags,
+        }
+
+    return dict(sorted(definitions.items()))
+
+
+def biome_definitions_json(version, definitions):
+    entries = [f"    {json.dumps(name)}: {json.dumps(data)}" for name, data in definitions.items()]
+
+    return "{\n" + f'  "version": {json.dumps(version)},\n  "biomes": {{\n' + ",\n".join(entries) + "\n  }\n}\n"
 
 
 def read_items(item_source, block_source):
@@ -1475,12 +1570,15 @@ def main():
     sound_protocol, sound_events = load_sound_events(args)
     item_blocks, not_placeable = read_item_blocks(blocks, items)
     particle_effects = read_particle_effects(load_pack_files(args, "particles", "resource_pack"))
+    biome_definitions = read_biome_definitions(biomes, load_pack_files(args, "biomes") + load_pack_files(args, "biomes", "resource_pack"))
+    biome_tags = sorted({tag for definition in biome_definitions.values() for tag in definition["tags"]})
 
     used_properties = sorted({property_name for states in blocks.values() for property_name in states})
 
     block_constants = build_constants(blocks.keys(), block_const_name)
     property_constants = build_constants(used_properties, property_const_name)
     biome_constants = {const: biomes[name] for const, name in build_constants(biomes.keys(), block_const_name).items()}
+    biome_tag_constants = build_constants(biome_tags, property_const_name)
     item_constants = build_constants(items.keys(), block_const_name)
     sound_constants = build_constants(sound_events, sound_const_name)
     particle_constants = build_constants(particle_effects, particle_const_name)
@@ -1498,6 +1596,8 @@ def main():
     write(FURNACE_DATA_JSON, furnace_data_json(args.version, *read_furnace_data(items, recipes)))
     write(ITEM_IDS_PHP, php_class("raspberry\\item", "ItemIds", "Names of every vanilla item, including blocks in item form.", args.version, item_constants))
     write(BIOME_IDS_PHP, php_class("raspberry\\world\\biome", "BiomeIds", "Numeric IDs of every vanilla biome.", args.version, biome_constants))
+    write(BIOME_TAGS_PHP, php_class("raspberry\\world\\biome", "BiomeTags", "Tags of the vanilla biomes, for Biome::hasTag().", args.version, biome_tag_constants))
+    write(BIOME_DEFINITIONS_JSON, biome_definitions_json(args.version, biome_definitions))
     write(PARTICLE_EFFECT_PHP, php_class("raspberry\\network\\mcpe\\protocol\\types", "ParticleEffect", "Names of every particle effect for SpawnParticleEffectPacket.", args.version, particle_constants))
     write(LEVEL_EVENT_PHP, php_class("raspberry\\network\\mcpe\\protocol\\types", "LevelEvent", "IDs of the level events for LevelEventPacket (sounds, particles, block cracking...).", args.version, level_event_constants, None))
     write(PARTICLE_TYPE_PHP, php_class("raspberry\\network\\mcpe\\protocol\\types", "ParticleType", "IDs of the old numbered particles, sent as LevelEvent::PARTICLE_LEGACY_EVENT | ID.", args.version, particle_type_constants, None))
@@ -1515,7 +1615,7 @@ def main():
 
     recipe_count = sum(len(entries) for entries in recipes.values())
 
-    print(f"{len(blocks)} blocks, {len(used_properties)} properties, {permutations} block states, {len(biomes)} biomes, {len(items)} items ({guessed_names} names made from the ID), {creative_items} creative items, {recipe_count} recipes ({skipped_recipes} old ones skipped), {len(sound_events)} sound events, {len(particle_effects)} particle effects")
+    print(f"{len(blocks)} blocks, {len(used_properties)} properties, {permutations} block states, {len(biomes)} biomes ({len(biome_definitions)} with definitions, {len(biome_tags)} tags), {len(items)} items ({guessed_names} names made from the ID), {creative_items} creative items, {recipe_count} recipes ({skipped_recipes} old ones skipped), {len(sound_events)} sound events, {len(particle_effects)} particle effects")
 
     if unmatched_blocks:
         print(f"{len(unmatched_blocks)} blocks have no breaking rule and break at once: {', '.join(unmatched_blocks)}")

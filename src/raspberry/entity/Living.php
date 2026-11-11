@@ -9,6 +9,8 @@ use raspberry\entity\effect\EffectInstance;
 use raspberry\entity\effect\EffectManager;
 use raspberry\entity\damage\DamageSource;
 
+use raspberry\event\entity\EntityDamageEvent;
+
 use raspberry\math\Vector3;
 
 use raspberry\world\World;
@@ -279,6 +281,13 @@ abstract class Living extends Entity{
      */
     public function damage(DamageSource $source) : bool{
         if(!$this->isAlive() || $source->getAmount() <= 0 || !$this->canBeDamagedBy($source)){
+            return false;
+        }
+
+        $event = new EntityDamageEvent($this, $source);
+        $event->call();
+
+        if($event->isCancelled() || $source->getAmount() <= 0){
             return false;
         }
 

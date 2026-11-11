@@ -58,7 +58,7 @@ class EffectManager{
 
         $old = $this->effects[$type->value] ?? null;
 
-        if(!$force && $old !== null && ($old->getRemaining() > $effect->getRemaining() || ($old->getAmplifier() === $effect->getAmplifier() && $old->getRemaining() > $effect->getRemaining()))){
+        if(!$force && $old !== null && ($old->getAmplifier() > $effect->getAmplifier() || ($old->getAmplifier() === $effect->getAmplifier() && $old->getRemaining() > $effect->getRemaining()))){
             return false;
         }
 

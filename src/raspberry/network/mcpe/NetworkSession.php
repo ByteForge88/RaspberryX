@@ -91,6 +91,8 @@ use raspberry\item\Potion;
 
 use raspberry\lang\Translation;
 
+use raspberry\event\player\PlayerCommandEvent;
+
 use InvalidArgumentException;
 
 use raspberry\math\Vector3;
@@ -113,6 +115,7 @@ use UnexpectedValueException;
 use function array_shift;
 use function ceil;
 use function count;
+use function ltrim;
 use function is_string;
 use function max;
 use function min;
@@ -537,7 +540,7 @@ class NetworkSession{
         $this->inventoryManager?->closeWindow(false);
 
         if($wasInGame && $this->player !== null){
-            $this->server->onPlayerQuit($this->player);
+            $this->server->onPlayerQuit($this->player, $reason);
         }
 
         $this->player?->close();
@@ -1183,7 +1186,14 @@ class NetworkSession{
             "command" => $packet->command
         ]));
 
-        $output = $this->server->dispatchCommand($player, $packet->command, false);
+        $event = new PlayerCommandEvent($player, ltrim($packet->command, "/"));
+        $event->call();
+
+        if($event->isCancelled()){
+            return;
+        }
+
+        $output = $this->server->dispatchCommand($player, $event->getCommand(), false);
         $messages = [];
 
         foreach($output->getMessages() as $message){
@@ -1399,6 +1409,7 @@ class NetworkSession{
             new JigsawStructureDataPacket(),
             new VoxelShapesPacket(),
             $startGame,
+            $this->server->getBiomeDefinitions(),
             ItemRegistryPacket::create($this->server->getItemTypeDictionary()->getRegistryEntries())
         ]);
 

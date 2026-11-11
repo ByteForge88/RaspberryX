@@ -42,7 +42,7 @@ class DamageSource{
     private ?Entity $attacker;
 
     public function __construct(int $cause, float $amount, ?Entity $attacker = null){
-        if($cause < self::CAUSE_CONTACT || $cause > self::CAUSE_THORNS){
+        if($cause < self::CAUSE_CONTACT || $cause > self::CAUSE_MAGMA){
             throw new InvalidArgumentException("Unknown damage cause {$cause}");
         }
 

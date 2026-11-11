@@ -967,7 +967,7 @@ class Player extends Human implements CommandSender{
             return;
         }
 
-        if(($this->effects->get(Effect::WATER_BREATHING)?->getDuration() ?? 0) <= self::TURTLE_BREATHING_TICKS - 20){
+        if(($this->effects->get(Effect::WATER_BREATHING)?->getRemaining() ?? 0) <= self::TURTLE_BREATHING_TICKS - 20){
             $this->effects->add(new EffectInstance(Effect::WATER_BREATHING, self::TURTLE_BREATHING_TICKS, 0, false, false));
         }
     }
