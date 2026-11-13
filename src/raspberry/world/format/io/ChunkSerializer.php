@@ -92,6 +92,12 @@ final class ChunkSerializer{
             $writer->writeBytes($nbt->write($entity->save()));
         }
 
+        $writer->writeUnsignedVarInt(count($chunk->getSavedEntities()));
+
+        foreach($chunk->getSavedEntities() as $entity){
+            $writer->writeBytes($nbt->write($entity));
+        }
+
         $compressed = zlib_encode($writer->getBuffer(), ZLIB_ENCODING_DEFLATE, 6);
 
         if($compressed === false){
@@ -196,7 +202,18 @@ final class ChunkSerializer{
             }
 
             if(!$reader->isFinished()){
-                throw new UnexpectedValueException("Unexpected data after the block entities");
+                $nbt = NbtSerializer::littleEndian();
+                $entities = [];
+
+                for($i = 0, $count = $reader->readUnsignedVarInt(); $i < $count; ++$i){
+                    $entities[] = $nbt->readFrom($reader);
+                }
+
+                $chunk->setSavedEntities($entities);
+            }
+
+            if(!$reader->isFinished()){
+                throw new UnexpectedValueException("Unexpected data after the entities");
             }
         }catch(Throwable $error){
             throw new CorruptChunkException("Chunk {$expectedX}, {$expectedZ} is corrupt: " . $error->getMessage(), 0, $error);

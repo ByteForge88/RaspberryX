@@ -169,6 +169,9 @@ class Player extends Human implements CommandSender{
 
     private bool $sneaking = false;
 
+    /** what the interact button says on touch screens, for the mob the player looks at */
+    private string $interactText = "";
+
     /** blocks fallen since the player last stood on something */
     private float $fallDistance = 0.0;
 
@@ -1271,7 +1274,7 @@ class Player extends Human implements CommandSender{
     /**
      * Wears the held item down by $amount uses, unbreaking can save it.
      */
-    private function wearHeld(int $amount) : void{
+    public function wearHeld(int $amount) : void{
         $item = $this->inventory->getItemInHand();
 
         if(!$item->hasDurability()){
@@ -1368,6 +1371,20 @@ class Player extends Human implements CommandSender{
      */
     public function setSneaking(bool $sneaking) : void{
         $this->sneaking = $sneaking;
+    }
+
+    public function getInteractText() : string{
+        return $this->interactText;
+    }
+
+    /**
+     * @internal
+     */
+    public function setInteractText(string $text) : void{
+        if($this->interactText !== $text){
+            $this->interactText = $text;
+            $this->session->sendOwnMetadata();
+        }
     }
 
     public function isSwimming() : bool{

@@ -11,6 +11,7 @@ pub mod chunk;
 pub mod completions;
 pub mod encode;
 pub mod generator;
+pub mod mob;
 pub mod noise;
 pub mod pool;
 pub mod random;
@@ -18,13 +19,13 @@ pub mod random;
 use std::collections::HashMap;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::ptr;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use chunk::{Chunk, Storage, SubChunk, MAX_LAYERS, SIZE, SUBCHUNKS};
 
 /// Bumped whenever a function below changes, PHP refuses a library it does not know.
-pub const ABI_VERSION: u32 = 3;
+pub const ABI_VERSION: u32 = 4;
 
 struct Entry {
     chunk: Chunk,
@@ -443,4 +444,114 @@ pub extern "C" fn rx_pre_normal_spawn(handle: u64) -> u64 {
         let (x, y, z) = entry.generator.spawn();
         [x, y, z].iter().flat_map(|value| value.to_le_bytes()).collect()
     })
+}
+
+/// The mobs of one PHP world: their state, which chunk handle is where, and whether a tick
+/// is still running on a worker.
+struct MobWorld {
+    state: Arc<Mutex<mob::World>>,
+    chunks: HashMap<(i32, i32), u64>,
+    busy: Arc<AtomicBool>,
+}
+
+static MOB_WORLDS: Mutex<Option<HashMap<u64, MobWorld>>> = Mutex::new(None);
+
+fn mob_worlds() -> MutexGuard<'static, Option<HashMap<u64, MobWorld>>> {
+    MOB_WORLDS.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// A place for the mobs of one world. `seed` only feeds their dice.
+#[no_mangle]
+pub extern "C" fn rx_mobs_new(seed: i64) -> u64 {
+    catch_unwind(|| {
+        let handle = NEXT_HANDLE.fetch_add(1, Ordering::Relaxed);
+        let world = MobWorld { state: Arc::new(Mutex::new(mob::World::new(seed))), chunks: HashMap::new(), busy: Arc::new(AtomicBool::new(false)) };
+
+        mob_worlds().get_or_insert_with(HashMap::new).insert(handle, world);
+        handle
+    })
+    .unwrap_or(0)
+}
+
+#[no_mangle]
+pub extern "C" fn rx_mobs_free(world: u64) {
+    let _ = catch_unwind(|| mob_worlds().as_mut().map(|map| map.remove(&world)));
+}
+
+/// Tells the mobs which chunk is at a position, 0 for none any more.
+#[no_mangle]
+pub extern "C" fn rx_mobs_chunk(world: u64, chunk_x: i32, chunk_z: i32, chunk: u64) {
+    let _ = catch_unwind(|| {
+        if let Some(entry) = mob_worlds().as_mut().and_then(|map| map.get_mut(&world)) {
+            if chunk == 0 {
+                entry.chunks.remove(&(chunk_x, chunk_z));
+            } else {
+                entry.chunks.insert((chunk_x, chunk_z), chunk);
+            }
+        }
+    });
+}
+
+/// Describes block states to the mobs: `count` state IDs and what mob::blocks says about each.
+#[no_mangle]
+pub unsafe extern "C" fn rx_mobs_blocks(states: *const u32, flags: *const u16, count: usize) {
+    if states.is_null() || flags.is_null() || count == 0 {
+        return;
+    }
+
+    let states = std::slice::from_raw_parts(states, count);
+    let flags = std::slice::from_raw_parts(flags, count);
+    let _ = catch_unwind(|| mob::blocks::learn(states.iter().copied().zip(flags.iter().copied())));
+}
+
+/// Hands over what changed and starts a tick of the world's mobs on a worker. The result
+/// comes back through rx_poll under the returned ID. 0 when the last tick is still running
+/// (nothing of `input` was taken then, send it again) or there is no such world.
+#[no_mangle]
+pub unsafe extern "C" fn rx_mobs_tick(world: u64, input: *const u8, length: usize) -> u64 {
+    let input = slice(input, length);
+
+    catch_unwind(AssertUnwindSafe(|| {
+        let worlds = mob_worlds();
+        let Some(entry) = worlds.as_ref().and_then(|map| map.get(&world)) else { return 0 };
+
+        if entry.busy.load(Ordering::Acquire) {
+            return 0;
+        }
+
+        let state = Arc::clone(&entry.state);
+        let needed = {
+            let mut mobs = state.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+            let _ = mobs.apply(input);
+            mobs.chunks_needed()
+        };
+
+        //snapshots of the chunks around the mobs, the main thread goes on changing the real ones
+        let mut snapshot = HashMap::with_capacity(needed.len());
+
+        if let Some(all) = chunks().as_ref() {
+            for position in needed {
+                if let Some(found) = entry.chunks.get(&position).and_then(|handle| all.get(handle)) {
+                    snapshot.insert(position, found.chunk.clone());
+                }
+            }
+        }
+
+        let view = mob::blocks::View::new(snapshot, mob::blocks::table());
+        let busy = Arc::clone(&entry.busy);
+        let id = completions::next_id();
+
+        busy.store(true, Ordering::Release);
+
+        pool::spawn(move || {
+            let result = catch_unwind(AssertUnwindSafe(|| state.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).tick(&view)));
+
+            busy.store(false, Ordering::Release);
+            //no moves, no events, no unknown blocks when the tick went wrong
+            completions::complete(id, result.unwrap_or_else(|_| vec![0; 12]));
+        });
+
+        id
+    }))
+    .unwrap_or(0)
 }

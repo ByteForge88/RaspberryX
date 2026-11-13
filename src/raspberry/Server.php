@@ -11,10 +11,12 @@ use raspberry\network\mcpe\convert\ItemTranslator;
 use raspberry\network\mcpe\convert\BlockTranslator;
 use raspberry\network\mcpe\convert\ItemTypeDictionary;
 use raspberry\network\mcpe\convert\BiomeDefinitionAdapter;
+use raspberry\network\mcpe\convert\EntityPropertyAdapter;
 use raspberry\network\mcpe\NetworkSession;
 use raspberry\network\mcpe\protocol\ChunkRadiusUpdatedPacket;
 use raspberry\network\mcpe\protocol\CreativeContentPacket;
 use raspberry\network\mcpe\protocol\BiomeDefinitionListPacket;
+use raspberry\network\mcpe\protocol\SyncActorPropertyPacket;
 use raspberry\network\mcpe\protocol\DisconnectPacket;
 use raspberry\network\mcpe\protocol\ItemRegistryPacket;
 use raspberry\network\mcpe\protocol\JigsawStructureDataPacket;
@@ -115,6 +117,7 @@ use raspberry\command\defaults\PluginsCommand;
 use raspberry\command\defaults\ClearCommand;
 use raspberry\command\defaults\EffectCommand;
 use raspberry\command\defaults\GiveCommand;
+use raspberry\command\defaults\SummonCommand;
 
 use raspberry\console\ConsoleReader;
 
@@ -273,6 +276,9 @@ class Server{
 
     private BiomeDefinitionListPacket $biomeDefinitions;
 
+    /** @var list<SyncActorPropertyPacket> */
+    private array $entityPropertySync;
+
     /** @var list<Item> the creative items in the order of the creative content */
     private array $creativeItems = [];
 
@@ -344,6 +350,7 @@ class Server{
         $this->craftingManager = new CraftingManager();
         $this->craftingData = $this->itemTranslator->buildCraftingData($this->craftingManager);
         $this->biomeDefinitions = BiomeDefinitionAdapter::createDefinitionList();
+        $this->entityPropertySync = EntityPropertyAdapter::createSyncPackets();
 
         $this->worldManager = new WorldManager(
             Path::join($this->dataPath, "worlds"),
@@ -497,6 +504,13 @@ class Server{
 
     public function getBiomeDefinitions() : BiomeDefinitionListPacket{
         return $this->biomeDefinitions;
+    }
+
+    /**
+     * @return list<SyncActorPropertyPacket>
+     */
+    public function getEntityPropertySync() : array{
+        return $this->entityPropertySync;
     }
 
     public function getCreativeItem(int $networkId) : ?Item{
@@ -843,6 +857,7 @@ class Server{
             VoxelShapesPacket::class,
             StartGamePacket::class,
             BiomeDefinitionListPacket::class,
+            SyncActorPropertyPacket::class,
             ItemRegistryPacket::class,
             RequestChunkRadiusPacket::class,
             ChunkRadiusUpdatedPacket::class,
@@ -926,6 +941,7 @@ class Server{
             "setworldspawn" => "op",
             "spawnpoint" => "op",
             "give" => "op",
+            "summon" => "op",
             "clear" => "op",
             "effect" => "op",
             "save-all" => "op",
@@ -955,6 +971,7 @@ class Server{
             new SetWorldSpawnCommand(),
             new SpawnpointCommand(),
             new GiveCommand(),
+            new SummonCommand(),
             new ClearCommand(),
             new EffectCommand(),
             new SaveAllCommand(),

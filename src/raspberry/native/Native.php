@@ -20,7 +20,7 @@ use const PHP_OS_FAMILY;
 class Native{
 
     /** the library has to speak this version of the functions below */
-    public const ABI_VERSION = 3;
+    public const ABI_VERSION = 4;
 
     private const HEADER = <<<'C'
         uint32_t rx_version(void);
@@ -49,6 +49,12 @@ class Native{
         void rx_pre_normal_free(uint64_t generator);
         uint64_t rx_pre_normal_chunk(uint64_t generator, int32_t chunk_x, int32_t chunk_z);
         uint64_t rx_pre_normal_spawn(uint64_t generator);
+        
+        uint64_t rx_mobs_new(int64_t seed);
+        void rx_mobs_free(uint64_t world);
+        void rx_mobs_chunk(uint64_t world, int32_t chunk_x, int32_t chunk_z, uint64_t chunk);
+        void rx_mobs_blocks(const uint32_t* states, const uint16_t* flags, size_t count);
+        uint64_t rx_mobs_tick(uint64_t world, const char* input, size_t length);
         C;
 
     private static ?FFI $ffi = null;

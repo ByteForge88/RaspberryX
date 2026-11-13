@@ -1,0 +1,23 @@
+{
+  "version": "1.26.60.5",
+  "entities": {
+    "minecraft:armadillo": [{"name": "minecraft:armadillo_state", "type": "enum", "values": ["unrolled", "rolled_up", "rolled_up_peeking", "rolled_up_relaxing", "rolled_up_unrolling"]}],
+    "minecraft:bee": [{"name": "minecraft:has_nectar", "type": "bool"}],
+    "minecraft:breeze": [{"name": "minecraft:is_playing_idle_ground_sound", "type": "bool"}],
+    "minecraft:camel_husk": [{"name": "minecraft:has_rider_mounted", "type": "bool"}],
+    "minecraft:cat": [{"name": "minecraft:sound_variant", "type": "enum", "values": ["default", "royal"]}],
+    "minecraft:chicken": [{"name": "minecraft:climate_variant", "type": "enum", "values": ["temperate", "warm", "cold"]}, {"name": "minecraft:sound_variant", "type": "enum", "values": ["default", "picky"]}],
+    "minecraft:copper_golem": [{"name": "minecraft:oxidation_level", "type": "enum", "values": ["unoxidized", "exposed", "weathered", "oxidized"]}, {"name": "minecraft:is_waxed", "type": "bool"}, {"name": "minecraft:chest_interaction", "type": "enum", "values": ["none", "take", "take_fail", "put", "put_fail"]}, {"name": "minecraft:has_flower", "type": "bool"}, {"name": "minecraft:is_becoming_statue", "type": "bool"}],
+    "minecraft:cow": [{"name": "minecraft:climate_variant", "type": "enum", "values": ["temperate", "warm", "cold"]}, {"name": "minecraft:sound_variant", "type": "enum", "values": ["default", "moody"]}],
+    "minecraft:creaking": [{"name": "minecraft:creaking_swaying_ticks", "type": "int", "min": 0, "max": 6}, {"name": "minecraft:creaking_state", "type": "enum", "values": ["neutral", "hostile_observed", "hostile_unobserved", "twitching", "crumbling"]}],
+    "minecraft:egg": [{"name": "minecraft:climate_variant", "type": "enum", "values": ["temperate", "warm", "cold"]}],
+    "minecraft:happy_ghast": [{"name": "minecraft:can_move", "type": "bool"}],
+    "minecraft:husk": [{"name": "minecraft:is_riding_camel_husk", "type": "bool"}],
+    "minecraft:pig": [{"name": "minecraft:climate_variant", "type": "enum", "values": ["temperate", "warm", "cold"]}, {"name": "minecraft:sound_variant", "type": "enum", "values": ["default", "big", "mini"]}],
+    "minecraft:sulfur_cube": [{"name": "minecraft:sulfur_cube_archetype", "type": "enum", "values": ["none", "bouncy", "regular", "slow_bouncy", "slow_flat", "fast_flat", "light", "fast_sliding", "slow_sliding", "sticky", "high_resistance", "explosive", "hot"]}],
+    "minecraft:wolf": [{"name": "minecraft:is_armorable", "type": "bool"}, {"name": "minecraft:has_increased_max_health", "type": "bool"}, {"name": "minecraft:sound_variant", "type": "enum", "values": ["default", "big", "cute", "grumpy", "mad", "puglin", "sad"]}, {"name": "minecraft:was_upgraded_to_1_21_100", "type": "bool"}],
+    "minecraft:zombie": [{"name": "minecraft:is_riding_zombie_horse", "type": "bool"}],
+    "minecraft:zombie_horse": [{"name": "minecraft:was_upgraded_to_1_21_130", "type": "bool"}],
+    "minecraft:zombie_nautilus": [{"name": "minecraft:variant", "type": "enum", "values": ["default", "coral"]}]
+  }
+}

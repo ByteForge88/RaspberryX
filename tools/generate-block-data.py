@@ -21,6 +21,8 @@ Outputs:
   resources/vanilla/furnace_data.json       how long fuels burn and the experience smelting gives (hand-written tables)
   resources/vanilla/biome_definitions.json  climate, height and tags of every biome, from behavior_pack/biomes and resource_pack/biomes
   src/raspberry/world/biome/BiomeTags.php   one constant per biome tag
+  src/raspberry/entity/EntityIds.php        one constant per entity name
+  resources/vanilla/entity_properties.json  the properties entities sync to the client (a pig's climate_variant), from behavior_pack/entities
 
   src/raspberry/network/mcpe/protocol/types/ParticleEffect.php  ---⌍
                                                                    ¦
@@ -42,7 +44,7 @@ Usage:
   python tools/generate-block-data.py --input path/to/folder --version 1.26.60.5
 
 Info:
-  the folder holds the mojang-*.json files, en_US.lang, LevelSoundEvent.json and the "recipes", "blocks", "particles" and "biomes" folders
+  the folder holds the mojang-*.json files, en_US.lang, LevelSoundEvent.json and the "recipes", "blocks", "particles", "biomes" and "entities" folders
   ("biomes" holds both the *.biome.json and the *.client_biome.json files)
 """
 
@@ -66,6 +68,8 @@ BLOCK_STATES_JSON = ROOT / "resources" / "vanilla" / "block_states.json"
 BIOME_IDS_PHP = ROOT / "src" / "raspberry" / "world" / "biome" / "BiomeIds.php"
 BIOME_TAGS_PHP = ROOT / "src" / "raspberry" / "world" / "biome" / "BiomeTags.php"
 BIOME_DEFINITIONS_JSON = ROOT / "resources" / "vanilla" / "biome_definitions.json"
+ENTITY_IDS_PHP = ROOT / "src" / "raspberry" / "entity" / "EntityIds.php"
+ENTITY_PROPERTIES_JSON = ROOT / "resources" / "vanilla" / "entity_properties.json"
 ITEM_REGISTRY_JSON = ROOT / "resources" / "vanilla" / "item_registry.json"
 ITEM_IDS_PHP = ROOT / "src" / "raspberry" / "item" / "ItemIds.php"
 ITEM_NAMES_JSON = ROOT / "resources" / "vanilla" / "item_names.json"
@@ -301,6 +305,79 @@ def biome_definitions_json(version, definitions):
     entries = [f"    {json.dumps(name)}: {json.dumps(data)}" for name, data in definitions.items()]
 
     return "{\n" + f'  "version": {json.dumps(version)},\n  "biomes": {{\n' + ",\n".join(entries) + "\n  }\n}\n"
+
+
+def strip_json_comments(text):
+    out = []
+    index = 0
+    in_string = False
+
+    while index < len(text):
+        char = text[index]
+
+        if in_string:
+            out.append(char)
+
+            if char == "\\":
+                out.append(text[index + 1])
+                index += 1
+            elif char == '"':
+                in_string = False
+        elif char == '"':
+            in_string = True
+            out.append(char)
+        elif text.startswith("//", index):
+            index = text.find("\n", index)
+
+            if index == -1:
+                break
+
+            continue
+        elif text.startswith("/*", index):
+            index = text.find("*/", index) + 2
+            continue
+        else:
+            out.append(char)
+
+        index += 1
+
+    return "".join(out)
+
+
+def read_entity_properties(entities, files):
+    properties = {}
+
+    for file_name, text in files:
+        description = json.loads(strip_json_comments(text))["minecraft:entity"]["description"]
+        name = description["identifier"]
+
+        if name not in entities:
+            fail(f"entity {name} of {file_name} is not in mojang-entities.json")
+
+        entries = []
+
+        for property_name, body in description.get("properties", {}).items():
+            entry = {"name": property_name, "type": body["type"]}
+
+            if body["type"] == "enum":
+                entry["values"] = body["values"]
+            elif body["type"] in ("int", "float"):
+                entry["min"], entry["max"] = body["range"]
+            elif body["type"] != "bool":
+                fail(f"property {property_name} of {name} has unknown type {body['type']}")
+
+            entries.append(entry)
+
+        if entries:
+            properties[name] = entries
+
+    return dict(sorted(properties.items()))
+
+
+def entity_properties_json(version, properties):
+    entries = [f"    {json.dumps(name)}: {json.dumps(data)}" for name, data in properties.items()]
+
+    return "{\n" + f'  "version": {json.dumps(version)},\n  "entities": {{\n' + ",\n".join(entries) + "\n  }\n}\n"
 
 
 def read_items(item_source, block_source):
@@ -1572,6 +1649,8 @@ def main():
     particle_effects = read_particle_effects(load_pack_files(args, "particles", "resource_pack"))
     biome_definitions = read_biome_definitions(biomes, load_pack_files(args, "biomes") + load_pack_files(args, "biomes", "resource_pack"))
     biome_tags = sorted({tag for definition in biome_definitions.values() for tag in definition["tags"]})
+    entities = sorted(item["name"] for item in load_source(args, "mojang-entities.json")["data_items"])
+    entity_properties = read_entity_properties(entities, load_pack_files(args, "entities"))
 
     used_properties = sorted({property_name for states in blocks.values() for property_name in states})
 
@@ -1579,6 +1658,7 @@ def main():
     property_constants = build_constants(used_properties, property_const_name)
     biome_constants = {const: biomes[name] for const, name in build_constants(biomes.keys(), block_const_name).items()}
     biome_tag_constants = build_constants(biome_tags, property_const_name)
+    entity_constants = build_constants(entities, block_const_name)
     item_constants = build_constants(items.keys(), block_const_name)
     sound_constants = build_constants(sound_events, sound_const_name)
     particle_constants = build_constants(particle_effects, particle_const_name)
@@ -1598,6 +1678,8 @@ def main():
     write(BIOME_IDS_PHP, php_class("raspberry\\world\\biome", "BiomeIds", "Numeric IDs of every vanilla biome.", args.version, biome_constants))
     write(BIOME_TAGS_PHP, php_class("raspberry\\world\\biome", "BiomeTags", "Tags of the vanilla biomes, for Biome::hasTag().", args.version, biome_tag_constants))
     write(BIOME_DEFINITIONS_JSON, biome_definitions_json(args.version, biome_definitions))
+    write(ENTITY_IDS_PHP, php_class("raspberry\\entity", "EntityIds", "Names of every vanilla entity.", args.version, entity_constants))
+    write(ENTITY_PROPERTIES_JSON, entity_properties_json(args.version, entity_properties))
     write(PARTICLE_EFFECT_PHP, php_class("raspberry\\network\\mcpe\\protocol\\types", "ParticleEffect", "Names of every particle effect for SpawnParticleEffectPacket.", args.version, particle_constants))
     write(LEVEL_EVENT_PHP, php_class("raspberry\\network\\mcpe\\protocol\\types", "LevelEvent", "IDs of the level events for LevelEventPacket (sounds, particles, block cracking...).", args.version, level_event_constants, None))
     write(PARTICLE_TYPE_PHP, php_class("raspberry\\network\\mcpe\\protocol\\types", "ParticleType", "IDs of the old numbered particles, sent as LevelEvent::PARTICLE_LEGACY_EVENT | ID.", args.version, particle_type_constants, None))
@@ -1615,7 +1697,7 @@ def main():
 
     recipe_count = sum(len(entries) for entries in recipes.values())
 
-    print(f"{len(blocks)} blocks, {len(used_properties)} properties, {permutations} block states, {len(biomes)} biomes ({len(biome_definitions)} with definitions, {len(biome_tags)} tags), {len(items)} items ({guessed_names} names made from the ID), {creative_items} creative items, {recipe_count} recipes ({skipped_recipes} old ones skipped), {len(sound_events)} sound events, {len(particle_effects)} particle effects")
+    print(f"{len(blocks)} blocks, {len(used_properties)} properties, {permutations} block states, {len(biomes)} biomes ({len(biome_definitions)} with definitions, {len(biome_tags)} tags), {len(entities)} entities, {len(items)} items ({guessed_names} names made from the ID), {creative_items} creative items, {recipe_count} recipes ({skipped_recipes} old ones skipped), {len(sound_events)} sound events, {len(particle_effects)} particle effects")
 
     if unmatched_blocks:
         print(f"{len(unmatched_blocks)} blocks have no breaking rule and break at once: {', '.join(unmatched_blocks)}")

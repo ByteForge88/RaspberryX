@@ -10,6 +10,7 @@ use raspberry\block\BlockStateIds;
 use raspberry\block\entity\BlockEntity;
 
 use raspberry\nbt\NbtSerializer;
+use raspberry\nbt\tag\CompoundTag;
 
 use raspberry\native\Native;
 
@@ -49,6 +50,9 @@ class Chunk{
 
     /** @var array<int, BlockEntity> keyed by blockIndex() */
     private array $blockEntities = [];
+
+    /** @var list<CompoundTag> the mobs that were in the chunk when it was last saved or read */
+    private array $savedEntities = [];
 
     private bool $changed = false;
 
@@ -159,6 +163,20 @@ class Chunk{
      */
     public function getBlockEntities() : array{
         return $this->blockEntities;
+    }
+
+    /**
+     * @return list<CompoundTag>
+     */
+    public function getSavedEntities() : array{
+        return $this->savedEntities;
+    }
+
+    /**
+     * @param list<CompoundTag> $entities
+     */
+    public function setSavedEntities(array $entities) : void{
+        $this->savedEntities = $entities;
     }
 
     private static function blockIndex(int $x, int $y, int $z) : int{

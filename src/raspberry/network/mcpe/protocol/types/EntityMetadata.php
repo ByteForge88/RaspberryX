@@ -12,6 +12,7 @@ use function count;
 class EntityMetadata{
 
     public const KEY_FLAGS = 0;
+    public const KEY_VARIANT = 2;
     public const KEY_COLOR_INDEX = 3;
     public const KEY_NAME = 4;
     public const KEY_OWNER = 5;
@@ -35,6 +36,7 @@ class EntityMetadata{
     public const KEY_CLOUD_RADIUS_PER_TICK = 97;
     public const KEY_CLOUD_RADIUS_ON_PICKUP = 98;
     public const KEY_CLOUD_PICKUP_COUNT = 99;
+    public const KEY_INTERACT_TEXT = 100;
     public const KEY_VISIBLE_MOB_EFFECTS = 131;
 
     public const TYPE_BYTE = 0;
@@ -49,9 +51,12 @@ class EntityMetadata{
     public const FLAG_SPRINTING = 3;
     public const FLAG_USING_ITEM = 4;
     public const FLAG_INVISIBLE = 5;
+    public const FLAG_IN_LOVE = 7;
+    public const FLAG_BABY = 11;
     public const FLAG_SHOW_NAME = 14;
     public const FLAG_ALWAYS_SHOW_NAME = 15;
     public const FLAG_CAN_CLIMB = 19;
+    public const FLAG_SHEARED = 31;
     public const FLAG_BREATHING = 35;
     public const FLAG_HAS_COLLISION = 48;
     public const FLAG_HAS_GRAVITY = 49;

@@ -23,6 +23,7 @@ use raspberry\block\entity\BlockEntity;
 use raspberry\block\entity\BlockEntityFactory;
 
 use raspberry\entity\Human;
+use raspberry\entity\EntityFactory;
 
 use raspberry\event\block\BlockPlaceEvent;
 
@@ -140,6 +141,19 @@ class BlockPlacer{
 
         if($held->getId() === ItemIds::BONE_MEAL){
             if($player->getGameMode()->allowsBuilding() && BoneMeal::grow($world, $x, $y, $z)){
+                $player->swingArm(AnimatePacket::SWING_INTERACT);
+                $this->useUpHeld($held);
+            }
+
+            return;
+        }
+
+        $mob = EntityFactory::getSpawnEggType($held->getId());
+
+        if($mob !== null){
+            [$dx, $dy, $dz] = Facing::offset($face);
+
+            if(EntityFactory::create($mob, $world, new Vector3($x + $dx + 0.5, $y + $dy, $z + $dz + 0.5), (float) mt_rand(0, 359)) !== null){
                 $player->swingArm(AnimatePacket::SWING_INTERACT);
                 $this->useUpHeld($held);
             }

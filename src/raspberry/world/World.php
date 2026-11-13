@@ -20,7 +20,10 @@ use raspberry\world\format\io\WorldProvider;
 use raspberry\world\generator\AsyncGenerator;
 use raspberry\world\generator\Generator;
 
+use raspberry\entity\Mob;
 use raspberry\entity\Entity;
+use raspberry\entity\EntityFactory;
+use raspberry\entity\ai\MobEngine;
 use raspberry\entity\object\ItemEntity;
 
 use raspberry\item\Item;
@@ -30,6 +33,8 @@ use raspberry\player\Player;
 use raspberry\math\Vector3;
 
 use raspberry\native\Native;
+
+use raspberry\nbt\tag\CompoundTag;
 
 use raspberry\network\mcpe\protocol\Packet;
 use raspberry\network\mcpe\protocol\BlockActorDataPacket;
@@ -72,11 +77,18 @@ class World{
 
     private RedstoneUpdater $redstoneUpdater;
 
+    private MobEngine $mobEngine;
+
     public function __construct(WorldMetadata $metadata, Generator $generator, WorldProvider $provider){
         $this->metadata = $metadata;
         $this->generator = $generator;
         $this->provider = $provider;
         $this->redstoneUpdater = new RedstoneUpdater($this);
+        $this->mobEngine = new MobEngine($this);
+    }
+
+    public function getMobEngine() : MobEngine{
+        return $this->mobEngine;
     }
 
     public function getName() : string{
@@ -138,7 +150,46 @@ class World{
             $generated = true;
         }
 
-        return $this->chunks[$key] ??= $chunk;
+        if(!isset($this->chunks[$key])){
+            $this->chunks[$key] = $chunk;
+            $this->onChunkLoaded($chunk, $generated);
+        }
+
+        return $this->chunks[$key];
+    }
+
+    /**
+     * A chunk came into memory: the mobs hear of it, the ones saved in it come back, and a
+     * new chunk gets its animals.
+     */
+    private function onChunkLoaded(Chunk $chunk, bool $generated) : void{
+        $this->mobEngine->setChunk($chunk->getX(), $chunk->getZ(), $chunk);
+
+        foreach($chunk->getSavedEntities() as $tag){
+            EntityFactory::load($this, $tag);
+        }
+
+        if($generated){
+            MobSpawner::populate($this, $chunk);
+        }
+    }
+
+    /**
+     * @return array<string, list<CompoundTag>>
+     */
+    private function saveEntities() : array{
+        $saved = [];
+
+        foreach($this->entities as $entity){
+            $tag = $entity->isClosed() ? null : $entity->save();
+
+            if($tag !== null){
+                $position = $entity->getPosition();
+                $saved[self::chunkKey($position->getChunkX(), $position->getChunkZ())][] = $tag;
+            }
+        }
+
+        return $saved;
     }
 
     /**
@@ -170,7 +221,9 @@ class World{
         $chunk = $this->provider->loadChunk($chunkX, $chunkZ);
 
         if($chunk !== null){
-            $onReady($this->chunks[$key] = $chunk);
+            $this->chunks[$key] = $chunk;
+            $this->onChunkLoaded($chunk, false);
+            $onReady($chunk);
             return;
         }
 
@@ -187,7 +240,11 @@ class World{
 
             $chunk->collectGarbage();
             $chunk->setChanged();
-            $this->chunks[$key] ??= $chunk;
+
+            if(!isset($this->chunks[$key])){
+                $this->chunks[$key] = $chunk;
+                $this->onChunkLoaded($chunk, true);
+            }
 
             foreach($waiting as $onReady){
                 $onReady($this->chunks[$key]);
@@ -264,10 +321,25 @@ class World{
             return;
         }
 
+        $saved = $this->saveEntities()[$key] ?? [];
+
+        if($saved !== [] || $chunk->getSavedEntities() !== []){
+            $chunk->setSavedEntities($saved);
+            $chunk->setChanged();
+        }
+
+        //the mobs leave with their chunk, they come back when it is loaded again
+        foreach($this->entities as $entity){
+            if($entity instanceof Mob && $entity->getPosition()->getChunkX() === $chunkX && $entity->getPosition()->getChunkZ() === $chunkZ){
+                $entity->close();
+            }
+        }
+
         if($chunk->hasChanged()){
             $this->provider->saveChunk($chunk);
         }
 
+        $this->mobEngine->setChunk($chunkX, $chunkZ, null);
         unset($this->chunks[$key]);
     }
 
@@ -278,8 +350,16 @@ class World{
      */
     public function save() : int{
         $saved = 0;
+        $entities = $this->saveEntities();
 
-        foreach($this->chunks as $chunk){
+        foreach($this->chunks as $key => $chunk){
+            $inChunk = $entities[$key] ?? [];
+
+            if($inChunk !== [] || $chunk->getSavedEntities() !== []){
+                $chunk->setSavedEntities($inChunk);
+                $chunk->setChanged();
+            }
+
             if($chunk->hasChanged()){
                 $this->provider->saveChunk($chunk);
                 $chunk->setChanged(false);
@@ -304,6 +384,7 @@ class World{
         $this->generating = [];
 
         $this->provider->close();
+        $this->mobEngine->close();
         $this->chunks = [];
         $this->closed = true;
 
@@ -506,6 +587,8 @@ class World{
                 $entity->tick($currentTick);
             }
         }
+
+        $this->mobEngine->tick();
     }
 
     /**

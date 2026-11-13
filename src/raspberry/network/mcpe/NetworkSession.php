@@ -16,6 +16,7 @@ use raspberry\network\mcpe\protocol\InventoryContentPacket;
 use raspberry\network\mcpe\protocol\ItemStackRequestPacket;
 use raspberry\network\mcpe\protocol\InventoryTransactionPacket;
 use raspberry\network\mcpe\protocol\AddActorPacket;
+use raspberry\network\mcpe\protocol\AnimatePacket;
 use raspberry\network\mcpe\protocol\AddItemActorPacket;
 use raspberry\network\mcpe\protocol\MobArmorEquipmentPacket;
 use raspberry\network\mcpe\protocol\MobEffectPacket;
@@ -76,8 +77,10 @@ use raspberry\network\mcpe\convert\CommandDataAdapter;
 use raspberry\block\BlockState;
 
 use raspberry\entity\Entity;
+use raspberry\entity\EntityProperties;
 use raspberry\entity\Human;
 use raspberry\entity\Living;
+use raspberry\entity\Mob;
 use raspberry\entity\effect\Effect;
 use raspberry\entity\effect\EffectInstance;
 use raspberry\entity\object\AreaEffectCloud;
@@ -707,6 +710,11 @@ class NetworkSession{
             return;
         }
 
+        if($entity instanceof Mob){
+            $this->spawnMob($entity);
+            return;
+        }
+
         if(!$entity instanceof Human){
             return; //TODO: AddActorPacket for other entities
         }
@@ -788,6 +796,23 @@ class NetworkSession{
         $this->sendDataPacket($packet);
     }
 
+    private function spawnMob(Mob $mob) : void{
+        $position = $mob->getPosition();
+
+        $packet = new AddActorPacket();
+        $packet->actorRuntimeId = $mob->getId();
+        $packet->type = $mob->getNetworkTypeId();
+        $packet->x = $position->x;
+        $packet->y = $position->y;
+        $packet->z = $position->z;
+        $packet->pitch = $mob->getPitch();
+        $packet->yaw = $mob->getYaw();
+        $packet->headYaw = $mob->getHeadYaw();
+        $packet->metadata = $mob->createMetadata();
+        [$packet->intProperties, $packet->floatProperties] = EntityProperties::encode($mob->getNetworkTypeId(), $mob->getSyncedProperties());
+        $this->sendDataPacket($packet);
+    }
+
     /**
      * Sends an entity's metadata again, for the ones whose looks change (an effect cloud shrinking).
      */
@@ -833,11 +858,13 @@ class NetworkSession{
         $position = $entity->getPosition();
         $flags = $teleport ? MoveActorAbsolutePacket::FLAG_TELEPORT : 0;
 
-        if($entity instanceof ItemEntity && $entity->isOnGround()){
+        if(($entity instanceof ItemEntity || $entity instanceof Mob) && $entity->isOnGround()){
             $flags |= MoveActorAbsolutePacket::FLAG_ON_GROUND;
         }
 
-        $this->sendDataPacket(MoveActorAbsolutePacket::create($entity->getId(), $position->x, $position->y + $entity->getNetworkOffset(), $position->z, $entity->getPitch(), $entity->getYaw(), $entity->getYaw(), $flags));
+        $headYaw = $entity instanceof Mob ? $entity->getHeadYaw() : $entity->getYaw();
+
+        $this->sendDataPacket(MoveActorAbsolutePacket::create($entity->getId(), $position->x, $position->y + $entity->getNetworkOffset(), $position->z, $entity->getPitch(), $entity->getYaw(), $headYaw, $flags));
     }
 
     /**
@@ -950,6 +977,11 @@ class NetworkSession{
         $metadata->setShort(EntityMetadata::KEY_AIR_SUPPLY, $human->getAir());
         $metadata->setShort(EntityMetadata::KEY_AIR_SUPPLY_MAX, Human::MAX_AIR);
         $metadata->setByte(EntityMetadata::KEY_COLOR_INDEX, 0);
+
+        if($human instanceof Player){
+            $metadata->setString(EntityMetadata::KEY_INTERACT_TEXT, $human->getInteractText());
+        }
+
         self::addEffectMetadata($metadata, $human);
         return $metadata;
     }
@@ -992,7 +1024,17 @@ class NetworkSession{
     private function handleInteract(InteractPacket $packet) : void{
         $player = $this->player;
 
-        if($player === null || $this->state !== self::STATE_IN_GAME || $packet->action !== InteractPacket::ACTION_OPEN_INVENTORY || $packet->targetActorRuntimeId !== $player->getId()){
+        if($player === null || $this->state !== self::STATE_IN_GAME){
+            return;
+        }
+
+        if($packet->action === InteractPacket::ACTION_MOUSE_OVER_ENTITY){
+            $target = $player->getWorld()->getEntity($packet->targetActorRuntimeId);
+            $player->setInteractText($target instanceof Mob && $this->canInteractWith($player, $target) ? $target->getInteractText($player) : "");
+            return;
+        }
+
+        if($packet->action !== InteractPacket::ACTION_OPEN_INVENTORY || $packet->targetActorRuntimeId !== $player->getId()){
             return;
         }
 
@@ -1075,19 +1117,23 @@ class NetworkSession{
         }
     }
 
-    /**
-     * A hit on an entity. Right clicks on entities come with the mobs that react to them.
-     */
     private function handleUseItemOnEntity(Player $player, UseItemOnEntityData $data) : void{
-        if($data->action !== UseItemOnEntityData::ACTION_ATTACK){
+        $target = $player->getWorld()->getEntity($data->targetRuntimeId);
+
+        if($target === null){
             return;
         }
 
-        $target = $player->getWorld()->getEntity($data->targetRuntimeId);
-
-        if($target !== null){
+        if($data->action === UseItemOnEntityData::ACTION_ATTACK){
             $player->attackEntity($target);
+        }elseif($data->action === UseItemOnEntityData::ACTION_INTERACT && $target instanceof Mob && $this->canInteractWith($player, $target) && $target->onInteract($player)){
+            $player->swingArm(AnimatePacket::SWING_INTERACT);
+            $player->setInteractText($target->getInteractText($player));
         }
+    }
+
+    private function canInteractWith(Player $player, Mob $mob) : bool{
+        return !$player->isDead() && $mob->isAlive() && $player->getGameMode()->allowsInteraction() && $mob->distanceToBox($player->getEyePosition()) <= Mob::INTERACT_REACH;
     }
 
     /**
@@ -1410,6 +1456,7 @@ class NetworkSession{
             new VoxelShapesPacket(),
             $startGame,
             $this->server->getBiomeDefinitions(),
+            ...$this->server->getEntityPropertySync(),
             ItemRegistryPacket::create($this->server->getItemTypeDictionary()->getRegistryEntries())
         ]);
 

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace raspberry\entity;
 
+use raspberry\nbt\tag\CompoundTag;
+
 use raspberry\math\Vector3;
 
 use raspberry\player\Player;
@@ -251,8 +253,12 @@ abstract class Entity{
     }
 
     /**
-     * Removes the entity from its world. It must not be used afterwards.
+     * What goes into the world's save for this entity, null for one that is not kept.
      */
+    public function save() : ?CompoundTag{
+        return null;
+    }
+
     public function close() : void{
         if($this->closed){
             return;
