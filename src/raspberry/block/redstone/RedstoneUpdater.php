@@ -8,6 +8,7 @@ use raspberry\Server;
 
 use raspberry\block\BlockIds;
 use raspberry\block\BlockState;
+use raspberry\block\BlockStateIds;
 use raspberry\block\BlockBreakInfo;
 use raspberry\block\BlockCollision;
 use raspberry\block\BlockProperties;
@@ -30,6 +31,7 @@ use raspberry\player\GameMode;
 use raspberry\player\Player;
 
 use raspberry\world\World;
+use raspberry\world\Chunk;
 
 use function array_fill;
 use function array_filter;
@@ -44,7 +46,7 @@ use function min;
 use function preg_match;
 use function preg_replace;
 use function round;
-use function sin;
+use function cos;
 use function str_contains;
 use function str_ends_with;
 
@@ -572,13 +574,13 @@ class RedstoneUpdater{
     }
 
     /**
-     * The game's own formula: the sky's light, less what the time of day takes off it, rising
-     * and falling with the sun. There is no light engine yet, so the sky's light is taken as 15.
+     * The game's own formula: the sky's light at the sensor, less what the time of day takes
+     * off it, rising and falling with the sun.
      */
     private function updateDaylightDetector(int $x, int $y, int $z, BlockState $block) : void{
         $this->daylightDetectors[self::chunkKey($x >> 4, $z >> 4)][self::key($x, $y, $z)] = [$x, $y, $z];
 
-        $level = 15 - $this->world->getSkyDarken();
+        $level = $this->world->getSkyLight($x, $y, $z) - $this->world->getSkyDarken();
 
         if($block->getName() === BlockIds::DAYLIGHT_DETECTOR_INVERTED){
             $level = 15 - $level;

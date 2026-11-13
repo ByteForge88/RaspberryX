@@ -19,6 +19,7 @@ use raspberry\world\format\io\WorldMetadata;
 use raspberry\world\format\io\WorldProvider;
 use raspberry\world\generator\AsyncGenerator;
 use raspberry\world\generator\Generator;
+use raspberry\world\light\LightEngine;
 
 use raspberry\entity\Mob;
 use raspberry\entity\Entity;
@@ -102,6 +103,8 @@ class World{
 
     private MobEngine $mobEngine;
 
+    private LightEngine $light;
+
     private GameRules $gameRules;
 
     public function __construct(WorldMetadata $metadata, Generator $generator, WorldProvider $provider){
@@ -110,6 +113,7 @@ class World{
         $this->provider = $provider;
         $this->redstoneUpdater = new RedstoneUpdater($this);
         $this->mobEngine = new MobEngine($this);
+        $this->light = new LightEngine();
         $this->gameRules = new GameRules($metadata->gameRules);
     }
 
@@ -212,6 +216,34 @@ class World{
         return $this->mobEngine;
     }
 
+    public function getLightEngine() : LightEngine{
+        return $this->light;
+    }
+
+    /** the light of torches, lava, glowstone and the like at a block, 0 to 15 */
+    public function getBlockLight(int $x, int $y, int $z) : int{
+        return $this->light->getBlockLight($x, $y, $z);
+    }
+
+    /** the light that reaches a block from the sky, 0 to 15, as it would be at noon */
+    public function getSkyLight(int $x, int $y, int $z) : int{
+        return $this->light->getSkyLight($x, $y, $z);
+    }
+
+    /**
+     * The light at a block the way the game counts it for growing and spawning: the brighter of
+     * its block light and its sky light, the sky's dimmed by the time of day.
+     */
+    public function getLight(int $x, int $y, int $z) : int{
+        return max($this->light->getBlockLight($x, $y, $z), $this->light->getSkyLight($x, $y, $z) - $this->getSkyDarken());
+    }
+
+    /** whether nothing is above the block that stops the light of the sky */
+    public function canSeeSky(int $x, int $y, int $z) : bool{
+        $bottom = $this->light->getSkyBottom($x, $z);
+        return $bottom !== null && $y >= $bottom;
+    }
+
     public function getName() : string{
         return $this->metadata->name;
     }
@@ -284,6 +316,7 @@ class World{
      * new chunk gets its animals.
      */
     private function onChunkLoaded(Chunk $chunk, bool $generated) : void{
+        $this->light->addChunk($chunk);
         $this->mobEngine->setChunk($chunk->getX(), $chunk->getZ(), $chunk);
         $this->redstoneUpdater->findDaylightDetectors($chunk);
 
@@ -463,6 +496,7 @@ class World{
 
         $this->mobEngine->setChunk($chunkX, $chunkZ, null);
         $this->redstoneUpdater->forgetChunk($chunkX, $chunkZ);
+        $this->light->removeChunk($chunkX, $chunkZ);
         unset($this->chunks[$key]);
     }
 
@@ -506,12 +540,11 @@ class World{
 
         $saved = $this->save();
         $this->generating = [];
-
         $this->provider->close();
         $this->mobEngine->close();
+        $this->light->close();
         $this->chunks = [];
         $this->closed = true;
-
         return $saved;
     }
 
@@ -533,6 +566,10 @@ class World{
         }
 
         $chunk->setBlock($x & 15, $y, $z & 15, $block);
+
+        if(!$oldState->equals($block)){
+            $this->light->update($x, $y, $z);
+        }
 
         foreach($this->getPlayersViewing($x >> 4, $z >> 4) as $player){
             $player->getNetworkSession()->sendBlock($x, $y, $z, $block);

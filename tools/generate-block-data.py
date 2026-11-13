@@ -23,6 +23,7 @@ Outputs:
   src/raspberry/world/biome/BiomeTags.php   one constant per biome tag
   src/raspberry/entity/EntityIds.php        one constant per entity name
   resources/vanilla/entity_properties.json  the properties entities sync to the client (a pig's climate_variant), from behavior_pack/entities
+  resources/vanilla/block_light.json        how much light each block gives off and lets through, from PrismarineJS minecraft-data
 
   src/raspberry/network/mcpe/protocol/types/ParticleEffect.php  ---⌍
                                                                    ¦
@@ -45,7 +46,7 @@ Usage:
 
 Info:
   the folder holds the mojang-*.json files, en_US.lang, LevelSoundEvent.json and the "recipes", "blocks", "particles", "biomes" and "entities" folders
-  ("biomes" holds both the *.biome.json and the *.client_biome.json files)
+  ("biomes" holds both the *.biome.json and the *.client_biome.json files), and minecraft-data's blocks.json
 """
 
 import argparse
@@ -70,6 +71,10 @@ BIOME_TAGS_PHP = ROOT / "src" / "raspberry" / "world" / "biome" / "BiomeTags.php
 BIOME_DEFINITIONS_JSON = ROOT / "resources" / "vanilla" / "biome_definitions.json"
 ENTITY_IDS_PHP = ROOT / "src" / "raspberry" / "entity" / "EntityIds.php"
 ENTITY_PROPERTIES_JSON = ROOT / "resources" / "vanilla" / "entity_properties.json"
+BLOCK_LIGHT_JSON = ROOT / "resources" / "vanilla" / "block_light.json"
+
+LIGHT_PATHS_URL = "https://raw.githubusercontent.com/PrismarineJS/minecraft-data/master/data/dataPaths.json"
+LIGHT_BLOCKS_URL = "https://raw.githubusercontent.com/PrismarineJS/minecraft-data/master/data/{path}/blocks.json"
 ITEM_REGISTRY_JSON = ROOT / "resources" / "vanilla" / "item_registry.json"
 ITEM_IDS_PHP = ROOT / "src" / "raspberry" / "item" / "ItemIds.php"
 ITEM_NAMES_JSON = ROOT / "resources" / "vanilla" / "item_names.json"
@@ -378,6 +383,51 @@ def entity_properties_json(version, properties):
     entries = [f"    {json.dumps(name)}: {json.dumps(data)}" for name, data in properties.items()]
 
     return "{\n" + f'  "version": {json.dumps(version)},\n  "entities": {{\n' + ",\n".join(entries) + "\n  }\n}\n"
+
+
+def load_light_source(args):
+    if args.input is not None:
+        with open(Path(args.input) / "blocks.json", "r", encoding="utf-8") as handle:
+            return json.load(handle)
+
+    print(f"Downloading {LIGHT_PATHS_URL}")
+    paths = json.loads(download_text(LIGHT_PATHS_URL))["bedrock"]
+    short = ".".join(args.version.split(".")[:3])
+    version = args.version if args.version in paths else short
+
+    if version not in paths or "blocks" not in paths[version]:
+        fail(f"minecraft-data has no Bedrock {short} blocks yet, the light values cannot be made")
+
+    url = LIGHT_BLOCKS_URL.format(path=paths[version]["blocks"])
+    print(f"Downloading {url}")
+
+    return json.loads(download_text(url))
+
+
+def read_block_light(blocks, source):
+    known = {"minecraft:" + entry["name"]: entry for entry in source}
+    light = {}
+    missing = []
+
+    for name in sorted(blocks):
+        entry = known.get(name)
+
+        if entry is None:
+            missing.append(name)
+            continue
+
+        values = [int(entry["emitLight"]), int(entry["filterLight"])]
+
+        if values != [0, 15]:
+            light[name] = values
+
+    return light, missing
+
+
+def block_light_json(version, light):
+    entries = [f"    {json.dumps(name)}: {json.dumps(values)}" for name, values in light.items()]
+
+    return "{\n" + f'  "version": {json.dumps(version)},\n  "blocks": {{\n' + ",\n".join(entries) + "\n  }\n}\n"
 
 
 def read_items(item_source, block_source):
@@ -1647,6 +1697,7 @@ def main():
     sound_protocol, sound_events = load_sound_events(args)
     item_blocks, not_placeable = read_item_blocks(blocks, items)
     particle_effects = read_particle_effects(load_pack_files(args, "particles", "resource_pack"))
+    block_light, unlit_blocks = read_block_light(blocks, load_light_source(args))
     biome_definitions = read_biome_definitions(biomes, load_pack_files(args, "biomes") + load_pack_files(args, "biomes", "resource_pack"))
     biome_tags = sorted({tag for definition in biome_definitions.values() for tag in definition["tags"]})
     entities = sorted(item["name"] for item in load_source(args, "mojang-entities.json")["data_items"])
@@ -1668,6 +1719,7 @@ def main():
     write(BLOCK_IDS_PHP, php_class("raspberry\\block", "BlockIds", "Names of every vanilla block.", args.version, block_constants))
     write(BLOCK_PROPERTIES_PHP, php_class("raspberry\\block", "BlockProperties", "Names of every vanilla block state property.", args.version, property_constants))
     write(BLOCK_STATES_JSON, states_json(args.version, blocks))
+    write(BLOCK_LIGHT_JSON, block_light_json(args.version, block_light))
     write(ITEM_REGISTRY_JSON, items_json(args.version, items))
     write(ITEM_NAMES_JSON, names_json(args.version, item_names))
     write(RECIPES_JSON, recipes_json(args.version, item_tags, recipes))
@@ -1697,7 +1749,7 @@ def main():
 
     recipe_count = sum(len(entries) for entries in recipes.values())
 
-    print(f"{len(blocks)} blocks, {len(used_properties)} properties, {permutations} block states, {len(biomes)} biomes ({len(biome_definitions)} with definitions, {len(biome_tags)} tags), {len(entities)} entities, {len(items)} items ({guessed_names} names made from the ID), {creative_items} creative items, {recipe_count} recipes ({skipped_recipes} old ones skipped), {len(sound_events)} sound events, {len(particle_effects)} particle effects")
+    print(f"{len(blocks)} blocks, {len(used_properties)} properties, {permutations} block states, {len(biomes)} biomes ({len(biome_definitions)} with definitions, {len(biome_tags)} tags), {len(block_light)} blocks with light values, {len(entities)} entities, {len(items)} items ({guessed_names} names made from the ID), {creative_items} creative items, {recipe_count} recipes ({skipped_recipes} old ones skipped), {len(sound_events)} sound events, {len(particle_effects)} particle effects")
 
     if unmatched_blocks:
         print(f"{len(unmatched_blocks)} blocks have no breaking rule and break at once: {', '.join(unmatched_blocks)}")

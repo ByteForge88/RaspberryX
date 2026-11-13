@@ -11,6 +11,7 @@ pub mod chunk;
 pub mod completions;
 pub mod encode;
 pub mod generator;
+pub mod light;
 pub mod mob;
 pub mod noise;
 pub mod pool;
@@ -25,7 +26,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use chunk::{Chunk, Storage, SubChunk, MAX_LAYERS, SIZE, SUBCHUNKS};
 
 /// Bumped whenever a function below changes, PHP refuses a library it does not know.
-pub const ABI_VERSION: u32 = 5;
+pub const ABI_VERSION: u32 = 6;
 
 struct Entry {
     chunk: Chunk,
@@ -578,4 +579,102 @@ pub unsafe extern "C" fn rx_mobs_tick(world: u64, input: *const u8, length: usiz
         id
     }))
     .unwrap_or(0)
+}
+
+/// The light of one PHP world, and which chunk handle is where so a changed block can be read.
+struct LightEntry {
+    light: light::LightWorld,
+    chunks: HashMap<(i32, i32), u64>,
+}
+
+static LIGHT_WORLDS: Mutex<Option<HashMap<u64, LightEntry>>> = Mutex::new(None);
+
+fn light_worlds() -> MutexGuard<'static, Option<HashMap<u64, LightEntry>>> {
+    LIGHT_WORLDS.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+fn with_light<T>(world: u64, missing: T, action: impl FnOnce(&mut LightEntry) -> T) -> T {
+    let result = catch_unwind(AssertUnwindSafe(|| light_worlds().as_mut().and_then(|map| map.get_mut(&world)).map(action)));
+
+    match result {
+        Ok(Some(value)) => value,
+        _ => missing,
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn rx_light_new() -> u64 {
+    catch_unwind(|| {
+        let handle = NEXT_HANDLE.fetch_add(1, Ordering::Relaxed);
+        light_worlds().get_or_insert_with(HashMap::new).insert(handle, LightEntry { light: light::LightWorld::new(), chunks: HashMap::new() });
+        handle
+    })
+    .unwrap_or(0)
+}
+
+#[no_mangle]
+pub extern "C" fn rx_light_free(world: u64) {
+    let _ = catch_unwind(|| light_worlds().as_mut().map(|map| map.remove(&world)));
+}
+
+/// Describes block states: `count` state IDs and for each the light it gives off (high four
+/// bits) and takes away (low four bits). States never described are solid and dark.
+#[no_mangle]
+pub unsafe extern "C" fn rx_light_blocks(states: *const u32, values: *const u8, count: usize) {
+    if states.is_null() || values.is_null() || count == 0 {
+        return;
+    }
+
+    let states = std::slice::from_raw_parts(states, count);
+    let values = std::slice::from_raw_parts(values, count);
+    let _ = catch_unwind(|| light::learn(states.iter().copied().zip(values.iter().copied())));
+}
+
+/// Lights a chunk that just loaded. 0 when there is no such world or chunk.
+#[no_mangle]
+pub extern "C" fn rx_light_add_chunk(world: u64, chunk_x: i32, chunk_z: i32, chunk: u64) -> i32 {
+    with_light(world, 0, |entry| {
+        let all = chunks();
+        let Some(found) = all.as_ref().and_then(|map| map.get(&chunk)) else { return 0 };
+
+        entry.light.add_chunk(chunk_x, chunk_z, &found.chunk);
+        entry.chunks.insert((chunk_x, chunk_z), chunk);
+        1
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn rx_light_remove_chunk(world: u64, chunk_x: i32, chunk_z: i32) {
+    with_light(world, (), |entry| {
+        entry.light.remove_chunk(chunk_x, chunk_z);
+        entry.chunks.remove(&(chunk_x, chunk_z));
+    });
+}
+
+/// A block changed: the light around it follows. The block is read from its chunk.
+#[no_mangle]
+pub extern "C" fn rx_light_update(world: u64, x: i32, y: i32, z: i32) {
+    with_light(world, (), |entry| {
+        let Some(handle) = entry.chunks.get(&(x >> 4, z >> 4)) else { return };
+        let props = {
+            let all = chunks();
+            let Some(found) = all.as_ref().and_then(|map| map.get(handle)) else { return };
+            light::props_at(&found.chunk, (x & 15) as usize, y, (z & 15) as usize)
+        };
+
+        entry.light.update(x, y, z, props);
+    });
+}
+
+/// The block light in the low four bits and the sky light in the next four, -1 where no
+/// chunk is lit.
+#[no_mangle]
+pub extern "C" fn rx_light_get(world: u64, x: i32, y: i32, z: i32) -> i32 {
+    with_light(world, -1, |entry| entry.light.get(x, y, z).map_or(-1, |(block, sky)| (block | sky << 4) as i32))
+}
+
+/// The lowest Y that open sky reaches in a column, i32::MIN where no chunk is lit.
+#[no_mangle]
+pub extern "C" fn rx_light_sky_bottom(world: u64, x: i32, z: i32) -> i32 {
+    with_light(world, i32::MIN, |entry| entry.light.sky_bottom(x, z).unwrap_or(i32::MIN))
 }

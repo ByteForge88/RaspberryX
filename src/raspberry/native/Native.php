@@ -6,9 +6,9 @@ namespace raspberry\native;
 
 use raspberry\Server;
 
-use Closure;
 use FFI;
 use FFI\CData;
+use Closure;
 use Throwable;
 
 use function count;
@@ -20,7 +20,7 @@ use const PHP_OS_FAMILY;
 class Native{
 
     /** the library has to speak this version of the functions below */
-    public const ABI_VERSION = 5;
+    public const ABI_VERSION = 6;
 
     private const HEADER = <<<'C'
         uint32_t rx_version(void);
@@ -38,6 +38,16 @@ class Native{
         int32_t rx_chunk_highest_subchunk(uint64_t chunk);
         void rx_chunk_collect_garbage(uint64_t chunk);
         int32_t rx_chunk_find(uint64_t chunk, const uint32_t* states, size_t count, char** out, size_t* out_length);
+        
+        uint64_t rx_light_new(void);
+        void rx_light_free(uint64_t world);
+        void rx_light_blocks(const uint32_t* states, const uint8_t* values, size_t count);
+        int32_t rx_light_add_chunk(uint64_t world, int32_t chunk_x, int32_t chunk_z, uint64_t chunk);
+        void rx_light_remove_chunk(uint64_t world, int32_t chunk_x, int32_t chunk_z);
+        void rx_light_update(uint64_t world, int32_t x, int32_t y, int32_t z);
+        int32_t rx_light_get(uint64_t world, int32_t x, int32_t y, int32_t z);
+        int32_t rx_light_sky_bottom(uint64_t world, int32_t x, int32_t z);
+        
         int32_t rx_chunk_export(uint64_t chunk, char** out, size_t* out_length);
         int32_t rx_chunk_import(uint64_t chunk, const char* data, size_t length);
         uint64_t rx_chunk_encode(uint64_t chunk, int32_t chunk_x, int32_t chunk_z, uint64_t revision, const char* extra, size_t extra_length, int32_t threshold);
