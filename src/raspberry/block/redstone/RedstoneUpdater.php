@@ -74,8 +74,8 @@ class RedstoneUpdater{
     private const PLATE_DELAY = 20;
     private const WEIGHTED_PLATE_DELAY = 10;
 
-    /** the world clock does not run yet, daylight sensors see noon */
-    private const TIME_OF_DAY = 6000;
+    /** daylight sensors look at the sky this often */
+    private const DAYLIGHT_TICKS = 20;
 
     private const WIRE_SIDES = [
         Facing::NORTH => BlockProperties::REDSTONE_NORTH,
@@ -117,6 +117,12 @@ class RedstoneUpdater{
     /** @var array<string, array{int, int, int, int}> */
     private array $plates = [];
 
+    /** @var array<string, array<string, array{int, int, int}>> */
+    private array $daylightDetectors = [];
+
+    /** @var list<int>|null */
+    private static ?array $daylightDetectorStates = null;
+
     public function __construct(World $world){
         $this->world = $world;
         $this->signal = new RedstoneSignal($world);
@@ -155,6 +161,10 @@ class RedstoneUpdater{
      * nothing is on anymore.
      */
     public function tick(int $currentTick) : void{
+        if($currentTick % self::DAYLIGHT_TICKS === 0){
+            $this->updateDaylightDetectors();
+        }
+
         $found = [];
 
         foreach($this->world->getEntities() as $entity){
@@ -517,9 +527,68 @@ class RedstoneUpdater{
         }
     }
 
+    /**
+     * Notes where the daylight sensors of a chunk that just loaded are, so they follow the sun.
+     */
+    public function findDaylightDetectors(Chunk $chunk) : void{
+        if(self::$daylightDetectorStates === null){
+            self::$daylightDetectorStates = [];
+            $registry = Server::getInstance()->getBlockStateRegistry();
+
+            foreach([BlockIds::DAYLIGHT_DETECTOR, BlockIds::DAYLIGHT_DETECTOR_INVERTED] as $name){
+                for($signal = 0; $signal <= 15; ++$signal){
+                    self::$daylightDetectorStates[] = BlockStateIds::get($registry->get($name, [BlockProperties::REDSTONE_SIGNAL => $signal]));
+                }
+            }
+        }
+
+        $key = self::chunkKey($chunk->getX(), $chunk->getZ());
+        unset($this->daylightDetectors[$key]);
+
+        foreach($chunk->findBlocks(self::$daylightDetectorStates) as [$x, $y, $z]){
+            $x += $chunk->getX() << 4;
+            $z += $chunk->getZ() << 4;
+            $this->daylightDetectors[$key][self::key($x, $y, $z)] = [$x, $y, $z];
+        }
+    }
+
+    public function forgetChunk(int $chunkX, int $chunkZ) : void{
+        unset($this->daylightDetectors[self::chunkKey($chunkX, $chunkZ)]);
+    }
+
+    private function updateDaylightDetectors() : void{
+        foreach($this->daylightDetectors as $chunkKey => $detectors){
+            foreach($detectors as $key => [$x, $y, $z]){
+                $block = $this->world->getBlock($x, $y, $z);
+                $name = $block->getName();
+
+                if($name === BlockIds::DAYLIGHT_DETECTOR || $name === BlockIds::DAYLIGHT_DETECTOR_INVERTED){
+                    $this->updateDaylightDetector($x, $y, $z, $block);
+                }else{
+                    unset($this->daylightDetectors[$chunkKey][$key]);
+                }
+            }
+        }
+    }
+
+    /**
+     * The game's own formula: the sky's light, less what the time of day takes off it, rising
+     * and falling with the sun. There is no light engine yet, so the sky's light is taken as 15.
+     */
     private function updateDaylightDetector(int $x, int $y, int $z, BlockState $block) : void{
-        $daylight = (int) round(15 * max(0.0, sin(M_PI * self::TIME_OF_DAY / 12000)));
-        $level = $block->getName() === BlockIds::DAYLIGHT_DETECTOR_INVERTED ? 15 - $daylight : $daylight;
+        $this->daylightDetectors[self::chunkKey($x >> 4, $z >> 4)][self::key($x, $y, $z)] = [$x, $y, $z];
+
+        $level = 15 - $this->world->getSkyDarken();
+
+        if($block->getName() === BlockIds::DAYLIGHT_DETECTOR_INVERTED){
+            $level = 15 - $level;
+        }elseif($level > 0){
+            $angle = $this->world->getSunAngle();
+            $angle += (($angle < M_PI ? 0.0 : 2.0 * M_PI) - $angle) * 0.2;
+            $level = (int) round($level * cos($angle));
+        }
+
+        $level = max(0, min(15, $level));
 
         if((int) $block->getProperty(BlockProperties::REDSTONE_SIGNAL) !== $level){
             $this->world->setBlock($x, $y, $z, $block->withProperty(BlockProperties::REDSTONE_SIGNAL, $level));
@@ -774,5 +843,9 @@ class RedstoneUpdater{
 
     private static function key(int $x, int $y, int $z) : string{
         return "{$x}:{$y}:{$z}";
+    }
+
+    private static function chunkKey(int $chunkX, int $chunkZ) : string{
+        return "{$chunkX}:{$chunkZ}";
     }
 }

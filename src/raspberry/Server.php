@@ -89,6 +89,8 @@ use raspberry\network\mcpe\protocol\BlockEventPacket;
 use raspberry\network\mcpe\protocol\OpenSignPacket;
 use raspberry\network\mcpe\protocol\LecternUpdatePacket;
 use raspberry\network\mcpe\protocol\PlayerToggleCrafterSlotRequestPacket;
+use raspberry\network\mcpe\protocol\SetTimePacket;
+use raspberry\network\mcpe\protocol\GameRulesChangedPacket;
 use raspberry\network\nethernet\NetherNetIdentity;
 use raspberry\network\nethernet\NetherNetTransport;
 
@@ -118,6 +120,9 @@ use raspberry\command\defaults\ClearCommand;
 use raspberry\command\defaults\EffectCommand;
 use raspberry\command\defaults\GiveCommand;
 use raspberry\command\defaults\SummonCommand;
+use raspberry\command\defaults\TimeCommand;
+use raspberry\command\defaults\DaylockCommand;
+use raspberry\command\defaults\GameruleCommand;
 
 use raspberry\console\ConsoleReader;
 
@@ -916,7 +921,9 @@ class Server{
             PlayerToggleCrafterSlotRequestPacket::class,
             MobEffectPacket::class,
             AddActorPacket::class,
-            SetActorMotionPacket::class
+            SetActorMotionPacket::class,
+            SetTimePacket::class,
+            GameRulesChangedPacket::class
         ] as $packet){
             $this->packetRegistry->register($packet);
         }
@@ -945,7 +952,10 @@ class Server{
             "clear" => "op",
             "effect" => "op",
             "save-all" => "op",
-            "stop" => "op"
+            "stop" => "op",
+            "time" => "op",
+            "daylock" => "op",
+            "gamerule" => "op"
         ] as $command => $default){
             $permissions["raspberry.command.{$command}"] = [
                 "description" => $this->language->translate("permission.command", ["command" => $command]),
@@ -977,7 +987,10 @@ class Server{
             new SaveAllCommand(),
             new StopCommand(),
             new VersionCommand(),
-            new PluginsCommand()
+            new PluginsCommand(),
+            new TimeCommand(),
+            new DaylockCommand(),
+            new GameruleCommand(),
         ]);
     }
 

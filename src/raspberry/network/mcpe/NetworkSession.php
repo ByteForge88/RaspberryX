@@ -1438,7 +1438,7 @@ class NetworkSession{
         $startGame->difficulty = $this->server->getDifficulty()->value;
         $startGame->serverAuthoritativeInventory = true;
         $startGame->serverAuthoritativeBlockBreaking = true;
-        $startGame->gameRules = ["recipesunlock" => true];
+        $startGame->gameRules = $world->getGameRules()->getAll();
         $startGame->yaw = $yaw;
         $startGame->pitch = $pitch;
         $startGame->spawnX = $spawn->getFloorX();
@@ -1447,7 +1447,7 @@ class NetworkSession{
         $startGame->generator = $world->getGenerator()->getName() === GeneratorFactory::FLAT ? StartGamePacket::GENERATOR_FLAT : StartGamePacket::GENERATOR_INFINITE;
         $startGame->worldName = $this->server->getServerName();
         $startGame->levelId = $world->getName();
-        $startGame->time = 6000; //noon; TODO: world time
+        $startGame->time = $world->getTime();
         $startGame->playerPermissions = $this->player->isOp() ? StartGamePacket::PERMISSION_OPERATOR : StartGamePacket::PERMISSION_MEMBER;
         $startGame->blockDefinitions = BlockDefinitions::get();
 

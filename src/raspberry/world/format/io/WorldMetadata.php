@@ -10,6 +10,7 @@ use UnexpectedValueException;
 
 use function count;
 use function is_array;
+use function is_bool;
 use function is_float;
 use function is_int;
 use function is_string;
@@ -30,8 +31,17 @@ class WorldMetadata{
 
     public int $seed = 0;
 
+    /** the world clock: the time of day is this modulo 24000, the day count this divided by it */
+    public int $time = 0;
+
+    /** how many ticks the world has run, which nothing but running changes */
+    public int $gameTime = 0;
+
+    /** @var array<string, bool|int> */
+    public array $gameRules = [];
+
     /**
-     * @return array<string, string|int>
+     * @return array<string, mixed>
      */
     public function toArray() : array{
         return [
@@ -41,7 +51,10 @@ class WorldMetadata{
             "generatorSettings" => $this->generatorSettings,
             "createdAt" => $this->createdAt,
             "blockDataVersion" => $this->blockDataVersion,
-            "seed" => $this->seed
+            "seed" => $this->seed,
+            "time" => $this->time,
+            "gameTime" => $this->gameTime,
+            "gameRules" => (object) $this->gameRules
         ] + ($this->spawn === null ? [] : ["spawn" => [$this->spawn->x, $this->spawn->y, $this->spawn->z]]);
     }
 
@@ -73,6 +86,28 @@ class WorldMetadata{
             }
 
             $metadata->seed = $data["seed"];
+        }
+
+        foreach(["time", "gameTime"] as $key){
+            if(isset($data[$key])){
+                if(!is_int($data[$key]) || $data[$key] < 0){
+                    throw new UnexpectedValueException("World metadata '{$key}' must be a whole number of 0 or more");
+                }
+
+                $metadata->{$key} = $data[$key];
+            }
+        }
+
+        if(isset($data["gameRules"])){
+            if(!is_array($data["gameRules"])){
+                throw new UnexpectedValueException("World metadata 'gameRules' must be an object");
+            }
+
+            foreach($data["gameRules"] as $name => $value){
+                if(is_string($name) && (is_bool($value) || is_int($value))){
+                    $metadata->gameRules[$name] = $value;
+                }
+            }
         }
 
         if(isset($data["spawn"])){

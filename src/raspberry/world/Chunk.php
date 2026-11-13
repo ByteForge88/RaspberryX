@@ -22,7 +22,9 @@ use InvalidArgumentException;
 use LogicException;
 use UnexpectedValueException;
 
+use function count;
 use function strlen;
+use function unpack;
 
 class Chunk{
 
@@ -204,6 +206,44 @@ class Chunk{
         $this->ffi->rx_chunk_fill_biome($this->handle, $biomeId);
         $this->changed = true;
         ++$this->revision;
+    }
+
+    /**
+     * Where blocks of these states are, looked up on the native side.
+     *
+     * @param list<int> $stateIds
+     *
+     * @return list<array{int, int, int}>
+     */
+    public function findBlocks(array $stateIds) : array{
+        $count = count($stateIds);
+
+        if($count === 0){
+            return [];
+        }
+
+        $states = $this->ffi->new("uint32_t[{$count}]");
+
+        foreach($stateIds as $index => $id){
+            $states[$index] = $id;
+        }
+
+        $out = $this->ffi->new("char*");
+        $length = $this->ffi->new("size_t");
+
+        if($this->ffi->rx_chunk_find($this->handle, $states, $count, FFI::addr($out), FFI::addr($length)) !== 1){
+            throw new LogicException("The native chunk is gone");
+        }
+
+        $data = Native::take($out, $length->cdata);
+        $found = [];
+
+        for($offset = 0, $size = strlen($data); $offset < $size; $offset += 4){
+            $block = unpack("Cx/Cz/vy", $data, $offset);
+            $found[] = [$block["x"], $block["y"] >= 0x8000 ? $block["y"] - 0x10000 : $block["y"], $block["z"]];
+        }
+
+        return $found;
     }
 
     /**

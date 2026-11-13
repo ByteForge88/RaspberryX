@@ -37,18 +37,41 @@ use raspberry\native\Native;
 use raspberry\nbt\tag\CompoundTag;
 
 use raspberry\network\mcpe\protocol\Packet;
+use raspberry\network\mcpe\protocol\SetTimePacket;
 use raspberry\network\mcpe\protocol\BlockActorDataPacket;
+use raspberry\network\mcpe\protocol\GameRulesChangedPacket;
 use raspberry\network\mcpe\protocol\SpawnParticleEffectPacket;
 
 use Closure;
 use InvalidArgumentException;
 
+use function cos;
 use function count;
 use function floor;
+use function fmod;
+use function intdiv;
+use function max;
+use function min;
 use function mt_rand;
 use function usleep;
 
+use const M_PI;
+
 class World{
+
+    /** ticks in a day */
+    public const DAY_LENGTH = 24000;
+
+    /** when the clock passes these, it is that time of day */
+    public const TIME_DAY = 1000;
+    public const TIME_NOON = 6000;
+    public const TIME_SUNSET = 12000;
+    public const TIME_NIGHT = 13000;
+    public const TIME_MIDNIGHT = 18000;
+    public const TIME_SUNRISE = 23000;
+
+    /** the client moves its own clock on, this keeps the two from drifting apart */
+    private const TIME_SYNC_TICKS = 200;
 
     private WorldMetadata $metadata;
 
@@ -79,12 +102,110 @@ class World{
 
     private MobEngine $mobEngine;
 
+    private GameRules $gameRules;
+
     public function __construct(WorldMetadata $metadata, Generator $generator, WorldProvider $provider){
         $this->metadata = $metadata;
         $this->generator = $generator;
         $this->provider = $provider;
         $this->redstoneUpdater = new RedstoneUpdater($this);
         $this->mobEngine = new MobEngine($this);
+        $this->gameRules = new GameRules($metadata->gameRules);
+    }
+
+    public function getGameRules() : GameRules{
+        return $this->gameRules;
+    }
+
+    /**
+     * Changes a game rule and tells the players. False when there is no such rule or the value
+     * is not of its type.
+     */
+    public function setGameRule(string $name, bool|int $value) : bool{
+        if(!$this->gameRules->set($name, $value)){
+            return false;
+        }
+
+        $this->metadata->gameRules = $this->gameRules->toArray();
+        $this->broadcastToPlayers(GameRulesChangedPacket::create([$name => $value]));
+
+        //a stopped clock is stopped where the server has it
+        if($name === GameRules::DO_DAYLIGHT_CYCLE){
+            $this->broadcastToPlayers(SetTimePacket::create($this->metadata->time));
+        }
+
+        return true;
+    }
+
+    /**
+     * The world clock in ticks. The time of day is this modulo DAY_LENGTH.
+     */
+    public function getTime() : int{
+        return $this->metadata->time;
+    }
+
+    public function setTime(int $time) : void{
+        $this->metadata->time = max(0, $time);
+        $this->broadcastToPlayers(SetTimePacket::create($this->metadata->time));
+    }
+
+    /** 0 to 23999: 0 is sunrise's end, 6000 noon, 18000 midnight */
+    public function getTimeOfDay() : int{
+        return $this->metadata->time % self::DAY_LENGTH;
+    }
+
+    /** how many days have gone by */
+    public function getDay() : int{
+        return intdiv($this->metadata->time, self::DAY_LENGTH);
+    }
+
+    /** ticks the world has run, which /time does not change */
+    public function getGameTime() : int{
+        return $this->metadata->gameTime;
+    }
+
+    /** 0 is a full moon, 4 a new moon */
+    public function getMoonPhase() : int{
+        return $this->getDay() % 8;
+    }
+
+    /**
+     * Where the sun is, from 0 to 1: 0 at noon, 0.5 at midnight. It moves a little faster
+     * around sunrise and sunset, the way the client draws it.
+     */
+    public function getCelestialAngle() : float{
+        $part = fmod($this->getTimeOfDay() / self::DAY_LENGTH - 0.25, 1.0);
+
+        if($part < 0){
+            ++$part;
+        }
+
+        return ($part * 2.0 + (0.5 - cos($part * M_PI) / 2.0)) / 3.0;
+    }
+
+    public function getSunAngle() : float{
+        return $this->getCelestialAngle() * 2.0 * M_PI;
+    }
+
+    /**
+     * How much darker than full daylight the sky is, 0 at day to 11 at night. Rain and thunder
+     * darken it too, once there is weather.
+     */
+    public function getSkyDarken() : int{
+        $brightness = 0.5 + 2.0 * max(-0.25, min(0.25, cos($this->getSunAngle())));
+
+        return (int) ((1.0 - $brightness) * 11.0);
+    }
+
+    /** true from sunrise to sunset, when the sky is bright enough to burn the undead */
+    public function isDaytime() : bool{
+        return $this->getSkyDarken() < 4;
+    }
+
+    private function broadcastToPlayers(Packet $packet) : void{
+        foreach($this->players as $player){
+            $player->getNetworkSession()->sendDataPacket($packet);
+        }
     }
 
     public function getMobEngine() : MobEngine{
@@ -164,6 +285,7 @@ class World{
      */
     private function onChunkLoaded(Chunk $chunk, bool $generated) : void{
         $this->mobEngine->setChunk($chunk->getX(), $chunk->getZ(), $chunk);
+        $this->redstoneUpdater->findDaylightDetectors($chunk);
 
         foreach($chunk->getSavedEntities() as $tag){
             EntityFactory::load($this, $tag);
@@ -340,6 +462,7 @@ class World{
         }
 
         $this->mobEngine->setChunk($chunkX, $chunkZ, null);
+        $this->redstoneUpdater->forgetChunk($chunkX, $chunkZ);
         unset($this->chunks[$key]);
     }
 
@@ -367,6 +490,7 @@ class World{
             }
         }
 
+        $this->provider->saveMetadata($this->metadata);
         return $saved;
     }
 
@@ -559,6 +683,15 @@ class World{
      */
     public function tick(int $currentTick) : void{
         $this->currentTick = $currentTick;
+        ++$this->metadata->gameTime;
+
+        if($this->gameRules->getBool(GameRules::DO_DAYLIGHT_CYCLE)){
+            ++$this->metadata->time;
+
+            if($this->metadata->gameTime % self::TIME_SYNC_TICKS === 0){
+                $this->broadcastToPlayers(SetTimePacket::create($this->metadata->time));
+            }
+        }
 
         foreach($this->chunks as $chunk){
             foreach($chunk->getBlockEntities() as $entity){

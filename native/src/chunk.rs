@@ -263,6 +263,31 @@ impl Chunk {
         self.version += 1;
     }
 
+    /// Where blocks of the given states are in the main layer, as local x, world y and local z.
+    /// Sub-chunks whose palette has none of them are not looked through.
+    pub fn find(&self, states: &[u32]) -> Vec<(u8, i32, u8)> {
+        let mut found = Vec::new();
+
+        for (sub, subchunk) in self.subchunks.iter().enumerate() {
+            let Some(layer) = subchunk.layers.first() else { continue };
+            let wanted: Vec<u16> = layer.palette.iter().enumerate().filter(|(_, state)| states.contains(state)).map(|(offset, _)| offset as u16).collect();
+
+            if wanted.is_empty() {
+                continue;
+            }
+
+            let bottom = (sub as i32 + MIN_SUBCHUNK) << 4;
+
+            for (index, offset) in layer.offsets().enumerate() {
+                if wanted.contains(&offset) {
+                    found.push(((index >> 8) as u8, bottom + (index & 15) as i32, ((index >> 4) & 15) as u8));
+                }
+            }
+        }
+
+        found
+    }
+
     /// The highest sub-chunk index (0 is Y -64) that holds blocks, None when all is air.
     pub fn highest_subchunk(&self) -> Option<usize> {
         (0..SUBCHUNKS).rev().find(|sub| !self.subchunks[*sub].is_empty(self.air))

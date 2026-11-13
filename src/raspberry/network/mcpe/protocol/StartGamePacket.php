@@ -63,6 +63,7 @@ class StartGamePacket implements Packet{
     public int $spawnY = 0;
     public int $spawnZ = 0;
 
+    /** the world clock, see World::getTime() */
     public int $time = 0;
 
     public string $worldName = "";
@@ -122,7 +123,7 @@ class StartGamePacket implements Packet{
         $writer->writeBool(false); //created in editor
         $writer->writeBool(false); //exported from editor
         $writer->writeByte(0); //editor level migration version
-        $writer->writeVarInt(0); //day cycle lock time
+        $writer->writeVarInt($this->time & 0x7fffffff); //day cycle lock time: where a locked clock stands
         $writer->writeUnsignedVarInt(0); //education edition offer
         $writer->writeBool(false); //education features enabled
         $writer->writeString(""); //education product ID

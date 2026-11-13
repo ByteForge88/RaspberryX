@@ -20,7 +20,7 @@ use const PHP_OS_FAMILY;
 class Native{
 
     /** the library has to speak this version of the functions below */
-    public const ABI_VERSION = 4;
+    public const ABI_VERSION = 5;
 
     private const HEADER = <<<'C'
         uint32_t rx_version(void);
@@ -37,6 +37,7 @@ class Native{
         void rx_chunk_fill_biome(uint64_t chunk, uint32_t biome);
         int32_t rx_chunk_highest_subchunk(uint64_t chunk);
         void rx_chunk_collect_garbage(uint64_t chunk);
+        int32_t rx_chunk_find(uint64_t chunk, const uint32_t* states, size_t count, char** out, size_t* out_length);
         int32_t rx_chunk_export(uint64_t chunk, char** out, size_t* out_length);
         int32_t rx_chunk_import(uint64_t chunk, const char* data, size_t length);
         uint64_t rx_chunk_encode(uint64_t chunk, int32_t chunk_x, int32_t chunk_z, uint64_t revision, const char* extra, size_t extra_length, int32_t threshold);

@@ -25,7 +25,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use chunk::{Chunk, Storage, SubChunk, MAX_LAYERS, SIZE, SUBCHUNKS};
 
 /// Bumped whenever a function below changes, PHP refuses a library it does not know.
-pub const ABI_VERSION: u32 = 4;
+pub const ABI_VERSION: u32 = 5;
 
 struct Entry {
     chunk: Chunk,
@@ -147,6 +147,30 @@ pub extern "C" fn rx_chunk_fill_biome(handle: u64, biome: u32) {
 #[no_mangle]
 pub extern "C" fn rx_chunk_highest_subchunk(handle: u64) -> i32 {
     with_chunk(handle, -128, |entry| entry.chunk.highest_subchunk().map_or(-128, |sub| sub as i32 + chunk::MIN_SUBCHUNK))
+}
+
+/// Finds the blocks of `count` states in the chunk: 4 bytes each, local x, local z, then the
+/// world Y as an i16. 0 when there is no such chunk.
+#[no_mangle]
+pub unsafe extern "C" fn rx_chunk_find(handle: u64, states: *const u32, count: usize, out: *mut *mut u8, out_length: *mut usize) -> i32 {
+    let states = if states.is_null() || count == 0 { &[][..] } else { std::slice::from_raw_parts(states, count) };
+    let found = with_chunk(handle, None, |entry| Some(entry.chunk.find(states)));
+
+    match found {
+        Some(found) => {
+            let mut data = Vec::with_capacity(found.len() * 4);
+
+            for (x, y, z) in found {
+                data.push(x);
+                data.push(z);
+                data.extend_from_slice(&(y as i16).to_le_bytes());
+            }
+
+            give(data, out, out_length);
+            1
+        }
+        None => 0,
+    }
 }
 
 #[no_mangle]
