@@ -8,16 +8,13 @@ use super::blocks::{self, View};
 
 pub type Node = [i32; 3];
 
-/// how far down a mob is willing to drop
 const MAX_DROP: i32 = 3;
 
-/// what a path costs extra for a step through water, or next to something that hurts
 const WATER_COST: f32 = 8.0;
 const DANGER_COST: f32 = 8.0;
 
 #[derive(Clone, Copy)]
 pub struct Walker {
-    /// blocks of headroom the mob needs
     pub tall: i32,
     pub avoid_water: bool,
 }
@@ -27,9 +24,7 @@ impl Walker {
         Walker { tall: (height.ceil() as i32).max(1), avoid_water }
     }
 
-    /// Whether the mob's body fits with its feet in this block.
     pub fn fits(&self, view: &View, x: i32, y: i32, z: i32) -> bool {
-        //a fence below reaches up into this block
         if blocks::height(view.block(x, y - 1, z)) > 1.0 {
             return false;
         }
@@ -40,7 +35,6 @@ impl Walker {
         })
     }
 
-    /// Whether there is something to stand on under this block. Water counts, mobs float.
     pub fn has_floor(&self, view: &View, x: i32, y: i32, z: i32) -> bool {
         let below = view.block(x, y - 1, z);
 
@@ -51,7 +45,6 @@ impl Walker {
         self.fits(view, x, y, z) && self.has_floor(view, x, y, z)
     }
 
-    /// Where a step from `from` towards x z ends up: level, down a drop, or up one block.
     fn step(&self, view: &View, from: Node, x: i32, z: i32, may_climb: bool) -> Option<Node> {
         let y = from[1];
 
@@ -59,7 +52,6 @@ impl Walker {
             return (0..=MAX_DROP).map(|drop| y - drop).take_while(|ny| self.fits(view, x, *ny, z)).find(|ny| self.has_floor(view, x, *ny, z)).map(|ny| [x, ny, z]);
         }
 
-        //headroom over where the mob stands now, then the block up there
         if may_climb && !blocks::is_solid(view.block(from[0], y + self.tall, from[2])) && self.can_stand(view, x, y + 1, z) {
             return Some([x, y + 1, z]);
         }
@@ -85,7 +77,6 @@ impl Walker {
         cost
     }
 
-    /// The node a mob at this position is standing in: the ground under it when it is in the air.
     pub fn start(&self, view: &View, x: f64, y: f64, z: f64) -> Node {
         let (bx, bz) = (x.floor() as i32, z.floor() as i32);
         let mut by = (y + 0.5).floor() as i32;
@@ -122,7 +113,6 @@ impl PartialOrd for Open {
 }
 
 impl Ord for Open {
-    //the heap gives the biggest, the lowest score has to be that
     fn cmp(&self, other: &Self) -> Ordering {
         other.score.partial_cmp(&self.score).unwrap_or(Ordering::Equal)
     }
@@ -133,9 +123,6 @@ fn distance(a: Node, b: Node) -> f32 {
     (dx * dx + dy * dy + dz * dz).sqrt()
 }
 
-/// The nodes to walk through from `start` to `goal`, without the start. When the goal cannot
-/// be reached, the way to the closest spot that can. `budget` is how many nodes may be looked
-/// at, `range` how far from the start the search goes.
 pub fn find(view: &View, walker: Walker, start: Node, goal: Node, range: f32, budget: usize) -> Vec<Node> {
     let mut open = BinaryHeap::new();
     let mut seen: HashMap<Node, (f32, Node)> = HashMap::new();
@@ -169,7 +156,6 @@ pub fn find(view: &View, walker: Walker, start: Node, goal: Node, range: f32, bu
             }
         }
 
-        //around a corner only when both sides of it are open and not a step up
         for (index, (dx, dz)) in [(1, 1), (-1, 1), (-1, -1), (1, -1)].into_iter().enumerate() {
             let level = |side: Option<Node>| side.is_some_and(|side| side[1] <= node[1]);
 

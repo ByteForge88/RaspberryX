@@ -1,4 +1,4 @@
-//! Mobs. PHP keeps what a mob is (its health, what it drops, what feeding it does); where it
+//! Mobs. PHP keeps what a mob is (its health, what it drops, what feeding it does). Where it
 //! walks and why is decided here: goals pick what a mob wants, pathfinding finds the way and
 //! the physics move it.
 //!
@@ -19,16 +19,13 @@ use blocks::View;
 use goals::Goal;
 use path::{Node, Walker};
 
-/// flags PHP sets on a mob
 pub const BABY: u32 = 1;
 pub const IN_LOVE: u32 = 2;
-/// falls slowly, a chicken flapping its wings
 pub const SLOW_FALL: u32 = 4;
 pub const NO_AI: u32 = 8;
 pub const ON_FIRE: u32 = 16;
 pub const AVOID_WATER: u32 = 32;
 
-/// what a mob reports about where it is
 pub const ON_GROUND: u32 = 1;
 pub const IN_WATER: u32 = 2;
 pub const HEAD_IN_WATER: u32 = 4;
@@ -36,7 +33,6 @@ pub const IN_LAVA: u32 = 8;
 pub const HAZARD: u32 = 16;
 pub const IN_FIRE: u32 = 32;
 
-/// player flags
 pub const PLAYER_SPECTATOR: u32 = 1;
 
 pub const EVENT_FALL: u32 = 1;
@@ -44,7 +40,6 @@ pub const EVENT_EAT_START: u32 = 2;
 pub const EVENT_EAT_BLOCK: u32 = 3;
 pub const EVENT_BRED: u32 = 4;
 
-/// how long a mob remembers it was hurt
 const HURT_MEMORY: i32 = 100;
 
 const WATER_DRAG: f64 = 0.8;
@@ -52,7 +47,6 @@ const LAVA_DRAG: f64 = 0.5;
 const AIR_DRAG: f64 = 0.91;
 const GROUND_DRAG: f64 = 0.6 * 0.91;
 
-/// how far a path may lead, and how many blocks a search may look at
 const PATH_RANGE: f32 = 24.0;
 const PATH_BUDGET: usize = 320;
 
@@ -78,7 +72,6 @@ impl Nav {
 
 pub struct Mob {
     pub id: u64,
-    /// what kind of mob, a number PHP picks: two of the same kind can breed
     pub kind: u32,
     pub x: f64,
     pub y: f64,
@@ -100,7 +93,6 @@ pub struct Mob {
     pub jump_delay: i32,
     pub goals: Vec<Goal>,
     pub nav: Nav,
-    /// what the goals asked for this tick
     pub look: Option<[f64; 3]>,
     pub jump: bool,
     sent: Option<([f64; 3], [f32; 3], u32)>,
@@ -127,7 +119,6 @@ impl Mob {
         (self.x - x) * (self.x - x) + (self.y - y) * (self.y - y) + (self.z - z) * (self.z - z)
     }
 
-    /// Starts walking to a position. False when there is no way to get any closer.
     pub fn move_to(&mut self, view: &View, x: f64, y: f64, z: f64, speed: f32) -> bool {
         let walker = self.walker();
         let start = walker.start(view, self.x, self.y, self.z);
@@ -169,7 +160,6 @@ impl Mob {
         let mut hazard = (feet | below) & blocks::DAMAGE != 0;
 
         if !hazard && self.hit_wall {
-            //a cactus hurts whoever walks into it
             let y = (self.y + 0.05).floor() as i32;
             let reach = self.width / 2.0 + 0.1;
 
@@ -183,13 +173,11 @@ impl Mob {
         self.state = state;
     }
 
-    /// Walks along the path: turns to the next node and says how fast to go there.
     fn follow_path(&mut self, view: &View) -> f32 {
         let reach = if self.width > 0.75 { self.width / 2.0 } else { 0.75 - self.width / 2.0 };
 
         while let Some(node) = self.nav.path.get(self.nav.index).copied() {
             let (tx, tz) = (node[0] as f64 + 0.5, node[2] as f64 + 0.5);
-            //where the feet are at this node: on top of the block below, or in the node itself when it is water
             let floor = blocks::height(view.block(node[0], node[1] - 1, node[2])).min(1.0);
             let ty = if floor > 0.0 { node[1] as f64 - 1.0 + floor } else { node[1] as f64 };
             let (dx, dy, dz) = (tx - self.x, ty - self.y, tz - self.z);
@@ -202,8 +190,6 @@ impl Mob {
 
             self.nav.stuck += 1;
 
-            //not getting anywhere: give up on this path. What counts as getting somewhere
-            //depends on the speed, a quarter of what the mob would walk in the time
             if self.nav.stuck >= 100 {
                 let [lx, ly, lz] = self.nav.last;
                 let speed = (self.speed * self.nav.speed) as f64;
@@ -251,15 +237,12 @@ impl Mob {
         let off = wrap(self.head_yaw - self.yaw);
 
         if moving {
-            //a walking mob does not look over its shoulder
             self.head_yaw = self.yaw + off.clamp(-75.0, 75.0);
         } else if off.abs() > 50.0 {
-            //standing still, the body follows the head
             self.yaw = turn(self.yaw, self.head_yaw, 10.0);
         }
     }
 
-    /// One tick of physics: `forward` is how hard the mob pushes the way it faces.
     fn travel(&mut self, view: &View, forward: f32, events: &mut Vec<Event>) {
         let on_ground = self.is(ON_GROUND);
         let in_liquid = self.is(IN_WATER | IN_LAVA);
@@ -278,9 +261,6 @@ impl Mob {
         }
 
         if forward > 0.0 {
-            //as in the game the speed counts twice on the ground, as the push and as how far the
-            //mob leans into it (0.16277136 / drag cubed is 1 on normal ground). In the air or in
-            //water there is next to no push
             let push = if on_ground && !in_liquid { forward as f64 * (0.16277136 / (GROUND_DRAG * GROUND_DRAG * GROUND_DRAG)) } else { 0.02 };
             let radians = (self.yaw as f64).to_radians();
 
@@ -294,7 +274,6 @@ impl Mob {
 
         let moved = physics::move_box(view, self.x, self.y, self.z, self.width, self.height, self.mx, self.my, self.mz, on_ground);
 
-        //falling is counted while going down, and paid for on landing
         if moved.y < self.y && !in_liquid {
             self.fall += self.y - moved.y;
         }
@@ -338,7 +317,6 @@ impl Mob {
             self.mz *= drag;
             self.my -= 0.02;
 
-            //against the shore: hop out
             if self.hit_wall && physics::is_free(view, self.x + self.mx, self.y + self.my + 0.6, self.z + self.mz, self.width, self.height) {
                 self.my = 0.3;
             }
@@ -360,7 +338,6 @@ impl Mob {
     }
 }
 
-/// Turns an angle towards another, at most `step` degrees.
 pub fn turn(from: f32, to: f32, step: f32) -> f32 {
     from + wrap(to - from).clamp(-step, step)
 }
@@ -384,11 +361,9 @@ pub struct Player {
     pub z: f64,
     pub eye: f64,
     pub flags: u32,
-    /// one bit per group of items a mob follows, set when the player holds one of them
     pub tempt: u64,
 }
 
-/// What the goals may know about the other mobs: how things stood when the tick began.
 pub struct Info {
     pub id: u64,
     pub kind: u32,
@@ -408,7 +383,6 @@ pub struct Event {
     pub other: u64,
 }
 
-/// The mobs sorted into squares of 8 x 8 blocks, to find the ones near a spot.
 pub struct Grid {
     cells: HashMap<(i32, i32), Vec<u32>>,
 }
@@ -426,7 +400,6 @@ impl Grid {
         Grid { cells }
     }
 
-    /// Calls `found` with every mob that may be within `radius` of x z.
     pub fn near(&self, x: f64, z: f64, radius: f64, mut found: impl FnMut(usize)) {
         let (min_x, max_x) = (((x - radius) / Self::CELL).floor() as i32, ((x + radius) / Self::CELL).floor() as i32);
         let (min_z, max_z) = (((z - radius) / Self::CELL).floor() as i32, ((z + radius) / Self::CELL).floor() as i32);
@@ -509,7 +482,6 @@ impl World {
         }
     }
 
-    /// Takes in what PHP sent since the last tick. Stops at the first thing it cannot read.
     pub fn apply(&mut self, input: &[u8]) -> Option<()> {
         let mut reader = Reader { data: input, offset: 0 };
 
@@ -625,7 +597,6 @@ impl World {
         Some(())
     }
 
-    /// The chunks the mobs will look at this tick: their own and the ones around it.
     pub fn chunks_needed(&self) -> Vec<(i32, i32)> {
         let mut needed: Vec<(i32, i32)> = Vec::new();
 
@@ -644,8 +615,6 @@ impl World {
         needed
     }
 
-    /// One tick for every mob. Gives back what PHP needs to hear: who moved, what happened,
-    /// and which blocks nobody has described yet.
     pub fn tick(&mut self, view: &View) -> Vec<u8> {
         self.tick += 1;
 
@@ -656,7 +625,6 @@ impl World {
         let mut moves = Vec::new();
 
         for mob in &mut self.mobs {
-            //a mob in a chunk that is not there waits for it
             if !view.is_loaded(mob.x.floor() as i32, mob.z.floor() as i32) {
                 continue;
             }
@@ -679,7 +647,6 @@ impl World {
                 mob.turn_head(forward > 0.0);
             }
 
-            //mobs standing in each other push apart, players push them too
             let (mut push_x, mut push_z) = (0.0, 0.0);
             let mut push = |x: f64, y: f64, z: f64, width: f64, height: f64| {
                 let (dx, dz) = (x - mob.x, z - mob.z);

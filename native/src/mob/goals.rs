@@ -20,7 +20,6 @@ pub const LOOK_AT_PLAYER: u8 = 7;
 pub const RANDOM_LOOK_AROUND: u8 = 8;
 pub const EAT_BLOCK: u8 = 9;
 
-/// the parts of a mob a goal uses, two goals that share one cannot run together
 const MOVE: u8 = 1;
 const LOOK: u8 = 2;
 const JUMP: u8 = 4;
@@ -28,11 +27,9 @@ const JUMP: u8 = 4;
 pub struct Goal {
     pub kind: u8,
     pub priority: u8,
-    /// what PHP set for this goal: speeds, distances, chances, in the order the goal reads them
     pub params: [f32; 4],
     running: bool,
     timer: i32,
-    /// a second count for goals that need one: the wait after tempting, how long a pair stood together
     count: i32,
     target: u64,
     spot: [f64; 3],
@@ -41,13 +38,11 @@ pub struct Goal {
 pub struct Context<'a> {
     pub view: &'a View,
     pub infos: &'a [Info],
-    /// where in `infos` a mob is, by ID
     pub index: &'a HashMap<u64, usize>,
     pub grid: &'a Grid,
     pub players: &'a [Player],
     pub random: &'a mut JavaRandom,
     pub events: &'a mut Vec<Event>,
-    /// mobs whose partner just bred with them
     pub out_of_love: &'a mut Vec<u64>,
 }
 
@@ -74,7 +69,6 @@ impl Context<'_> {
             .map(|(_, player)| player)
     }
 
-    /// The closest other mob of the same kind within `range` that `fits`.
     fn nearest_kin(&self, mob: &Mob, range: f64, fits: impl Fn(&Info) -> bool) -> Option<&Info> {
         let mut best: Option<(f64, &Info)> = None;
 
@@ -95,8 +89,6 @@ impl Context<'_> {
         best.map(|(_, info)| info)
     }
 
-    /// A spot on land the mob could walk to, up to `reach` blocks away and `rise` up or down.
-    /// Of ten tries the one with grass under it wins, animals like grass.
     fn random_spot(&mut self, mob: &Mob, reach: i32, rise: i32) -> Option<Node> {
         let walker = mob.walker();
         let (bx, by, bz) = (mob.x.floor() as i32, (mob.y + 0.5).floor() as i32, mob.z.floor() as i32);
@@ -111,7 +103,6 @@ impl Context<'_> {
                 continue;
             }
 
-            //out of the ground, then down onto it
             for _ in 0..rise {
                 if walker.fits(self.view, x, y, z) {
                     break;
@@ -167,7 +158,6 @@ impl Goal {
         spot.is_some()
     }
 
-    /// The grass a mob would eat where it stands: the plant at its feet, else the block under it.
     fn grass_at(mob: &Mob, view: &View) -> Option<(Node, bool)> {
         let (x, y, z) = (mob.x.floor() as i32, (mob.y + 0.05).floor() as i32, mob.z.floor() as i32);
 
@@ -180,8 +170,6 @@ impl Goal {
         }
     }
 
-    /// Whether the goal wants to start now. It only decides and remembers what it chose,
-    /// start() acts on it once the goals it replaces are out of the way.
     fn can_start(&mut self, mob: &mut Mob, context: &mut Context) -> bool {
         match self.kind {
             FLOAT => mob.is(IN_WATER | IN_LAVA),
@@ -333,7 +321,6 @@ impl Goal {
     fn run(&mut self, mob: &mut Mob, context: &mut Context) {
         match self.kind {
             FLOAT => {
-                //swims up while the body is under, which leaves the mob bobbing at the surface
                 let body = context.view.block(mob.x.floor() as i32, (mob.y + 0.4).floor() as i32, mob.z.floor() as i32);
 
                 if context.chance(0.8) && body & (blocks::WATER | blocks::LAVA) != 0 {
@@ -356,7 +343,6 @@ impl Goal {
                     self.count += 1;
                 }
 
-                //both of a pair run this goal, the one with the lower ID has the baby
                 if self.count >= 60 && mob.id < id {
                     mob.flags &= !IN_LOVE;
                     context.out_of_love.push(id);
@@ -412,7 +398,6 @@ impl Goal {
     }
 }
 
-/// Stops the goals that are done, starts the ones that can, and runs what is running.
 pub fn tick(mob: &mut Mob, context: &mut Context) {
     let mut goals = std::mem::take(&mut mob.goals);
 
@@ -430,7 +415,6 @@ pub fn tick(mob: &mut Mob, context: &mut Context) {
 
         let (uses, priority) = (goals[index].uses(), goals[index].priority);
 
-        //something as important or more already has the legs, the head or the jump
         if goals.iter().any(|other| other.running && other.uses() & uses != 0 && other.priority <= priority) {
             continue;
         }

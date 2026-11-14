@@ -3,7 +3,6 @@
 
 use crate::random::JavaRandom;
 
-/// A permutation table and an offset, both from the world's random.
 #[derive(Clone)]
 pub struct Perlin {
     permutations: [u8; 512],
@@ -78,8 +77,6 @@ impl Perlin {
         self.permutations[(index & 511) as usize] as i32
     }
 
-    /// Adds noise sampled on an sx * sy * sz grid to `out`, laid out x, then z, then y. A grid
-    /// one high takes the 2D path.
     #[allow(clippy::too_many_arguments)]
     pub fn add(&self, out: &mut [f64], x: f64, y: f64, z: f64, sx: usize, sy: usize, sz: usize, scale_x: f64, scale_y: f64, scale_z: f64, amplitude: f64) {
         let factor = 1.0 / amplitude;
@@ -142,7 +139,6 @@ impl Perlin {
                     fy -= iy as f64;
                     let uy = fade(fy);
 
-                    //the corners only change when the grid crosses into a new cell on y
                     if j == 0 || py != last_y {
                         last_y = py;
                         let a = self.p(px) + py;
@@ -167,8 +163,6 @@ impl Perlin {
 }
 
 impl Perlin {
-    /// The way 1.8 fills a grid: the start is already scaled and each step adds `step`, which
-    /// rounds a little differently from scaling (start + i).
     #[allow(clippy::too_many_arguments)]
     pub fn add_stepped(&self, out: &mut [f64], x: f64, y: f64, z: f64, sx: usize, sy: usize, sz: usize, step_x: f64, step_y: f64, step_z: f64, amplitude: f64) {
         let factor = 1.0 / amplitude;
@@ -252,7 +246,6 @@ impl Perlin {
     }
 }
 
-/// Perlin noise in octaves, each twice the frequency and half the strength of the last.
 #[derive(Clone)]
 pub struct OctavePerlin {
     octaves: Vec<Perlin>,
@@ -263,7 +256,6 @@ impl OctavePerlin {
         OctavePerlin { octaves: (0..count).map(|_| Perlin::new(random)).collect() }
     }
 
-    /// An sx * sy * sz grid, laid out x, then z, then y.
     #[allow(clippy::too_many_arguments)]
     pub fn grid(&self, x: f64, y: f64, z: f64, sx: usize, sy: usize, sz: usize, scale_x: f64, scale_y: f64, scale_z: f64) -> Vec<f64> {
         let mut out = vec![0.0; sx * sy * sz];
@@ -277,8 +269,6 @@ impl OctavePerlin {
         out
     }
 
-    /// An sx * sy * sz grid the way 1.8 asks for it: from whole block coordinates, with the
-    /// start of every octave wrapped so far away noise does not lose its precision.
     #[allow(clippy::too_many_arguments)]
     pub fn grid_wrapped(&self, x: i32, y: i32, z: i32, sx: usize, sy: usize, sz: usize, scale_x: f64, scale_y: f64, scale_z: f64) -> Vec<f64> {
         let mut out = vec![0.0; sx * sy * sz];
@@ -302,7 +292,6 @@ impl OctavePerlin {
         out
     }
 
-    /// A flat sx * sz grid.
     pub fn grid_2d(&self, x: f64, z: f64, sx: usize, sz: usize, scale_x: f64, scale_z: f64) -> Vec<f64> {
         self.grid(x, 10.0, z, sx, 1, sz, scale_x, 1.0, scale_z)
     }
@@ -313,7 +302,6 @@ const UNSKEW: f64 = 0.211_324_865_405_187_1; //(3 - sqrt(3)) / 6
 
 const GRADIENTS: [[f64; 2]; 12] = [[1.0, 1.0], [-1.0, 1.0], [1.0, -1.0], [-1.0, -1.0], [1.0, 0.0], [-1.0, 0.0], [1.0, 0.0], [-1.0, 0.0], [0.0, 1.0], [0.0, -1.0], [0.0, 1.0], [0.0, -1.0]];
 
-/// 2D simplex noise.
 #[derive(Clone)]
 pub struct Simplex {
     permutations: [u8; 512],
@@ -386,7 +374,6 @@ impl Simplex {
 }
 
 impl Simplex {
-    /// 2D simplex the way 1.8 has it, flooring 0 and below one lower, as it does.
     pub fn sample_legacy(&self, x: f64, z: f64) -> f64 {
         let sqrt3 = 3f64.sqrt();
         let skew_factor = 0.5 * (sqrt3 - 1.0);
@@ -414,8 +401,6 @@ impl Simplex {
     }
 }
 
-/// Simplex octaves the way 1.8 stacks them for its surface and colour noise: each octave half
-/// the frequency of the last and twice the strength.
 #[derive(Clone)]
 pub struct LegacySimplexOctaves {
     octaves: Vec<Simplex>,
@@ -426,7 +411,6 @@ impl LegacySimplexOctaves {
         LegacySimplexOctaves { octaves: (0..count).map(|_| Simplex::new(random)).collect() }
     }
 
-    /// One point. The game leaves the offsets out here.
     pub fn sample(&self, x: f64, z: f64) -> f64 {
         let mut total = 0.0;
         let mut frequency = 1.0;
@@ -439,7 +423,6 @@ impl LegacySimplexOctaves {
         total
     }
 
-    /// An sx * sz grid, index x + z * sx.
     #[allow(clippy::too_many_arguments)]
     pub fn grid(&self, x: f64, z: f64, sx: usize, sz: usize, scale_x: f64, scale_z: f64, persistence: f64) -> Vec<f64> {
         let mut out = vec![0.0; sx * sz];
@@ -468,7 +451,6 @@ impl LegacySimplexOctaves {
     }
 }
 
-/// Simplex noise in octaves, the way the classic climate maps use it.
 #[derive(Clone)]
 pub struct OctaveSimplex {
     octaves: Vec<Simplex>,
@@ -479,8 +461,6 @@ impl OctaveSimplex {
         OctaveSimplex { octaves: (0..count).map(|_| Simplex::new(random)).collect() }
     }
 
-    /// An sx * sz grid, laid out x then z. Each octave is `persistence` times the frequency of
-    /// the last and half its strength.
     #[allow(clippy::too_many_arguments)]
     pub fn grid(&self, x: f64, z: f64, sx: usize, sz: usize, scale_x: f64, scale_z: f64, persistence: f64) -> Vec<f64> {
         let mut out = vec![0.0; sx * sz];
@@ -511,7 +491,6 @@ mod tests {
         assert_eq!(grid, b.grid(0.0, 0.0, 0.0, 5, 17, 5, 8.0, 4.0, 8.0));
         assert_ne!(grid, c.grid(0.0, 0.0, 0.0, 5, 17, 5, 8.0, 4.0, 8.0));
 
-        //neighbouring samples on a fine grid are close together
         let fine = a.grid_2d(0.0, 0.0, 32, 32, 0.01, 0.01);
         assert!(fine.windows(2).all(|pair| (pair[0] - pair[1]).abs() < 1.0));
         assert!(fine.iter().any(|value| *value != 0.0));

@@ -11,11 +11,8 @@ use std::sync::{Arc, RwLock};
 
 use crate::chunk::{index, Chunk, MAX_Y, MIN_SUBCHUNK, MIN_Y, SIZE, SUBCHUNKS};
 
-/// a block's light byte: the high four bits are the light it gives off, the low four how much
-/// light it takes away from light passing through
 pub type Props = u8;
 
-/// what a block nobody described is: solid and dark, like stone
 const SOLID: Props = 0x0f;
 
 pub const MAX_LIGHT: u8 = 15;
@@ -44,7 +41,6 @@ fn filter(props: Props) -> u8 {
     props & 15
 }
 
-/// One value per block of a sub-chunk, kept as one number while they are all the same.
 #[derive(Clone)]
 enum Section {
     Uniform(u8),
@@ -84,7 +80,6 @@ struct LightChunk {
     props: Vec<Section>,
     block: Vec<Section>,
     sky: Vec<Section>,
-    /// for each column, the lowest Y that open sky reaches straight down
     sky_bottom: [i16; 256],
 }
 
@@ -115,7 +110,6 @@ impl LightChunk {
                 data[index] = main_props[offset as usize];
             }
 
-            //a waterlogged block lets through what both of them let through
             if let Some(water) = water {
                 let water_props: Vec<Props> = water.palette.iter().map(|state| describe(*state)).collect();
 
@@ -157,9 +151,7 @@ impl LightChunk {
         sections[sub].set(index(x, local, z), level);
     }
 
-    /// Fills the open sky down every column, and notes where each one stops.
     fn fill_sky(&mut self) {
-        //everything above the highest sub-chunk that holds anything is open sky
         let top = (0..SUBCHUNKS).rev().find(|sub| !matches!(self.props[*sub], Section::Uniform(props) if filter(props) == 0));
 
         let Some(top) = top else {
@@ -190,18 +182,14 @@ impl LightChunk {
 
 const DIRECTIONS: [(i32, i32, i32); 6] = [(1, 0, 0), (-1, 0, 0), (0, 0, 1), (0, 0, -1), (0, 1, 0), (0, -1, 0)];
 
-/// The light of one world's loaded chunks.
 #[derive(Default)]
 pub struct LightWorld {
-    //boxed, so a chunk stays where it is while the map grows
     chunks: HashMap<(i32, i32), Box<LightChunk>>,
-    /// the chunk looked at last: light spreads block by block, mostly within one chunk
     last: Cell<Option<((i32, i32), *mut LightChunk)>>,
     increase: VecDeque<(i32, i32, i32)>,
     decrease: VecDeque<(i32, i32, i32, u8)>,
 }
 
-//the pointer in `last` only points into `chunks`, which moves with the world
 unsafe impl Send for LightWorld {}
 
 impl LightWorld {
@@ -234,7 +222,6 @@ impl LightWorld {
         self.chunk_ptr(x, z).map(|pointer| unsafe { &mut *pointer })
     }
 
-    /// What a block does to light, None where no chunk is loaded.
     #[inline]
     fn props(&self, x: i32, y: i32, z: i32) -> Option<Props> {
         if !(MIN_Y..=MAX_Y).contains(&y) {
@@ -268,19 +255,16 @@ impl LightWorld {
         self.chunk(x, z).map(|chunk| chunk.sky_bottom[(((x & 15) << 4) | (z & 15)) as usize] as i32)
     }
 
-    /// The block light and the sky light at a position, None where no chunk is loaded.
     pub fn get(&self, x: i32, y: i32, z: i32) -> Option<(u8, u8)> {
         self.chunk(x, z)?;
 
         Some((self.light(Kind::Block, x, y, z), self.light(Kind::Sky, x, y, z)))
     }
 
-    /// The lowest Y that open sky reaches in a column: a block there or above sees the sky.
     pub fn sky_bottom(&self, x: i32, z: i32) -> Option<i32> {
         self.sky_bottom_at(x, z)
     }
 
-    /// Lights a chunk that just loaded, and lets light flow between it and its loaded neighbors.
     pub fn add_chunk(&mut self, chunk_x: i32, chunk_z: i32, chunk: &Chunk) {
         let mut light = Box::new(LightChunk::new(chunk, &table()));
         light.fill_sky();
@@ -289,7 +273,6 @@ impl LightWorld {
 
         let (base_x, base_z) = (chunk_x << 4, chunk_z << 4);
 
-        //what gives off light
         if let Some(light) = self.chunks.get_mut(&(chunk_x, chunk_z)) {
             for sub in 0..SUBCHUNKS {
                 let bottom = ((sub as i32 + MIN_SUBCHUNK) << 4) as i32;
@@ -316,7 +299,6 @@ impl LightWorld {
 
         self.spread(Kind::Block);
 
-        //sky light runs sideways from each column into lower neighbors, and down into water and leaves
         for x in 0..16 {
             for z in 0..16 {
                 let (world_x, world_z) = (base_x + x, base_z + z);
@@ -337,7 +319,6 @@ impl LightWorld {
 
         self.spread(Kind::Sky);
 
-        //light of the neighbors that can come in now
         for kind in [Kind::Block, Kind::Sky] {
             for (dx, dz) in [(-1, 0), (16, 0), (0, -1), (0, 16)] {
                 for along in 0..16 {
@@ -364,8 +345,6 @@ impl LightWorld {
         self.chunks.remove(&(chunk_x, chunk_z));
     }
 
-    /// A block changed: takes away the light it no longer gives off or lets through, and lets
-    /// in what can now come in. `props` is what the block now does to light.
     pub fn update(&mut self, x: i32, y: i32, z: i32, props: Props) {
         if !(MIN_Y..=MAX_Y).contains(&y) {
             return;
@@ -382,7 +361,6 @@ impl LightWorld {
 
         chunk.props[sub].set(index(lx, local, lz), props);
 
-        //block light: all of it goes, then it comes back from what is still lit
         let level = self.light(Kind::Block, x, y, z);
 
         if level > 0 {
@@ -400,7 +378,6 @@ impl LightWorld {
         self.relight_around(Kind::Block, x, y, z);
         self.spread(Kind::Block);
 
-        //sky light: a column of open sky can get cut, or reach further down
         let bottom = self.sky_bottom_at(x, z).unwrap_or(MIN_Y);
         let column = (((x & 15) << 4) | (z & 15)) as usize;
 
@@ -444,7 +421,6 @@ impl LightWorld {
         }
     }
 
-    /// The neighbors spread into a block again, for when it lets more light through now.
     fn relight_around(&mut self, kind: Kind, x: i32, y: i32, z: i32) {
         for (dx, dy, dz) in DIRECTIONS {
             if self.light(kind, x + dx, y + dy, z + dz) > 1 {
@@ -453,8 +429,6 @@ impl LightWorld {
         }
     }
 
-    /// Takes away the light that came from the blocks in the decrease queue. Light that came from
-    /// somewhere else is queued to flow back in.
     fn darken(&mut self, kind: Kind) {
         while let Some((x, y, z, old)) = self.decrease.pop_front() {
             for (dx, dy, dz) in DIRECTIONS {
@@ -466,7 +440,6 @@ impl LightWorld {
                     continue;
                 }
 
-                //open sky lights itself, it never came from the block that went dark
                 let open_sky = kind == Kind::Sky && self.sky_bottom_at(nx, nz).is_some_and(|bottom| ny >= bottom);
 
                 if level < old && !open_sky {
@@ -484,7 +457,6 @@ impl LightWorld {
         }
     }
 
-    /// Spreads the light of the blocks in the increase queue as far as it goes.
     fn spread(&mut self, kind: Kind) {
         while let Some((x, y, z)) = self.increase.pop_front() {
             let level = self.light(kind, x, y, z);
@@ -498,7 +470,6 @@ impl LightWorld {
                 let Some(props) = self.props(nx, ny, nz) else { continue };
                 let taken = filter(props);
 
-                //open sky falls straight through what lets everything through
                 let lost = if kind == Kind::Sky && dy == -1 && level == MAX_LIGHT && taken == 0 { 0 } else { taken.max(1) };
 
                 if level <= lost {
@@ -516,7 +487,6 @@ impl LightWorld {
     }
 }
 
-/// What a block in a chunk does to light, from both of its layers.
 pub fn props_at(chunk: &Chunk, x: usize, y: i32, z: usize) -> Props {
     let table = table();
     let describe = |state: u32| if state == chunk.air { 0 } else { *table.get(&state).unwrap_or(&SOLID) };
@@ -542,7 +512,6 @@ mod tests {
         learn([(STONE, 0x0f), (TORCH, 0xe0), (GLASS, 0x00), (WATER, 0x01), (GLOWSTONE, 0xff), (LEAVES, 0x01)].into_iter());
     }
 
-    /// stone up to y 63 in a square of chunks around the origin
     fn world(radius: i32, build: impl Fn(i32, i32, &mut Chunk)) -> (LightWorld, HashMap<(i32, i32), Chunk>) {
         teach();
         let mut chunks = HashMap::new();

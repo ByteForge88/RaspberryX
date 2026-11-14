@@ -105,6 +105,8 @@ class World{
 
     private LightEngine $light;
 
+    private RandomTicker $randomTicker;
+
     private GameRules $gameRules;
 
     public function __construct(WorldMetadata $metadata, Generator $generator, WorldProvider $provider){
@@ -114,6 +116,7 @@ class World{
         $this->redstoneUpdater = new RedstoneUpdater($this);
         $this->mobEngine = new MobEngine($this);
         $this->light = new LightEngine();
+        $this->randomTicker = new RandomTicker($this);
         $this->gameRules = new GameRules($metadata->gameRules);
     }
 
@@ -577,6 +580,7 @@ class World{
 
         if(!$oldState->equals($block)){
             $this->redstoneUpdater->onBlockChanged($x, $y, $z, $oldState, $block);
+            $this->randomTicker->onBlockChanged($x, $y, $z, $oldState, $block);
         }
     }
 
@@ -744,6 +748,7 @@ class World{
         }
 
         $this->redstoneUpdater->tick($currentTick);
+        $this->randomTicker->tick();
 
         foreach($this->scheduledUpdates as $key => [$tick, $update]){
             if($tick <= $currentTick){

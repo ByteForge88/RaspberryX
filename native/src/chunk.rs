@@ -16,8 +16,6 @@ pub const MIN_SUBCHUNK: i32 = MIN_Y >> 4;
 pub const MAX_LAYERS: usize = 2;
 pub const SIZE: usize = 4096;
 
-/// 4096 values as a palette plus one u16 palette offset per position, in Bedrock's XZY order.
-/// A storage holding one value has no offsets at all.
 #[derive(Clone, Debug)]
 pub struct Storage {
     pub palette: Vec<u32>,
@@ -76,8 +74,6 @@ impl Storage {
         self.indices.is_none()
     }
 
-    /// Drops palette entries nothing uses, in the order they are first used, like the PHP
-    /// storage did, so saved files stay the same.
     pub fn collect_garbage(&mut self) {
         let Some(indices) = &mut self.indices else {
             self.palette.truncate(1);
@@ -105,7 +101,6 @@ impl Storage {
         }
     }
 
-    /// The palette offset of every position.
     pub fn offsets(&self) -> impl Iterator<Item = u16> + '_ {
         let indices = self.indices.as_deref();
         (0..SIZE).map(move |position| indices.map_or(0, |indices| indices[position]))
@@ -144,7 +139,6 @@ impl SubChunk {
 pub struct Chunk {
     pub air: u32,
     pub subchunks: Vec<Arc<SubChunk>>,
-    /// bumped on every change, a snapshot remembers which one it saw
     pub version: u64,
 }
 
@@ -154,7 +148,6 @@ impl Chunk {
         Chunk { air, subchunks: vec![empty; SUBCHUNKS], version: 0 }
     }
 
-    /// Splits a world Y into the sub-chunk and the Y inside it, None when outside the world.
     #[inline]
     fn locate(y: i32) -> Option<(usize, usize)> {
         if !(MIN_Y..=MAX_Y).contains(&y) {
@@ -180,7 +173,6 @@ impl Chunk {
 
         let air = self.air;
 
-        //writing air to a layer that does not exist changes nothing
         if self.subchunks[sub].layers.len() <= layer && state == air {
             return true;
         }
@@ -217,7 +209,6 @@ impl Chunk {
         true
     }
 
-    /// Sets every block from `min_y` to `max_y` in the whole chunk, quicker than one by one.
     pub fn fill(&mut self, min_y: i32, max_y: i32, layer: usize, state: u32) {
         let (min_y, max_y) = (min_y.max(MIN_Y), max_y.min(MAX_Y));
 
@@ -263,8 +254,6 @@ impl Chunk {
         self.version += 1;
     }
 
-    /// Where blocks of the given states are in the main layer, as local x, world y and local z.
-    /// Sub-chunks whose palette has none of them are not looked through.
     pub fn find(&self, states: &[u32]) -> Vec<(u8, i32, u8)> {
         let mut found = Vec::new();
 
@@ -288,7 +277,6 @@ impl Chunk {
         found
     }
 
-    /// The highest sub-chunk index (0 is Y -64) that holds blocks, None when all is air.
     pub fn highest_subchunk(&self) -> Option<usize> {
         (0..SUBCHUNKS).rev().find(|sub| !self.subchunks[*sub].is_empty(self.air))
     }
@@ -297,7 +285,6 @@ impl Chunk {
         let air = self.air;
 
         for subchunk in &mut self.subchunks {
-            //only sub-chunks that might have something to drop are copied
             if subchunk.layers.len() > 1 || subchunk.layers.iter().chain(std::iter::once(&subchunk.biomes)).any(|storage| !storage.is_uniform()) {
                 Arc::make_mut(subchunk).collect_garbage(air);
             }
@@ -343,7 +330,6 @@ mod tests {
         chunk.set_block(0, 0, 0, 0, WATER);
         assert_eq!(snapshot.get_block(0, 0, 0, 0), STONE);
         assert_eq!(chunk.get_block(0, 0, 0, 0), WATER);
-        //untouched sub-chunks are still shared
         assert!(Arc::ptr_eq(&snapshot.subchunks[0], &chunk.subchunks[0]));
     }
 

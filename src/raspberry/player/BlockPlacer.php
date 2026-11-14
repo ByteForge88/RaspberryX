@@ -368,6 +368,10 @@ class BlockPlacer{
             return false;
         }
 
+        if($state->hasProperty(BlockProperties::PERSISTENT_BIT)){
+            $state = $state->withProperty(BlockProperties::PERSISTENT_BIT, true);
+        }
+
         $blocks = [[$x, $y, $z, $state]];
 
         if($state->hasProperty(BlockProperties::DOOR_HINGE_BIT)){

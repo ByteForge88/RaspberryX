@@ -1,5 +1,5 @@
 //! The native half of RaspberryX. PHP loads this library through FFI and calls the functions
-//! below; heavy work runs on worker threads, and PHP collects what finished with rx_poll()
+//! below. Heavy work runs on worker threads, and PHP collects what finished with rx_poll()
 //! every tick. src/raspberry/native/Native.php has the matching declarations.
 //!
 //! Chunks live here. PHP holds a handle to each and reads and writes blocks through it.
@@ -11,26 +11,26 @@ pub mod chunk;
 pub mod completions;
 pub mod encode;
 pub mod generator;
+pub mod growth;
 pub mod light;
 pub mod mob;
 pub mod noise;
 pub mod pool;
 pub mod random;
 
+use std::ptr;
 use std::collections::HashMap;
 use std::panic::{catch_unwind, AssertUnwindSafe};
-use std::ptr;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use chunk::{Chunk, Storage, SubChunk, MAX_LAYERS, SIZE, SUBCHUNKS};
 
 /// Bumped whenever a function below changes, PHP refuses a library it does not know.
-pub const ABI_VERSION: u32 = 6;
+pub const ABI_VERSION: u32 = 7;
 
 struct Entry {
     chunk: Chunk,
-    /// the last batch sent for this chunk: chunk version, PHP's revision, threshold, the bytes
     sent: Option<(u64, u64, i32, Arc<Vec<u8>>)>,
 }
 
@@ -42,7 +42,6 @@ fn chunks() -> MutexGuard<'static, Option<HashMap<u64, Entry>>> {
     CHUNKS.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
-/// Runs `action` on the chunk behind `handle`, `missing` when there is none.
 fn with_chunk<T>(handle: u64, missing: T, action: impl FnOnce(&mut Entry) -> T) -> T {
     let result = catch_unwind(AssertUnwindSafe(|| match chunks().as_mut().and_then(|map| map.get_mut(&handle)) {
         Some(entry) => Some(action(entry)),
@@ -55,7 +54,6 @@ fn with_chunk<T>(handle: u64, missing: T, action: impl FnOnce(&mut Entry) -> T) 
     }
 }
 
-/// Hands PHP a buffer it must give back to rx_free().
 unsafe fn give(data: Vec<u8>, out: *mut *mut u8, out_length: *mut usize) {
     let boxed = data.into_boxed_slice();
     *out_length = boxed.len();
@@ -75,7 +73,6 @@ pub extern "C" fn rx_version() -> u32 {
     ABI_VERSION
 }
 
-/// Frees a buffer this library handed over.
 #[no_mangle]
 pub unsafe extern "C" fn rx_free(data: *mut u8, length: usize) {
     if !data.is_null() {
@@ -83,7 +80,6 @@ pub unsafe extern "C" fn rx_free(data: *mut u8, length: usize) {
     }
 }
 
-/// Takes one piece of finished work: 1 and its ID and result, or 0 when nothing is waiting.
 #[no_mangle]
 pub unsafe extern "C" fn rx_poll(id: *mut u64, out: *mut *mut u8, out_length: *mut usize) -> i32 {
     match catch_unwind(completions::take) {
@@ -96,7 +92,6 @@ pub unsafe extern "C" fn rx_poll(id: *mut u64, out: *mut *mut u8, out_length: *m
     }
 }
 
-/// A new chunk of air with one biome. `air` is air's state ID.
 #[no_mangle]
 pub extern "C" fn rx_chunk_new(air: u32, biome: u32) -> u64 {
     catch_unwind(|| {
@@ -112,7 +107,6 @@ pub extern "C" fn rx_chunk_free(handle: u64) {
     let _ = catch_unwind(|| chunks().as_mut().map(|map| map.remove(&handle)));
 }
 
-/// The state ID at local x z and world y. Air for anything outside the chunk.
 #[no_mangle]
 pub extern "C" fn rx_chunk_get_block(handle: u64, x: u32, y: i32, z: u32, layer: u32) -> u32 {
     with_chunk(handle, 0, |entry| entry.chunk.get_block(x as usize, y, z as usize, layer as usize))
@@ -133,7 +127,6 @@ pub extern "C" fn rx_chunk_set_biome(handle: u64, x: u32, y: i32, z: u32, biome:
     with_chunk(handle, 0, |entry| entry.chunk.set_biome(x as usize, y, z as usize, biome) as i32)
 }
 
-/// Sets every block of the chunk from min_y to max_y.
 #[no_mangle]
 pub extern "C" fn rx_chunk_fill(handle: u64, min_y: i32, max_y: i32, layer: u32, state: u32) {
     with_chunk(handle, (), |entry| entry.chunk.fill(min_y, max_y, layer as usize, state));
@@ -144,14 +137,11 @@ pub extern "C" fn rx_chunk_fill_biome(handle: u64, biome: u32) {
     with_chunk(handle, (), |entry| entry.chunk.fill_biome(biome));
 }
 
-/// The highest sub-chunk Y (-4 to 19) that holds blocks, -128 when the chunk is all air.
 #[no_mangle]
 pub extern "C" fn rx_chunk_highest_subchunk(handle: u64) -> i32 {
     with_chunk(handle, -128, |entry| entry.chunk.highest_subchunk().map_or(-128, |sub| sub as i32 + chunk::MIN_SUBCHUNK))
 }
 
-/// Finds the blocks of `count` states in the chunk: 4 bytes each, local x, local z, then the
-/// world Y as an i16. 0 when there is no such chunk.
 #[no_mangle]
 pub unsafe extern "C" fn rx_chunk_find(handle: u64, states: *const u32, count: usize, out: *mut *mut u8, out_length: *mut usize) -> i32 {
     let states = if states.is_null() || count == 0 { &[][..] } else { std::slice::from_raw_parts(states, count) };
@@ -179,8 +169,6 @@ pub extern "C" fn rx_chunk_collect_garbage(handle: u64) {
     with_chunk(handle, (), |entry| entry.chunk.collect_garbage());
 }
 
-/// Writes a storage as: u32 palette count, the palette (u32 each), then 8192 bytes of u16
-/// offsets when the palette has more than one entry.
 fn export_storage(out: &mut Vec<u8>, storage: &Storage) {
     out.extend_from_slice(&(storage.palette.len() as u32).to_le_bytes());
 
@@ -223,8 +211,6 @@ fn import_storage(data: &[u8], offset: &mut usize) -> Option<Storage> {
     Some(Storage { palette, indices: Some(indices) })
 }
 
-/// The whole chunk for saving, unused palette entries dropped first. Per sub-chunk, bottom to
-/// top: a layer count byte, each layer's storage, then the biome storage.
 #[no_mangle]
 pub unsafe extern "C" fn rx_chunk_export(handle: u64, out: *mut *mut u8, out_length: *mut usize) -> i32 {
     let data = with_chunk(handle, None, |entry| {
@@ -253,8 +239,6 @@ pub unsafe extern "C" fn rx_chunk_export(handle: u64, out: *mut *mut u8, out_len
     }
 }
 
-/// Replaces the chunk's content with what rx_chunk_export() wrote. 0 when the data is damaged,
-/// the chunk is left as it was then.
 #[no_mangle]
 pub unsafe extern "C" fn rx_chunk_import(handle: u64, data: *const u8, length: usize) -> i32 {
     let data = slice(data, length);
@@ -292,10 +276,6 @@ pub unsafe extern "C" fn rx_chunk_import(handle: u64, data: *const u8, length: u
     })
 }
 
-/// Starts encoding the chunk at x z into a compressed LevelChunk batch (see encode.rs).
-/// `extra` is the block entities' NBT, `revision` changes whenever PHP changed something in
-/// the chunk, so a batch already made for the same revision is reused. Gives back the ID the
-/// batch comes with, 0 when there is no such chunk.
 #[no_mangle]
 pub unsafe extern "C" fn rx_chunk_encode(handle: u64, chunk_x: i32, chunk_z: i32, revision: u64, extra: *const u8, extra_length: usize, threshold: i32) -> u64 {
     let extra = slice(extra, extra_length).to_vec();
@@ -335,8 +315,6 @@ pub unsafe extern "C" fn rx_chunk_encode(handle: u64, chunk_x: i32, chunk_z: i32
     }
 }
 
-/// Copies the blocks and biomes of one chunk into another, cheaply: the sub-chunks are shared
-/// until either is written to.
 #[no_mangle]
 pub extern "C" fn rx_chunk_copy(from: u64, to: u64) -> i32 {
     let Some(subchunks) = with_chunk(from, None, |entry| Some(entry.chunk.subchunks.clone())) else { return 0 };
@@ -348,8 +326,6 @@ pub extern "C" fn rx_chunk_copy(from: u64, to: u64) -> i32 {
     })
 }
 
-/// The block states generators use, one per line, in the order rx_old_generate() wants their
-/// IDs in.
 #[no_mangle]
 pub unsafe extern "C" fn rx_generator_states(out: *mut *mut u8, out_length: *mut usize) {
     give(generator::blocks::STATES.join("\n").into_bytes(), out, out_length);
@@ -361,8 +337,6 @@ fn adopt(chunk: Chunk) -> u64 {
     handle
 }
 
-/// Starts making a whole Old world on a worker. Its result is the spawn (three i32) and then
-/// a handle (u64) for each of the 256 chunks, x * 16 + z, which belong to PHP from then on.
 #[no_mangle]
 pub unsafe extern "C" fn rx_old_generate(seed: i64, states: *const u32, count: usize) -> u64 {
     if states.is_null() || count != generator::blocks::count() {
@@ -390,13 +364,11 @@ pub unsafe extern "C" fn rx_old_generate(seed: i64, states: *const u32, count: u
     id
 }
 
-/// Fills a chunk outside an Old world: barriers where it borders the world, air elsewhere.
 #[no_mangle]
 pub extern "C" fn rx_old_border(handle: u64, chunk_x: i32, chunk_z: i32, barrier: u32) {
     with_chunk(handle, (), |entry| generator::old::border(&mut entry.chunk, chunk_x, chunk_z, barrier));
 }
 
-/// A pre-normal generator and the state IDs of its blocks.
 struct PreNormalEntry {
     generator: generator::pre_normal::PreNormal,
     states: Vec<u32>,
@@ -408,8 +380,6 @@ fn pre_normal(handle: u64) -> Option<Arc<PreNormalEntry>> {
     PRE_NORMAL.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).as_ref().and_then(|map| map.get(&handle).cloned())
 }
 
-/// Runs a job on a worker and always completes it: with what it made, or with nothing when
-/// it failed, so PHP never waits forever.
 fn spawn_job(job: impl FnOnce() -> Vec<u8> + Send + 'static) -> u64 {
     let id = completions::next_id();
 
@@ -421,8 +391,6 @@ fn spawn_job(job: impl FnOnce() -> Vec<u8> + Send + 'static) -> u64 {
     id
 }
 
-/// Makes a pre-normal generator for a seed, with the state ID of each block in the order of
-/// rx_generator_states(). 0 when the states do not fit.
 #[no_mangle]
 pub unsafe extern "C" fn rx_pre_normal_new(seed: i64, states: *const u32, count: usize) -> u64 {
     if states.is_null() || count != generator::blocks::count() {
@@ -440,7 +408,6 @@ pub unsafe extern "C" fn rx_pre_normal_new(seed: i64, states: *const u32, count:
     .unwrap_or(0)
 }
 
-/// Drops a generator. Jobs still running finish with the copy they hold.
 #[no_mangle]
 pub extern "C" fn rx_pre_normal_free(handle: u64) {
     if let Some(map) = PRE_NORMAL.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).as_mut() {
@@ -448,8 +415,6 @@ pub extern "C" fn rx_pre_normal_free(handle: u64) {
     }
 }
 
-/// Starts making a chunk on a worker. Its result is the handle (u64) of a new chunk that
-/// belongs to PHP from then on, or nothing when it failed. 0 for an unknown generator.
 #[no_mangle]
 pub extern "C" fn rx_pre_normal_chunk(handle: u64, chunk_x: i32, chunk_z: i32) -> u64 {
     let Some(entry) = pre_normal(handle) else { return 0 };
@@ -460,7 +425,6 @@ pub extern "C" fn rx_pre_normal_chunk(handle: u64, chunk_x: i32, chunk_z: i32) -
     })
 }
 
-/// Starts looking for the spawn on a worker. Its result is X, Y and Z (three i32).
 #[no_mangle]
 pub extern "C" fn rx_pre_normal_spawn(handle: u64) -> u64 {
     let Some(entry) = pre_normal(handle) else { return 0 };
@@ -471,8 +435,6 @@ pub extern "C" fn rx_pre_normal_spawn(handle: u64) -> u64 {
     })
 }
 
-/// The mobs of one PHP world: their state, which chunk handle is where, and whether a tick
-/// is still running on a worker.
 struct MobWorld {
     state: Arc<Mutex<mob::World>>,
     chunks: HashMap<(i32, i32), u64>,
@@ -485,7 +447,6 @@ fn mob_worlds() -> MutexGuard<'static, Option<HashMap<u64, MobWorld>>> {
     MOB_WORLDS.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
-/// A place for the mobs of one world. `seed` only feeds their dice.
 #[no_mangle]
 pub extern "C" fn rx_mobs_new(seed: i64) -> u64 {
     catch_unwind(|| {
@@ -503,7 +464,6 @@ pub extern "C" fn rx_mobs_free(world: u64) {
     let _ = catch_unwind(|| mob_worlds().as_mut().map(|map| map.remove(&world)));
 }
 
-/// Tells the mobs which chunk is at a position, 0 for none any more.
 #[no_mangle]
 pub extern "C" fn rx_mobs_chunk(world: u64, chunk_x: i32, chunk_z: i32, chunk: u64) {
     let _ = catch_unwind(|| {
@@ -517,7 +477,6 @@ pub extern "C" fn rx_mobs_chunk(world: u64, chunk_x: i32, chunk_z: i32, chunk: u
     });
 }
 
-/// Describes block states to the mobs: `count` state IDs and what mob::blocks says about each.
 #[no_mangle]
 pub unsafe extern "C" fn rx_mobs_blocks(states: *const u32, flags: *const u16, count: usize) {
     if states.is_null() || flags.is_null() || count == 0 {
@@ -529,9 +488,6 @@ pub unsafe extern "C" fn rx_mobs_blocks(states: *const u32, flags: *const u16, c
     let _ = catch_unwind(|| mob::blocks::learn(states.iter().copied().zip(flags.iter().copied())));
 }
 
-/// Hands over what changed and starts a tick of the world's mobs on a worker. The result
-/// comes back through rx_poll under the returned ID. 0 when the last tick is still running
-/// (nothing of `input` was taken then, send it again) or there is no such world.
 #[no_mangle]
 pub unsafe extern "C" fn rx_mobs_tick(world: u64, input: *const u8, length: usize) -> u64 {
     let input = slice(input, length);
@@ -551,7 +507,6 @@ pub unsafe extern "C" fn rx_mobs_tick(world: u64, input: *const u8, length: usiz
             mobs.chunks_needed()
         };
 
-        //snapshots of the chunks around the mobs, the main thread goes on changing the real ones
         let mut snapshot = HashMap::with_capacity(needed.len());
 
         if let Some(all) = chunks().as_ref() {
@@ -572,7 +527,6 @@ pub unsafe extern "C" fn rx_mobs_tick(world: u64, input: *const u8, length: usiz
             let result = catch_unwind(AssertUnwindSafe(|| state.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).tick(&view)));
 
             busy.store(false, Ordering::Release);
-            //no moves, no events, no unknown blocks when the tick went wrong
             completions::complete(id, result.unwrap_or_else(|_| vec![0; 12]));
         });
 
@@ -581,7 +535,6 @@ pub unsafe extern "C" fn rx_mobs_tick(world: u64, input: *const u8, length: usiz
     .unwrap_or(0)
 }
 
-/// The light of one PHP world, and which chunk handle is where so a changed block can be read.
 struct LightEntry {
     light: light::LightWorld,
     chunks: HashMap<(i32, i32), u64>,
@@ -617,8 +570,6 @@ pub extern "C" fn rx_light_free(world: u64) {
     let _ = catch_unwind(|| light_worlds().as_mut().map(|map| map.remove(&world)));
 }
 
-/// Describes block states: `count` state IDs and for each the light it gives off (high four
-/// bits) and takes away (low four bits). States never described are solid and dark.
 #[no_mangle]
 pub unsafe extern "C" fn rx_light_blocks(states: *const u32, values: *const u8, count: usize) {
     if states.is_null() || values.is_null() || count == 0 {
@@ -630,7 +581,6 @@ pub unsafe extern "C" fn rx_light_blocks(states: *const u32, values: *const u8, 
     let _ = catch_unwind(|| light::learn(states.iter().copied().zip(values.iter().copied())));
 }
 
-/// Lights a chunk that just loaded. 0 when there is no such world or chunk.
 #[no_mangle]
 pub extern "C" fn rx_light_add_chunk(world: u64, chunk_x: i32, chunk_z: i32, chunk: u64) -> i32 {
     with_light(world, 0, |entry| {
@@ -651,7 +601,6 @@ pub extern "C" fn rx_light_remove_chunk(world: u64, chunk_x: i32, chunk_z: i32) 
     });
 }
 
-/// A block changed: the light around it follows. The block is read from its chunk.
 #[no_mangle]
 pub extern "C" fn rx_light_update(world: u64, x: i32, y: i32, z: i32) {
     with_light(world, (), |entry| {
@@ -666,15 +615,119 @@ pub extern "C" fn rx_light_update(world: u64, x: i32, y: i32, z: i32) {
     });
 }
 
-/// The block light in the low four bits and the sky light in the next four, -1 where no
-/// chunk is lit.
 #[no_mangle]
 pub extern "C" fn rx_light_get(world: u64, x: i32, y: i32, z: i32) -> i32 {
     with_light(world, -1, |entry| entry.light.get(x, y, z).map_or(-1, |(block, sky)| (block | sky << 4) as i32))
 }
 
-/// The lowest Y that open sky reaches in a column, i32::MIN where no chunk is lit.
 #[no_mangle]
 pub extern "C" fn rx_light_sky_bottom(world: u64, x: i32, z: i32) -> i32 {
     with_light(world, i32::MIN, |entry| entry.light.sky_bottom(x, z).unwrap_or(i32::MIN))
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rx_random_tick_blocks(states: *const u32, count: usize) {
+    let states = if states.is_null() || count == 0 { &[][..] } else { std::slice::from_raw_parts(states, count) };
+    let _ = catch_unwind(|| growth::set_ticking(states.iter().copied()));
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rx_random_tick(handles: *const u64, count: usize, per_subchunk: u32, seed: u64, out: *mut *mut u8, out_length: *mut usize) -> i32 {
+    let handles = if handles.is_null() || count == 0 { &[][..] } else { std::slice::from_raw_parts(handles, count) };
+
+    let picked = catch_unwind(|| {
+        let ticking = growth::ticking();
+        let mut picker = growth::Picker::new(seed);
+        let mut data = Vec::new();
+        let all = chunks();
+        let mut found = Vec::new();
+
+        for (i, handle) in handles.iter().enumerate() {
+            let Some(entry) = all.as_ref().and_then(|map| map.get(handle)) else { continue };
+            found.clear();
+            growth::pick(&entry.chunk, per_subchunk, &mut picker, &ticking, &mut found);
+
+            for &(x, y, z, state) in &found {
+                data.extend_from_slice(&(i as u16).to_le_bytes());
+                data.push(x);
+                data.push(z);
+                data.extend_from_slice(&(y as i16).to_le_bytes());
+                data.extend_from_slice(&state.to_le_bytes());
+            }
+        }
+
+        data
+    });
+
+    match picked {
+        Ok(data) => {
+            give(data, out, out_length);
+            1
+        }
+        Err(_) => 0,
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rx_tree_grow(
+    kind: i32, x: i32, y: i32, z: i32, seed: i64,
+    handles: *const u64, positions: *const i32, chunk_count: usize,
+    cleared: *const i32, cleared_count: usize,
+    states: *const u32, state_count: usize,
+    soil: *const u32, soil_count: usize,
+    out: *mut *mut u8, out_length: *mut usize,
+) -> i32 {
+    if handles.is_null() || positions.is_null() || states.is_null() || chunk_count == 0 || state_count < blocks_count() {
+        return 0;
+    }
+
+    let handles = std::slice::from_raw_parts(handles, chunk_count);
+    let positions = std::slice::from_raw_parts(positions, chunk_count * 2);
+    let cleared = if cleared.is_null() || cleared_count == 0 { &[][..] } else { std::slice::from_raw_parts(cleared, cleared_count * 3) };
+    let states = std::slice::from_raw_parts(states, state_count);
+    let soil = if soil.is_null() || soil_count == 0 { &[][..] } else { std::slice::from_raw_parts(soil, soil_count) };
+
+    let grown = catch_unwind(|| {
+        let lookup: HashMap<u32, generator::blocks::Block> = states.iter().enumerate().map(|(i, state)| (*state, i as generator::blocks::Block)).collect();
+        let soil: std::collections::HashSet<u32> = soil.iter().copied().collect();
+        let cleared = cleared.chunks_exact(3).map(|c| (c[0], c[1], c[2])).collect();
+        let all = chunks();
+        let map = all.as_ref()?;
+        let mut around = HashMap::new();
+
+        for (i, handle) in handles.iter().enumerate() {
+            if let Some(entry) = map.get(handle) {
+                around.insert((positions[i * 2], positions[i * 2 + 1]), &entry.chunk);
+            }
+        }
+
+        let mut canvas = growth::WorldCanvas::new(around, &lookup, states, &soil, cleared);
+
+        if !growth::grow_tree(&mut canvas, kind, x, y, z, seed) {
+            return None;
+        }
+
+        let mut data = Vec::new();
+
+        for (bx, by, bz, state) in canvas.changes() {
+            data.extend_from_slice(&bx.to_le_bytes());
+            data.extend_from_slice(&by.to_le_bytes());
+            data.extend_from_slice(&bz.to_le_bytes());
+            data.extend_from_slice(&state.to_le_bytes());
+        }
+
+        Some(data)
+    });
+
+    match grown {
+        Ok(Some(data)) => {
+            give(data, out, out_length);
+            1
+        }
+        _ => 0,
+    }
+}
+
+fn blocks_count() -> usize {
+    generator::blocks::count()
 }

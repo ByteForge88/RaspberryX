@@ -3,7 +3,6 @@
 
 use super::blocks::{self, View};
 
-/// a mob walks up anything this high without jumping, slabs for one
 pub const STEP_HEIGHT: f64 = 0.6;
 
 pub const GRAVITY: f64 = 0.08;
@@ -14,7 +13,6 @@ type Box3 = [f64; 6];
 fn clip(moving: &Box3, block: &Box3, axis: usize, mut delta: f64) -> f64 {
     let (a, b) = ((axis + 1) % 3, (axis + 2) % 3);
 
-    //only boxes that overlap on the other two axes can be in the way
     if moving[a + 3] <= block[a] || moving[a] >= block[a + 3] || moving[b + 3] <= block[b] || moving[b] >= block[b + 3] {
         return delta;
     }
@@ -46,7 +44,6 @@ fn boxes_around(view: &View, area: &Box3) -> Vec<Box3> {
 
     for x in area[0].floor() as i32..=area[3].floor() as i32 {
         for z in area[2].floor() as i32..=area[5].floor() as i32 {
-            //one lower than the area, a fence reaches half a block into the space above it
             for y in area[1].floor() as i32 - 1..=area[4].floor() as i32 {
                 let height = blocks::height(view.block(x, y, z));
 
@@ -70,7 +67,6 @@ pub struct Moved {
     pub on_ground: bool,
 }
 
-/// Moves a box of `width` and `height` standing at x y z by dx dy dz as far as the blocks let it.
 pub fn move_box(view: &View, x: f64, y: f64, z: f64, width: f64, height: f64, dx: f64, dy: f64, dz: f64, was_on_ground: bool) -> Moved {
     let half = width / 2.0;
     let start: Box3 = [x - half, y, z - half, x + half, y + height, z + half];
@@ -91,7 +87,6 @@ pub fn move_box(view: &View, x: f64, y: f64, z: f64, width: f64, height: f64, dx
     let mut mz = slide(&mut moved, &blocks, 2, dz);
     let mut on_ground = dy < 0.0 && my != dy;
 
-    //blocked sideways while standing: see if going up a step gets further
     if (mx != dx || mz != dz) && (was_on_ground || on_ground) {
         let mut stepped = start;
         let up = slide(&mut stepped, &blocks, 1, STEP_HEIGHT);
@@ -118,7 +113,6 @@ pub fn move_box(view: &View, x: f64, y: f64, z: f64, width: f64, height: f64, dx
     }
 }
 
-/// Whether a box fits somewhere without touching a block.
 pub fn is_free(view: &View, x: f64, y: f64, z: f64, width: f64, height: f64) -> bool {
     let half = width / 2.0;
     let area: Box3 = [x - half, y, z - half, x + half, y + height, z + half];

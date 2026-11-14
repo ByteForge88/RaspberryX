@@ -9,6 +9,7 @@ use RuntimeException;
 use UnexpectedValueException;
 
 use function array_key_first;
+use function array_keys;
 use function array_map;
 use function count;
 use function dirname;
@@ -73,6 +74,40 @@ class BlockStateRegistry{
      */
     public function getProperties(string $name) : array{
         return $this->blocks[$name] ?? throw new InvalidArgumentException("Unknown block: {$name}");
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function getBlockNames() : array{
+        return array_keys($this->blocks);
+    }
+
+    /**
+     * @return list<BlockState>
+     */
+    public function getAllStates(string $name) : array{
+        $combinations = [[]];
+
+        foreach($this->getProperties($name) as $property => $values){
+            $next = [];
+
+            foreach($combinations as $combination){
+                foreach($values as $value){
+                    $next[] = $combination + [$property => $value];
+                }
+            }
+
+            $combinations = $next;
+        }
+
+        $states = [];
+
+        foreach($combinations as $properties){
+            $states[] = new BlockState($name, $properties);
+        }
+
+        return $states;
     }
 
     public function getDefaultState(string $name) : BlockState{

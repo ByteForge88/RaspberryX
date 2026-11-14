@@ -8,12 +8,11 @@ use crate::biome::Tree;
 use crate::random::JavaRandom;
 
 pub trait Canvas {
+
     fn get(&self, x: i32, y: i32, z: i32) -> Block;
     fn set(&mut self, x: i32, y: i32, z: i32, block: Block);
-    /// one above the highest Y blocks can be at
     fn height(&self) -> i32;
 
-    /// The Y above the highest block of a column that is not air, leaves or plants count too.
     fn top(&self, x: i32, z: i32) -> i32 {
         let mut y = self.height() - 1;
 
@@ -24,7 +23,6 @@ pub trait Canvas {
         y + 1
     }
 
-    /// The Y above the highest solid block, so through leaves and plants.
     fn ground(&self, x: i32, z: i32) -> i32 {
         let mut y = self.height() - 1;
 
@@ -36,7 +34,6 @@ pub trait Canvas {
     }
 }
 
-/// A vein of ore, a stretched blob through stone. `size` is about how many blocks it has.
 pub fn ore(canvas: &mut impl Canvas, random: &mut JavaRandom, x: i32, y: i32, z: i32, ore: Block, size: i32) {
     let angle = random.next_float() as f64 * PI;
     let spread = size as f64 / 8.0;
@@ -94,7 +91,6 @@ fn log_at(canvas: &mut impl Canvas, x: i32, y: i32, z: i32, log: Block) {
     }
 }
 
-/// Whether a trunk this tall fits, standing on soil.
 fn fits(canvas: &impl Canvas, x: i32, y: i32, z: i32, height: i32, radius: i32) -> bool {
     if y < 1 || y + height + 1 >= canvas.height() || !blocks::is_soil(canvas.get(x, y - 1, z)) {
         return false;
@@ -121,7 +117,6 @@ fn plant_dirt(canvas: &mut impl Canvas, x: i32, y: i32, z: i32) {
     }
 }
 
-/// The classic small tree: a trunk with a round crown of four layers.
 fn round_tree(canvas: &mut impl Canvas, random: &mut JavaRandom, x: i32, y: i32, z: i32, log: Block, leaves: Block, height: i32, radius: i32, vines: bool) -> bool {
     if !fits(canvas, x, y, z, height, radius) {
         return false;
@@ -137,7 +132,6 @@ fn round_tree(canvas: &mut impl Canvas, random: &mut JavaRandom, x: i32, y: i32,
             for bz in z - reach..=z + reach {
                 let corner = (bx - x).abs() == reach && (bz - z).abs() == reach;
 
-                //corners are left out at the top and now and then lower down
                 if corner && (above_top == 0 || random.next_int_bounded(2) == 0) {
                     continue;
                 }
@@ -158,7 +152,6 @@ fn round_tree(canvas: &mut impl Canvas, random: &mut JavaRandom, x: i32, y: i32,
     true
 }
 
-/// A vine hanging down from a leaf block, on one of its free sides.
 fn hang_vine(canvas: &mut impl Canvas, random: &mut JavaRandom, x: i32, y: i32, z: i32) {
     let (dx, dz, vine) = match random.next_int_bounded(4) {
         0 => (1, 0, blocks::VINE_WEST),
@@ -178,7 +171,6 @@ fn hang_vine(canvas: &mut impl Canvas, random: &mut JavaRandom, x: i32, y: i32, 
     }
 }
 
-/// A spruce: a pointed crown of rings that grow and shrink on the way up.
 fn spruce(canvas: &mut impl Canvas, random: &mut JavaRandom, x: i32, y: i32, z: i32) -> bool {
     let height = random.next_int_bounded(4) + 6;
     let bare = 1 + random.next_int_bounded(2);
@@ -222,7 +214,6 @@ fn spruce(canvas: &mut impl Canvas, random: &mut JavaRandom, x: i32, y: i32, z: 
     true
 }
 
-/// A tall, thin spruce with its crown near the top.
 fn tall_spruce(canvas: &mut impl Canvas, random: &mut JavaRandom, x: i32, y: i32, z: i32) -> bool {
     let height = random.next_int_bounded(5) + 7;
     let bare = height - random.next_int_bounded(2) - 3;
@@ -259,7 +250,6 @@ fn tall_spruce(canvas: &mut impl Canvas, random: &mut JavaRandom, x: i32, y: i32
     true
 }
 
-/// A flat, wide crown, like acacia and dark oak have.
 fn flat_crown(canvas: &mut impl Canvas, random: &mut JavaRandom, x: i32, y: i32, z: i32, leaves: Block, radius: i32) {
     for (layer, reach) in [(0, radius), (1, radius - 1)] {
         for bx in x - reach..=x + reach {
@@ -276,7 +266,6 @@ fn flat_crown(canvas: &mut impl Canvas, random: &mut JavaRandom, x: i32, y: i32,
     }
 }
 
-/// An acacia: the trunk bends to one side and ends in a flat crown.
 fn acacia(canvas: &mut impl Canvas, random: &mut JavaRandom, x: i32, y: i32, z: i32) -> bool {
     let height = 5 + random.next_int_bounded(3);
 
@@ -303,7 +292,6 @@ fn acacia(canvas: &mut impl Canvas, random: &mut JavaRandom, x: i32, y: i32, z: 
     true
 }
 
-/// A dark oak: a thick trunk of four logs under a heavy crown.
 fn dark_oak(canvas: &mut impl Canvas, random: &mut JavaRandom, x: i32, y: i32, z: i32) -> bool {
     let height = 6 + random.next_int_bounded(3);
 
@@ -331,7 +319,6 @@ fn dark_oak(canvas: &mut impl Canvas, random: &mut JavaRandom, x: i32, y: i32, z
     true
 }
 
-/// A cherry tree: a wide pink crown with leaves hanging below its edge.
 fn cherry(canvas: &mut impl Canvas, random: &mut JavaRandom, x: i32, y: i32, z: i32) -> bool {
     let height = 5 + random.next_int_bounded(3);
 
@@ -357,7 +344,6 @@ fn cherry(canvas: &mut impl Canvas, random: &mut JavaRandom, x: i32, y: i32, z: 
                 if distance <= reach * reach - 1 + random.next_int_bounded(2) {
                     leaves_at(canvas, bx, by, bz, blocks::CHERRY_LEAVES);
 
-                    //the hanging fringe
                     if by == top - 2 && distance >= (reach - 1) * (reach - 1) && random.next_int_bounded(3) == 0 {
                         leaves_at(canvas, bx, by - 1, bz, blocks::CHERRY_LEAVES);
                     }
@@ -369,7 +355,6 @@ fn cherry(canvas: &mut impl Canvas, random: &mut JavaRandom, x: i32, y: i32, z: 
     true
 }
 
-/// A jungle tree: tall, with vines down the trunk.
 fn jungle(canvas: &mut impl Canvas, random: &mut JavaRandom, x: i32, y: i32, z: i32) -> bool {
     let height = 4 + random.next_int_bounded(7) + if random.next_int_bounded(3) == 0 { 6 } else { 0 };
 
@@ -388,7 +373,6 @@ fn jungle(canvas: &mut impl Canvas, random: &mut JavaRandom, x: i32, y: i32, z: 
     true
 }
 
-/// A mangrove: its trunk stands on roots above the water line.
 fn mangrove(canvas: &mut impl Canvas, random: &mut JavaRandom, x: i32, y: i32, z: i32) -> bool {
     let height = 5 + random.next_int_bounded(4);
 
@@ -406,7 +390,6 @@ fn mangrove(canvas: &mut impl Canvas, random: &mut JavaRandom, x: i32, y: i32, z
     true
 }
 
-/// Grows a tree of `kind` with its trunk at x z, standing on the ground at y - 1.
 pub fn tree(canvas: &mut impl Canvas, random: &mut JavaRandom, kind: Tree, x: i32, y: i32, z: i32) -> bool {
     match kind {
         Tree::Oak => {
@@ -431,8 +414,6 @@ pub fn tree(canvas: &mut impl Canvas, random: &mut JavaRandom, kind: Tree, x: i3
     }
 }
 
-/// Places small plants in `patches` patches, each at a random spot of the 16 x 16 area from
-/// x z, `per_patch` tries around it. Plants stand on soil or on `extra_ground`.
 #[allow(clippy::too_many_arguments)]
 pub fn scatter(canvas: &mut impl Canvas, random: &mut JavaRandom, x: i32, z: i32, patches: u32, per_patch: u32, mut plant: impl FnMut(&mut JavaRandom) -> Block, extra_ground: &[Block]) {
     for _ in 0..patches {
@@ -452,7 +433,6 @@ pub fn scatter(canvas: &mut impl Canvas, random: &mut JavaRandom, x: i32, z: i32
     }
 }
 
-/// Like scatter, for two block tall plants.
 pub fn scatter_tall(canvas: &mut impl Canvas, random: &mut JavaRandom, x: i32, z: i32, tries: u32, bottom: Block, top: Block) {
     let (px, pz) = (x + random.next_int_bounded(16), z + random.next_int_bounded(16));
 
@@ -472,7 +452,6 @@ fn touches_solid(canvas: &impl Canvas, x: i32, y: i32, z: i32) -> bool {
     [(1, 0), (-1, 0), (0, 1), (0, -1)].iter().any(|(dx, dz)| blocks::is_solid(canvas.get(x + dx, y, z + dz)))
 }
 
-/// Cacti on sand, one to three high, never next to anything solid.
 pub fn cacti(canvas: &mut impl Canvas, random: &mut JavaRandom, x: i32, z: i32, tries: u32) {
     for _ in 0..tries {
         let bx = x + random.next_int_bounded(16);
@@ -495,7 +474,6 @@ pub fn cacti(canvas: &mut impl Canvas, random: &mut JavaRandom, x: i32, z: i32, 
     }
 }
 
-/// Sugar cane on the banks of water.
 pub fn sugar_cane(canvas: &mut impl Canvas, random: &mut JavaRandom, x: i32, z: i32, tries: u32) {
     for _ in 0..tries {
         let bx = x + random.next_int_bounded(16);
@@ -521,7 +499,6 @@ pub fn sugar_cane(canvas: &mut impl Canvas, random: &mut JavaRandom, x: i32, z: 
     }
 }
 
-/// Stalks of bamboo with leaves at the top.
 pub fn bamboo(canvas: &mut impl Canvas, random: &mut JavaRandom, x: i32, z: i32, tries: u32) {
     for _ in 0..tries {
         let bx = x + random.next_int_bounded(16);
@@ -544,7 +521,6 @@ pub fn bamboo(canvas: &mut impl Canvas, random: &mut JavaRandom, x: i32, z: i32,
     }
 }
 
-/// A spike of packed ice on the snow.
 pub fn ice_spike(canvas: &mut impl Canvas, random: &mut JavaRandom, x: i32, z: i32) {
     let y = canvas.ground(x, z);
 

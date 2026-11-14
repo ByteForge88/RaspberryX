@@ -41,6 +41,9 @@ class BlockLight{
 
     private static bool $taught = false;
 
+    /** @var array<int, int> */
+    private static array $filters = [];
+
     private function __construct(){
     }
 
@@ -83,7 +86,9 @@ class BlockLight{
             }
 
             foreach(self::states($registry, $name) as $state){
-                $values[BlockStateIds::get($state)] = (self::emission($state, $emission) << 4) | $filter;
+                $id = BlockStateIds::get($state);
+                $values[$id] = (self::emission($state, $emission) << 4) | $filter;
+                self::$filters[$id] = $filter;
             }
         }
 
@@ -101,6 +106,13 @@ class BlockLight{
 
         $ffi->rx_light_blocks($states, $bytes, $count);
         self::$taught = true;
+    }
+
+    /**
+     * How much light the block takes away from light passing through, 15 for a solid block.
+     */
+    public static function filter(BlockState $state) : int{
+        return self::$filters[BlockStateIds::get($state)] ?? ($state->getName() === "minecraft:air" ? 0 : 15);
     }
 
     /**

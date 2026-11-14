@@ -5,10 +5,8 @@ use crate::chunk::{Chunk, Storage, SIZE};
 
 const SUBCHUNK_VERSION: u8 = 9;
 
-/// bits per entry Bedrock accepts, smallest first
 const BIT_SIZES: [u32; 9] = [0, 1, 2, 3, 4, 5, 6, 8, 16];
 
-/// written instead of a biome storage that is identical to the previous one
 const BIOME_SAME_AS_PREVIOUS: u8 = 0xff;
 
 const LEVEL_CHUNK_PACKET: u32 = 0x3a;
@@ -48,8 +46,6 @@ impl Writer {
     }
 }
 
-/// A storage as it is sent: its used entries in the order they first appear, and each
-/// position's offset into that list.
 fn compact(storage: &Storage) -> (Vec<u32>, Option<Vec<u16>>) {
     let Some(indices) = &storage.indices else {
         return (vec![storage.palette[0]], None);
@@ -109,7 +105,6 @@ fn write_storage(writer: &mut Writer, palette: &[u32], offsets: Option<&[u16]>) 
     }
 }
 
-/// The chunk data of a LevelChunk packet, `extra` (the block entities' NBT) goes at the end.
 pub fn chunk_payload(chunk: &Chunk, extra: &[u8]) -> Vec<u8> {
     let mut writer = Writer::with_capacity(16 * 1024 + extra.len());
 
@@ -136,7 +131,6 @@ pub fn chunk_payload(chunk: &Chunk, extra: &[u8]) -> Vec<u8> {
             write_storage(&mut writer, &palette, offsets.as_deref());
         }
 
-        //only a uniform storage can be repeated, a mixed one breaks the run
         previous = uniform;
     }
 
@@ -146,9 +140,6 @@ pub fn chunk_payload(chunk: &Chunk, extra: &[u8]) -> Vec<u8> {
     writer.data
 }
 
-/// The LevelChunk packet for the chunk at x z, in a batch of its own, compressed the way the
-/// session negotiated: `threshold` is the size from which batches are compressed, negative
-/// when the session does not compress at all.
 pub fn level_chunk_batch(chunk_x: i32, chunk_z: i32, payload: &[u8], threshold: i32) -> Vec<u8> {
     let mut packet = Writer::with_capacity(payload.len() + 32);
     packet.var_uint(LEVEL_CHUNK_PACKET);

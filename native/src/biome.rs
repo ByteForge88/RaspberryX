@@ -26,18 +26,14 @@ pub enum Ground {
 }
 
 pub struct Biome {
-    /// the Bedrock biome ID
     pub id: u16,
     pub name: &'static str,
     pub top: Block,
     pub filler: Block,
     pub ground: Ground,
-    /// gets snow on the ground and ice on water
     pub snowy: bool,
-    /// trees per chunk, and which with how much weight
     pub trees: u32,
     pub tree_kinds: &'static [(Tree, u32)],
-    /// a lone tree now and then in an open biome, one chunk in this many
     pub stray_tree: u32,
     pub grass: u32,
     pub ferns: bool,
@@ -110,8 +106,6 @@ pub const SNOWY_PLAINS: Biome = biome!(12, "snowy_plains", snowy: true, stray_tr
 pub const ICE_SPIKES: Biome = biome!(140, "ice_spikes", top: blocks::SNOW, filler: blocks::DIRT, snowy: true, grass: 0, flowers: 0);
 pub const MUSHROOM_FIELDS: Biome = biome!(14, "mushroom_fields", top: blocks::MYCELIUM, ground: Ground::Mycelium, grass: 0, flowers: 0);
 
-/// The climate kinds of the classic world generator, each with the biomes of today it turns
-/// into. Which one a spot gets is up to another noise, so they come in patches.
 pub const TUNDRA: &[&Biome] = &[&SNOWY_PLAINS, &SNOWY_PLAINS, &SNOWY_TAIGA, &ICE_SPIKES];
 pub const TAIGA_KINDS: &[&Biome] = &[&TAIGA, &TAIGA, &SNOWY_TAIGA, &OLD_GROWTH_TAIGA];
 pub const SWAMP_KINDS: &[&Biome] = &[&SWAMP, &SWAMP, &MANGROVE_SWAMP];
@@ -123,7 +117,6 @@ pub const RAINFOREST: &[&Biome] = &[&JUNGLE, &JUNGLE, &BAMBOO_JUNGLE, &SPARSE_JU
 pub const PLAINS_KINDS: &[&Biome] = &[&PLAINS, &PLAINS, &SUNFLOWER_PLAINS, &MEADOW];
 pub const DESERT_KINDS: &[&Biome] = &[&DESERT, &DESERT, &BADLANDS];
 
-/// The classic lookup from temperature and rainfall (both 0 to 1) to a climate.
 pub fn climate(temperature: f64, rainfall: f64) -> &'static [&'static Biome] {
     let rainfall = rainfall * temperature;
 

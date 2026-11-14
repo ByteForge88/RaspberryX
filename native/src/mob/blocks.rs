@@ -8,15 +8,12 @@ use std::sync::{Arc, RwLock};
 
 use crate::chunk::{Chunk, MAX_Y, MIN_Y};
 
-/// the low byte is the height of the block's box in sixteenths, 0 for blocks to walk through
 pub const HEIGHT: u16 = 0x00ff;
 pub const WATER: u16 = 0x0100;
 pub const LAVA: u16 = 0x0200;
 pub const CLIMB: u16 = 0x0400;
-/// hurts to stand in or on: fire, cactus, magma, berry bushes
 pub const DAMAGE: u16 = 0x0800;
 pub const GRASS_BLOCK: u16 = 0x1000;
-/// plants a sheep eats
 pub const GRASS_PLANT: u16 = 0x2000;
 pub const FIRE: u16 = 0x4000;
 
@@ -36,8 +33,6 @@ pub fn learn(entries: impl Iterator<Item = (u32, u16)>) {
     *guard = Some(Arc::new(table));
 }
 
-/// The blocks around the mobs for one tick: snapshots of the chunks, so the main thread can
-/// keep changing the world while the mobs think.
 pub struct View {
     chunks: HashMap<(i32, i32), Chunk>,
     flags: Arc<HashMap<u32, u16>>,
@@ -45,7 +40,6 @@ pub struct View {
     last: Cell<Option<(i32, i32, *const Chunk)>>,
 }
 
-//the pointer in `last` only ever points into `chunks`, which moves with the view
 unsafe impl Send for View {}
 
 impl View {
@@ -78,15 +72,11 @@ impl View {
                 if unknown.len() < 4096 && !unknown.contains(&state) {
                     unknown.push(state);
                 }
-
-                //a wall until PHP says what it is, so nothing walks into the unknown
                 FULL
             }
         }
     }
 
-    /// The flags of the block at a position. Chunks that are not loaded are walls, above and
-    /// below the world is air.
     pub fn block(&self, x: i32, y: i32, z: i32) -> u16 {
         if !(MIN_Y..=MAX_Y).contains(&y) {
             return 0;
@@ -100,7 +90,6 @@ impl View {
         let state = chunk.get_block(lx, y, lz, 0);
         let mut flags = if state == chunk.air { 0 } else { self.lookup(state) };
 
-        //water in the second layer of a waterlogged block
         let water = chunk.get_block(lx, y, lz, 1);
 
         if water != chunk.air {

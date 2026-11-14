@@ -27,7 +27,6 @@ impl JavaRandom {
         self.next(32)
     }
 
-    /// A number from 0 to bound - 1. A bound of 0 or less gives 0 instead of throwing.
     pub fn next_int_bounded(&mut self, bound: i32) -> i32 {
         if bound <= 0 {
             return 0;
@@ -70,7 +69,6 @@ mod tests {
 
     #[test]
     fn matches_java() {
-        //what new Random(42) gives in Java
         assert_eq!(JavaRandom::new(42).next_int(), -1170105035);
         assert_eq!(JavaRandom::new(42).next_int_bounded(10), 0);
 

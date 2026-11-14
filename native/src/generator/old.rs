@@ -22,7 +22,6 @@ pub const SIZE: i32 = SIZE_CHUNKS * 16;
 pub const HEIGHT: i32 = 128;
 pub const SEA_LEVEL: i32 = 64;
 
-/// how far a cave may reach into other chunks, in chunks
 const CAVE_RANGE: i32 = 8;
 
 const TERRACOTTA_BANDS: [Block; 12] = [
@@ -30,7 +29,6 @@ const TERRACOTTA_BANDS: [Block; 12] = [
     blocks::RED_TERRACOTTA, blocks::TERRACOTTA, blocks::WHITE_TERRACOTTA, blocks::ORANGE_TERRACOTTA, blocks::LIGHT_GRAY_TERRACOTTA, blocks::TERRACOTTA,
 ];
 
-/// The whole world while it is made: blocks x, then z, then y, and a biome per column.
 struct World {
     blocks: Vec<Block>,
     biomes: Vec<&'static Biome>,
@@ -44,7 +42,6 @@ fn index(x: i32, y: i32, z: i32) -> usize {
 impl Canvas for World {
     fn get(&self, x: i32, y: i32, z: i32) -> Block {
         if !(0..SIZE).contains(&x) || !(0..SIZE).contains(&z) || !(0..HEIGHT).contains(&y) {
-            //outside counts as solid so features do not spill over the edge
             return if (0..HEIGHT).contains(&y) { blocks::BARRIER } else { blocks::AIR };
         }
 
@@ -68,7 +65,6 @@ impl World {
     }
 }
 
-/// The noise of the classic generator, made from the seed in its order.
 struct Noises {
     min_limit: OctavePerlin,
     max_limit: OctavePerlin,
@@ -81,14 +77,12 @@ struct Noises {
     temperature: OctaveSimplex,
     rainfall: OctaveSimplex,
     climate_detail: OctaveSimplex,
-    /// bends the edges of the patches the modern biomes come in
     warp_x: OctavePerlin,
     warp_z: OctavePerlin,
     ground: OctavePerlin,
     seed: i64,
 }
 
-/// how wide the patches of one modern biome are, about
 const VARIANT_CELL: f64 = 56.0;
 
 impl Noises {
@@ -114,8 +108,6 @@ impl Noises {
         }
     }
 
-    /// Temperature and rainfall (0 to 1) and the biome for each column of a 16 x 16 area,
-    /// laid out x then z.
     fn climate(&self, x: i32, z: i32) -> (Vec<f64>, Vec<f64>, Vec<&'static Biome>) {
         let (fx, fz) = (x as f64, z as f64);
         let mut temperatures = self.temperature.grid(fx, fz, 16, 16, 0.025, 0.025, 0.25);
@@ -142,8 +134,6 @@ impl Noises {
         (temperatures, rainfalls, biomes)
     }
 
-    /// Which of a climate's modern biomes a spot gets: the world is split into cells around
-    /// scattered points, each cell takes the biome its point rolls.
     fn variant(&self, x: f64, z: f64) -> usize {
         let (cell_x, cell_z) = ((x / VARIANT_CELL).floor() as i64, (z / VARIANT_CELL).floor() as i64);
         let mut nearest = (f64::MAX, 0u64);
@@ -164,7 +154,6 @@ impl Noises {
         (nearest.1 >> 32) as usize
     }
 
-    /// The 5 x 17 x 5 density grid of a chunk: positive is solid.
     fn density(&self, chunk_x: i32, chunk_z: i32, temperatures: &[f64], rainfalls: &[f64]) -> Vec<f64> {
         const SX: usize = 5;
         const SY: usize = 17;
@@ -223,7 +212,6 @@ impl Noises {
                     let blend = (main[index] / 10.0 + 1.0) / 2.0;
                     let mut value = if blend < 0.0 { low } else if blend > 1.0 { high } else { low + (high - low) * blend } - falloff;
 
-                    //the top of the world closes off
                     if j > SY - 4 {
                         let top = (j - (SY - 4)) as f64 / 3.0;
                         value = value * (1.0 - top) - 10.0 * top;
@@ -248,12 +236,10 @@ fn hash(seed: i64, x: i64, z: i64) -> u64 {
     value ^ (value >> 33)
 }
 
-/// The chunk's random, seeded from its position the classic way.
 fn chunk_random(chunk_x: i32, chunk_z: i32) -> JavaRandom {
     JavaRandom::new((chunk_x as i64).wrapping_mul(341_873_128_712).wrapping_add((chunk_z as i64).wrapping_mul(132_897_987_541)))
 }
 
-/// Stone, water and ice from the density grid, the grid stretched over the chunk.
 fn terrain(column: &mut [Block], density: &[f64], temperatures: &[f64]) {
     const SY: usize = 17;
     const SZ: usize = 5;
@@ -309,7 +295,6 @@ fn terrain(column: &mut [Block], density: &[f64], temperatures: &[f64]) {
     }
 }
 
-/// Grass, sand and the rest over the stone, bedrock at the bottom.
 fn surface(column: &mut [Block], noises: &Noises, random: &mut JavaRandom, chunk_x: i32, chunk_z: i32, biomes: &[&'static Biome]) {
     let scale = 0.03125;
     let (x0, z0) = ((chunk_x * 16) as f64, (chunk_z * 16) as f64);
@@ -377,7 +362,6 @@ fn surface(column: &mut [Block], noises: &Noises, random: &mut JavaRandom, chunk
                     remaining = if biome.ground == Ground::Badlands { depth * 4 } else { depth };
                     column[y as usize] = if y >= SEA_LEVEL - 1 { top } else { filler };
 
-                    //what grows on top does not grow under water
                     if y < SEA_LEVEL - 1 && blocks::is_soil(column[y as usize]) {
                         column[y as usize] = blocks::DIRT;
                     }
@@ -398,7 +382,6 @@ fn surface(column: &mut [Block], noises: &Noises, random: &mut JavaRandom, chunk
     }
 }
 
-/// The classic caves: long winding tunnels and the odd round room, lava near the bottom.
 struct Caves<'a> {
     random: JavaRandom,
     column: &'a mut [Block],
@@ -535,7 +518,6 @@ impl Caves<'_> {
         let max_z = ((z + radius).floor() as i32 - base_z + 1).min(16);
         let at = |bx: i32, by: i32, bz: i32| ((bx * 16 + bz) * HEIGHT + by) as usize;
 
-        //caves stop at water
         for bx in min_x..max_x {
             for bz in min_z..max_z {
                 for by in (min_y - 1..=max_y + 1).rev() {
@@ -579,7 +561,6 @@ impl Caves<'_> {
                         } else {
                             self.column[at(bx, by, bz)] = blocks::AIR;
 
-                            //the grass over a cave comes down with it onto the dirt below
                             if grass && by > 0 && self.column[at(bx, by - 1, bz)] == blocks::DIRT {
                                 self.column[at(bx, by - 1, bz)] = blocks::GRASS_BLOCK;
                             }
@@ -591,7 +572,6 @@ impl Caves<'_> {
     }
 }
 
-/// Makes one chunk's terrain: its blocks x, then z, then y, and its biomes.
 fn make_chunk(noises: &Noises, seed: i64, chunk_x: i32, chunk_z: i32) -> (Vec<Block>, Vec<&'static Biome>) {
     let mut random = chunk_random(chunk_x, chunk_z);
     let (temperatures, rainfalls, mut biomes) = noises.climate(chunk_x * 16, chunk_z * 16);
@@ -600,7 +580,6 @@ fn make_chunk(noises: &Noises, seed: i64, chunk_x: i32, chunk_z: i32) -> (Vec<Bl
 
     terrain(&mut column, &density, &temperatures);
 
-    //the sea gets ocean biomes, the shore beaches
     for x in 0..16usize {
         for z in 0..16usize {
             let base = (x * 16 + z) * HEIGHT as usize;
@@ -647,8 +626,6 @@ fn pick_tree(random: &mut JavaRandom, kinds: &[(Tree, u32)]) -> Tree {
     kinds[0].0
 }
 
-/// Ores, trees, plants and snow for one chunk, the classic way: spread over the 16 x 16 area
-/// half a chunk further on, so they reach into the neighbours.
 fn populate(world: &mut World, noises: &Noises, seed: i64, chunk_x: i32, chunk_z: i32) {
     let mut random = JavaRandom::new(seed);
     let a = random.next_long() / 2 * 2 + 1;
@@ -673,7 +650,6 @@ fn populate(world: &mut World, noises: &Noises, seed: i64, chunk_x: i32, chunk_z
     for (ore, count, size, max_y) in ores {
         for _ in 0..count {
             let x = x0 + random.next_int_bounded(16);
-            //lapis is most common in the middle of its range
             let y = if max_y == 0 { random.next_int_bounded(16) + random.next_int_bounded(16) } else { random.next_int_bounded(max_y) };
             let z = z0 + random.next_int_bounded(16);
             features::ore(world, &mut random, x, y, z, ore, size);
@@ -682,7 +658,6 @@ fn populate(world: &mut World, noises: &Noises, seed: i64, chunk_x: i32, chunk_z
 
     let (cx, cz) = (x0 + 8, z0 + 8);
 
-    //trees: a few more or less depending on the tree noise
     let noise = noises.trees.grid_2d(cx as f64 * 0.5, cz as f64 * 0.5, 1, 1, 1.0, 1.0)[0];
     let extra = ((noise / 8.0 + random.next_double() * 4.0 + 4.0) / 3.0) as i32;
     let mut trees = if biome.trees > 0 { biome.trees as i32 + extra - 3 } else { 0 };
@@ -755,7 +730,6 @@ fn populate(world: &mut World, noises: &Noises, seed: i64, chunk_x: i32, chunk_z
     }
 }
 
-/// Snow on cold ground and ice on cold water, over the whole world at the end.
 fn freeze(world: &mut World) {
     for x in 0..SIZE {
         for z in 0..SIZE {
@@ -775,7 +749,6 @@ fn freeze(world: &mut World) {
     }
 }
 
-/// A spot near the middle to spawn: dry ground under open sky.
 fn find_spawn(world: &World) -> (i32, i32, i32) {
     let middle = SIZE / 2;
 
@@ -800,7 +773,6 @@ fn find_spawn(world: &World) -> (i32, i32, i32) {
     (middle, world.top(middle, middle), middle)
 }
 
-/// One chunk of the finished world as storage, with `states` turning blocks into state IDs.
 fn to_chunk(world: &World, chunk_x: i32, chunk_z: i32, states: &[u32], air: u32) -> Chunk {
     let mut chunk = Chunk::new(air, biome::PLAINS.id as u32);
     let (x0, z0) = (chunk_x * 16, chunk_z * 16);
@@ -849,12 +821,10 @@ fn to_chunk(world: &World, chunk_x: i32, chunk_z: i32, states: &[u32], air: u32)
 }
 
 pub struct Generated {
-    /// x * SIZE_CHUNKS + z
     pub chunks: Vec<Chunk>,
     pub spawn: (i32, i32, i32),
 }
 
-/// Makes the whole Old world. `states` holds the state ID of each block in blocks::STATES.
 pub fn generate(seed: i64, states: &[u32]) -> Generated {
     let noises = Noises::new(seed);
     let threads = thread::available_parallelism().map_or(2, |cores| cores.get()).clamp(1, 16);
@@ -913,7 +883,6 @@ pub fn generate(seed: i64, states: &[u32]) -> Generated {
     Generated { chunks, spawn }
 }
 
-/// A chunk outside the world: empty, with the barrier wall where it borders the world.
 pub fn border(chunk: &mut Chunk, chunk_x: i32, chunk_z: i32, barrier: u32) {
     for x in 0..16 {
         for z in 0..16 {
@@ -945,12 +914,10 @@ mod tests {
         let (x, y, z) = generated.spawn;
         assert!((0..SIZE).contains(&x) && (0..SIZE).contains(&z) && y > SEA_LEVEL);
 
-        //bedrock at the bottom everywhere, nothing at or above 128
         let chunk = &generated.chunks[17];
         assert_eq!(chunk.get_block(3, 0, 3, 0), states[blocks::BEDROCK as usize]);
         assert_eq!(chunk.get_block(3, 128, 3, 0), states[blocks::AIR as usize]);
 
-        //the same seed makes the same world
         let again = generate(12345, &states);
         assert_eq!(again.spawn, generated.spawn);
         assert_eq!(again.chunks[100].get_block(5, 70, 9, 0), generated.chunks[100].get_block(5, 70, 9, 0));
@@ -972,7 +939,6 @@ mod tests {
 mod map {
     use super::*;
 
-    /// RX_MAP=path cargo test --release dump_map -- --ignored: a top-down picture of a world.
     #[test]
     #[ignore]
     fn dump_map() {

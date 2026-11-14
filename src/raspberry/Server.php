@@ -214,6 +214,7 @@ class Server{
         "gamemode" => "survival",
         "difficulty" => "normal",
         "view-distance" => 8,
+        "tick-distance" => 4,
         "world-name" => "world",
         "world-generator" => GeneratorFactory::DEFAULT,
         "flat-layers" => FlatGenerator::DEFAULT_PRESET,
@@ -247,6 +248,7 @@ class Server{
     private string $serverName = self::NAME;
     private int $maxPlayers = 20;
     private int $viewDistance = 8;
+    private int $tickDistance = 4;
     private GameMode $defaultGameMode = GameMode::SURVIVAL;
 
     private Difficulty $difficulty = Difficulty::NORMAL;
@@ -564,6 +566,13 @@ class Server{
      */
     public function getViewDistance() : int{
         return $this->viewDistance;
+    }
+
+    /**
+     * How far from a player, in chunks, blocks get random ticks: crops grow, leaves decay.
+     */
+    public function getTickDistance() : int{
+        return $this->tickDistance;
     }
 
     public function getDefaultGameMode() : GameMode{
@@ -1006,6 +1015,7 @@ class Server{
         $gameMode = GameMode::fromString($this->properties->getString("gamemode"));
         $difficulty = Difficulty::fromString($this->properties->getString("difficulty"));
         $viewDistance = $this->properties->getInt("view-distance");
+        $tickDistance = $this->properties->getInt("tick-distance");
         $worldName = $this->properties->getString("world-name");
         $worldGenerator = $this->properties->getString("world-generator");
         $flatLayers = $this->properties->getString("flat-layers");
@@ -1044,6 +1054,10 @@ class Server{
             throw new UnexpectedValueException("view-distance must be between 2 and 32 chunks");
         }
 
+        if($tickDistance < 4 || $tickDistance > 12){
+            throw new UnexpectedValueException("tick-distance must be between 4 and 12 chunks");
+        }
+
         if(!WorldManager::isValidName($worldName)){
             throw new UnexpectedValueException("world-name must be 1-64 letters, digits, spaces, '_' or '-', starting with a letter or digit");
         }
@@ -1061,6 +1075,7 @@ class Server{
         $this->defaultGameMode = $gameMode;
         $this->difficulty = $difficulty;
         $this->viewDistance = $viewDistance;
+        $this->tickDistance = $tickDistance;
         $this->keepInventory = $keepInventory;
         $this->pvp = $pvp;
         $this->allowCheats = $allowCheats;

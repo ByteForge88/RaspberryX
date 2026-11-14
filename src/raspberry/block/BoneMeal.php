@@ -6,6 +6,8 @@ namespace raspberry\block;
 
 use raspberry\Server;
 
+use raspberry\block\growth\Saplings;
+
 use raspberry\network\mcpe\protocol\LevelEventPacket;
 use raspberry\network\mcpe\protocol\types\LevelEvent;
 
@@ -37,6 +39,7 @@ class BoneMeal{
             $name === BlockIds::SHORT_GRASS => self::growTall($world, $x, $y, $z, BlockIds::TALL_GRASS),
             $name === BlockIds::FERN => self::growTall($world, $x, $y, $z, BlockIds::LARGE_FERN),
             $name === BlockIds::GRASS_BLOCK => self::growOnGrass($world, $x, $y, $z),
+            Saplings::isSapling($name) => self::growSapling($world, $x, $y, $z, $block),
             default => false
         };
 
@@ -55,6 +58,14 @@ class BoneMeal{
         }
 
         $world->setBlock($x, $y, $z, $block->withProperty($property, min($current + $stages, $max)));
+
+        return true;
+    }
+
+    private static function growSapling(World $world, int $x, int $y, int $z, BlockState $sapling) : bool{
+        if(mt_rand(0, 99) < 45){
+            Saplings::advance($world, $x, $y, $z, $sapling);
+        }
 
         return true;
     }

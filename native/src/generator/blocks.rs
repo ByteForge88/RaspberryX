@@ -1,4 +1,4 @@
-//! The blocks generators place. Generators work with these small numbers; PHP turns each
+//! The blocks generators place. Generators work with these small numbers. PHP turns each
 //! state string into its state ID once, when the generator is made.
 
 pub type Block = u8;
@@ -11,7 +11,6 @@ macro_rules! blocks {
 
         $(pub const $name: Block = Index::$name as Block;)*
 
-        /// Block state strings in the order of the numbers above.
         pub const STATES: &[&str] = &[$($state,)*];
     };
 }
@@ -165,10 +164,12 @@ blocks! {
     COCOA_3_0 = "minecraft:cocoa[age=0,direction=3]",
     COCOA_3_1 = "minecraft:cocoa[age=1,direction=3]",
     COCOA_3_2 = "minecraft:cocoa[age=2,direction=3]",
+    PALE_OAK_LOG = "minecraft:pale_oak_log[pillar_axis=y]",
+    PALE_OAK_LEAVES = "minecraft:pale_oak_leaves[persistent_bit=false,update_bit=false]",
+    PALE_HANGING_MOSS = "minecraft:pale_hanging_moss[tip=false]",
+    PALE_HANGING_MOSS_TIP = "minecraft:pale_hanging_moss[tip=true]",
 }
 
-/// A cap block of a huge mushroom, `bits` being which sides show the cap, as the game numbers
-/// them from 0 to 15.
 pub fn brown_mushroom_block(bits: u8) -> Block {
     BROWN_MUSHROOM_BLOCK_0 + bits.min(15)
 }
@@ -181,8 +182,6 @@ pub fn is_mushroom_block(block: Block) -> bool {
     (BROWN_MUSHROOM_BLOCK_0..=MUSHROOM_STEM).contains(&block)
 }
 
-/// Cocoa on the side of a jungle log: `direction` from 0 to 3 points at the log (south, west,
-/// north, east), `age` from 0 to 2.
 pub fn cocoa(direction: u8, age: u8) -> Block {
     COCOA_0_0 + direction.min(3) * 3 + age.min(2)
 }
@@ -195,17 +194,16 @@ pub fn count() -> usize {
     STATES.len()
 }
 
-/// Blocks the sun and the beam of a feature cannot go through, and that plants stand on.
 pub fn is_solid(block: Block) -> bool {
     !matches!(block, AIR | WATER | LAVA | ICE | SNOW_LAYER | BARRIER) && !is_plant(block) && !is_leaves(block) && !is_vine(block)
 }
 
 pub fn is_leaves(block: Block) -> bool {
-    matches!(block, OAK_LEAVES | BIRCH_LEAVES | SPRUCE_LEAVES | JUNGLE_LEAVES | ACACIA_LEAVES | DARK_OAK_LEAVES | CHERRY_LEAVES | MANGROVE_LEAVES)
+    matches!(block, OAK_LEAVES | BIRCH_LEAVES | SPRUCE_LEAVES | JUNGLE_LEAVES | ACACIA_LEAVES | DARK_OAK_LEAVES | CHERRY_LEAVES | MANGROVE_LEAVES | PALE_OAK_LEAVES)
 }
 
 pub fn is_log(block: Block) -> bool {
-    matches!(block, OAK_LOG | BIRCH_LOG | SPRUCE_LOG | JUNGLE_LOG | ACACIA_LOG | DARK_OAK_LOG | CHERRY_LOG | MANGROVE_LOG)
+    matches!(block, OAK_LOG | BIRCH_LOG | SPRUCE_LOG | JUNGLE_LOG | ACACIA_LOG | DARK_OAK_LOG | CHERRY_LOG | MANGROVE_LOG | PALE_OAK_LOG)
 }
 
 pub fn is_vine(block: Block) -> bool {
@@ -222,12 +220,10 @@ pub fn is_plant(block: Block) -> bool {
     )
 }
 
-/// What a tree can grow through, and a plant be replaced by.
 pub fn is_replaceable(block: Block) -> bool {
     matches!(block, AIR | SNOW_LAYER) || is_leaves(block) || is_plant(block) || is_vine(block)
 }
 
-/// Ground grass, flowers and trees grow on.
 pub fn is_soil(block: Block) -> bool {
     matches!(block, GRASS_BLOCK | DIRT | COARSE_DIRT | PODZOL | MYCELIUM)
 }
