@@ -40,6 +40,19 @@ class WorldMetadata{
     /** @var array<string, bool|int> */
     public array $gameRules = [];
 
+    public bool $raining = false;
+
+    /** ticks until it starts or stops raining, 0 to pick a new time */
+    public int $rainTime = 0;
+
+    public bool $thundering = false;
+
+    /** ticks until a storm starts or stops, 0 to pick a new time */
+    public int $thunderTime = 0;
+
+    /** ticks of clear weather a command asked for */
+    public int $clearWeatherTime = 0;
+
     /**
      * @return array<string, mixed>
      */
@@ -54,7 +67,12 @@ class WorldMetadata{
             "seed" => $this->seed,
             "time" => $this->time,
             "gameTime" => $this->gameTime,
-            "gameRules" => (object) $this->gameRules
+            "gameRules" => (object) $this->gameRules,
+            "raining" => $this->raining,
+            "rainTime" => $this->rainTime,
+            "thundering" => $this->thundering,
+            "thunderTime" => $this->thunderTime,
+            "clearWeatherTime" => $this->clearWeatherTime
         ] + ($this->spawn === null ? [] : ["spawn" => [$this->spawn->x, $this->spawn->y, $this->spawn->z]]);
     }
 
@@ -88,7 +106,17 @@ class WorldMetadata{
             $metadata->seed = $data["seed"];
         }
 
-        foreach(["time", "gameTime"] as $key){
+        foreach(["raining", "thundering"] as $key){
+            if(isset($data[$key])){
+                if(!is_bool($data[$key])){
+                    throw new UnexpectedValueException("World metadata '{$key}' must be true or false");
+                }
+
+                $metadata->{$key} = $data[$key];
+            }
+        }
+
+        foreach(["time", "gameTime", "rainTime", "thunderTime", "clearWeatherTime"] as $key){
             if(isset($data[$key])){
                 if(!is_int($data[$key]) || $data[$key] < 0){
                     throw new UnexpectedValueException("World metadata '{$key}' must be a whole number of 0 or more");

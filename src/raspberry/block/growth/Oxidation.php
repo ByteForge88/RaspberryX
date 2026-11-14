@@ -118,6 +118,15 @@ class Oxidation implements RandomTickBehavior{
         }
     }
 
+    /**
+     * The copper with its weathering stripped off, what lightning does to it. Null when it is
+     * not weathered copper.
+     */
+    public static function unweathered(BlockState $state) : ?BlockState{
+        $stage = self::stages()[$state->getName()] ?? null;
+        return $stage === null || $stage[1] === 0 ? null : self::rename($state, $stage[0]);
+    }
+
     private static function rename(BlockState $state, string $name) : BlockState{
         $renamed = new BlockState($name, $state->getProperties());
         $registry = Server::getInstance()->getBlockStateRegistry();

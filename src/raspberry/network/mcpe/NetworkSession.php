@@ -1448,6 +1448,9 @@ class NetworkSession{
         $startGame->worldName = $this->server->getServerName();
         $startGame->levelId = $world->getName();
         $startGame->time = $world->getTime();
+        $startGame->rainLevel = $world->getWeather()->getRainLevel();
+        $startGame->lightningLevel = $world->getWeather()->getThunderLevel();
+        $startGame->serverChunkTickRadius = $this->server->getTickDistance();
         $startGame->playerPermissions = $this->player->isOp() ? StartGamePacket::PERMISSION_OPERATOR : StartGamePacket::PERMISSION_MEMBER;
         $startGame->blockDefinitions = BlockDefinitions::get();
 

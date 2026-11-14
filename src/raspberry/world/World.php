@@ -20,6 +20,7 @@ use raspberry\world\format\io\WorldProvider;
 use raspberry\world\generator\AsyncGenerator;
 use raspberry\world\generator\Generator;
 use raspberry\world\light\LightEngine;
+use raspberry\world\liquid\LiquidEngine;
 
 use raspberry\entity\Mob;
 use raspberry\entity\Entity;
@@ -107,6 +108,10 @@ class World{
 
     private RandomTicker $randomTicker;
 
+    private LiquidEngine $liquids;
+
+    private Weather $weather;
+
     private GameRules $gameRules;
 
     public function __construct(WorldMetadata $metadata, Generator $generator, WorldProvider $provider){
@@ -117,6 +122,8 @@ class World{
         $this->mobEngine = new MobEngine($this);
         $this->light = new LightEngine();
         $this->randomTicker = new RandomTicker($this);
+        $this->liquids = new LiquidEngine($this);
+        $this->weather = new Weather($this, $metadata);
         $this->gameRules = new GameRules($metadata->gameRules);
     }
 
@@ -196,12 +203,22 @@ class World{
 
     /**
      * How much darker than full daylight the sky is, 0 at day to 11 at night. Rain and thunder
-     * darken it too, once there is weather.
+     * darken it too.
      */
     public function getSkyDarken() : int{
         $brightness = 0.5 + 2.0 * max(-0.25, min(0.25, cos($this->getSunAngle())));
-
+        $brightness *= 1.0 - $this->weather->getRainLevel() * 5.0 / 16.0;
+        $brightness *= 1.0 - $this->weather->getThunderLevel() * 5.0 / 16.0;
         return (int) ((1.0 - $brightness) * 11.0);
+    }
+
+    public function getWeather() : Weather{
+        return $this->weather;
+    }
+
+    /** whether rain falls on the block, see Weather::isRainingAt() */
+    public function isRainingAt(int $x, int $y, int $z) : bool{
+        return $this->weather->isRainingAt($x, $y, $z);
     }
 
     /** true from sunrise to sunset, when the sky is bright enough to burn the undead */
@@ -320,6 +337,7 @@ class World{
      */
     private function onChunkLoaded(Chunk $chunk, bool $generated) : void{
         $this->light->addChunk($chunk);
+        $this->liquids->addChunk($chunk);
         $this->mobEngine->setChunk($chunk->getX(), $chunk->getZ(), $chunk);
         $this->redstoneUpdater->findDaylightDetectors($chunk);
 
@@ -500,6 +518,7 @@ class World{
         $this->mobEngine->setChunk($chunkX, $chunkZ, null);
         $this->redstoneUpdater->forgetChunk($chunkX, $chunkZ);
         $this->light->removeChunk($chunkX, $chunkZ);
+        $this->liquids->removeChunk($chunkX, $chunkZ);
         unset($this->chunks[$key]);
     }
 
@@ -546,6 +565,7 @@ class World{
         $this->provider->close();
         $this->mobEngine->close();
         $this->light->close();
+        $this->liquids->close();
         $this->chunks = [];
         $this->closed = true;
         return $saved;
@@ -581,6 +601,7 @@ class World{
         if(!$oldState->equals($block)){
             $this->redstoneUpdater->onBlockChanged($x, $y, $z, $oldState, $block);
             $this->randomTicker->onBlockChanged($x, $y, $z, $oldState, $block);
+            $this->liquids->onBlockChanged($x, $y, $z);
         }
     }
 
@@ -749,6 +770,8 @@ class World{
 
         $this->redstoneUpdater->tick($currentTick);
         $this->randomTicker->tick();
+        $this->liquids->tick($currentTick);
+        $this->weather->tick($this->randomTicker->getTickingChunks());
 
         foreach($this->scheduledUpdates as $key => [$tick, $update]){
             if($tick <= $currentTick){

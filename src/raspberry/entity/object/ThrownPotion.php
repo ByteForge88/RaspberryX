@@ -7,9 +7,10 @@ namespace raspberry\entity\object;
 use raspberry\block\BlockCollision;
 use raspberry\block\entity\Campfire;
 
-use raspberry\entity\Entity;
 use raspberry\entity\Human;
 use raspberry\entity\Living;
+use raspberry\entity\Entity;
+use raspberry\entity\EntityIds;
 use raspberry\entity\effect\EffectInstance;
 
 use raspberry\item\Item;
@@ -69,7 +70,7 @@ class ThrownPotion extends Entity{
     }
 
     public function getNetworkTypeId() : string{
-        return $this->isLingering() ? "minecraft:lingering_potion" : "minecraft:splash_potion";
+        return $this->isLingering() ? EntityIds::LINGERING_POTION : EntityIds::SPLASH_POTION;
     }
 
     public function isLingering() : bool{

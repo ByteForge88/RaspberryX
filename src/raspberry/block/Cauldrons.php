@@ -27,6 +27,8 @@ use function in_array;
 use function intdiv;
 use function max;
 use function min;
+use function mt_getrandmax;
+use function mt_rand;
 use function preg_match;
 
 class Cauldrons{
@@ -136,7 +138,7 @@ class Cauldrons{
                     $cauldron->clear();
                     self::update($world, $x, $y, $z, $block, $cauldron, self::LIQUID_WATER, 0);
                     self::effects($world, $x, $y, $z, $event, $sound);
-                    self::exchange($player, $held, new Item($bucket));
+                    self::exchange($player, $held, new Item((string) $bucket));
                     return true;
                 }
             }
@@ -291,6 +293,28 @@ class Cauldrons{
         }
 
         return true;
+    }
+
+    /**
+     * Rain and snow fill an open cauldron a little now and then: rain with water, snow with
+     * powder snow. Potions and dyed water stay as they are.
+     */
+    public static function catchPrecipitation(World $world, int $x, int $y, int $z, BlockState $block, bool $snow) : void{
+        $liquid = $snow ? self::LIQUID_POWDER_SNOW : self::LIQUID_WATER;
+        $level = (int) $block->getProperty(BlockProperties::FILL_LEVEL);
+        $cauldron = $world->getBlockEntity($x, $y, $z);
+
+        if(!$cauldron instanceof Cauldron || $level >= self::MAX_LEVEL || $cauldron->hasPotion() || $cauldron->getColor() !== null){
+            return;
+        }
+
+        if($level > 0 && $block->getProperty(BlockProperties::CAULDRON_LIQUID) !== $liquid){
+            return;
+        }
+
+        if(mt_rand() / mt_getrandmax() < ($snow ? 0.1 : 0.05)){
+            self::update($world, $x, $y, $z, $block, $cauldron, $liquid, $level + 1);
+        }
     }
 
     /**

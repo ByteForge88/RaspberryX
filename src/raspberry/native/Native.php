@@ -20,7 +20,7 @@ use const PHP_OS_FAMILY;
 class Native{
 
     /** the library has to speak this version of the functions below */
-    public const ABI_VERSION = 7;
+    public const ABI_VERSION = 8;
 
     private const HEADER = <<<'C'
         uint32_t rx_version(void);
@@ -70,6 +70,14 @@ class Native{
         void rx_random_tick_blocks(const uint32_t* states, size_t count);
         int32_t rx_random_tick(const uint64_t* chunks, size_t count, uint32_t per_subchunk, uint64_t seed, char** out, size_t* out_length);
         int32_t rx_tree_grow(int32_t kind, int32_t x, int32_t y, int32_t z, int64_t seed, const uint64_t* chunks, const int32_t* positions, size_t chunk_count, const int32_t* cleared, size_t cleared_count, const uint32_t* states, size_t state_count, const uint32_t* soil, size_t soil_count, char** out, size_t* out_length);
+        
+        uint64_t rx_liquid_new(void);
+        void rx_liquid_free(uint64_t world);
+        void rx_liquid_blocks(const uint32_t* states, const uint8_t* kinds, const uint8_t* levels, const uint32_t* extras, size_t count, const uint32_t* results);
+        int32_t rx_liquid_add_chunk(uint64_t world, int32_t chunk_x, int32_t chunk_z, uint64_t chunk, uint64_t now);
+        void rx_liquid_remove_chunk(uint64_t world, int32_t chunk_x, int32_t chunk_z);
+        void rx_liquid_changed(uint64_t world, int32_t x, int32_t y, int32_t z, uint64_t now);
+        int32_t rx_liquid_tick(uint64_t world, uint64_t now, char** out, size_t* out_length);
         C;
 
     private static ?FFI $ffi = null;

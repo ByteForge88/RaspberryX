@@ -34,6 +34,7 @@ class DamageSource{
     public const CAUSE_WITHER = 17;
     public const CAUSE_THORNS = 18;
     public const CAUSE_MAGMA = 19;
+    public const CAUSE_LIGHTNING = 20;
 
     private int $cause;
 
@@ -42,7 +43,7 @@ class DamageSource{
     private ?Entity $attacker;
 
     public function __construct(int $cause, float $amount, ?Entity $attacker = null){
-        if($cause < self::CAUSE_CONTACT || $cause > self::CAUSE_MAGMA){
+        if($cause < self::CAUSE_CONTACT || $cause > self::CAUSE_LIGHTNING){
             throw new InvalidArgumentException("Unknown damage cause {$cause}");
         }
 
@@ -93,7 +94,8 @@ class DamageSource{
             self::CAUSE_BLOCK_EXPLOSION,
             self::CAUSE_ENTITY_EXPLOSION,
             self::CAUSE_THORNS,
-            self::CAUSE_MAGMA => true,
+            self::CAUSE_MAGMA,
+            self::CAUSE_LIGHTNING => true,
             default => false
         };
     }
@@ -117,6 +119,7 @@ class DamageSource{
             self::CAUSE_WITHER => "death.attack.wither",
             self::CAUSE_THORNS => "death.attack.thorns",
             self::CAUSE_MAGMA => "death.attack.magma",
+            self::CAUSE_LIGHTNING => "death.attack.lightningBolt",
             default => "death.attack.generic"
         };
     }

@@ -195,8 +195,8 @@ class Dispensing{
         $block = $world->getBlock($x, $y, $z);
 
         [$filled, $sound] = match(true){
-            $block->getName() === BlockIds::WATER && (int) $block->getProperty(BlockProperties::LIQUID_DEPTH) === 0 => [ItemIds::WATER_BUCKET, LevelSoundEvent::BUCKET_FILL_WATER],
-            $block->getName() === BlockIds::LAVA && (int) $block->getProperty(BlockProperties::LIQUID_DEPTH) === 0 => [ItemIds::LAVA_BUCKET, LevelSoundEvent::BUCKET_FILL_LAVA],
+            Buckets::isSource($block, BlockIds::WATER, BlockIds::FLOWING_WATER) => [ItemIds::WATER_BUCKET, LevelSoundEvent::BUCKET_FILL_WATER],
+            Buckets::isSource($block, BlockIds::LAVA, BlockIds::FLOWING_LAVA) => [ItemIds::LAVA_BUCKET, LevelSoundEvent::BUCKET_FILL_LAVA],
             $block->getName() === BlockIds::POWDER_SNOW => [ItemIds::POWDER_SNOW_BUCKET, LevelSoundEvent::BUCKET_FILL_POWDER_SNOW],
             default => [null, null]
         };

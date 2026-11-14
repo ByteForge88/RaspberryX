@@ -66,6 +66,10 @@ class StartGamePacket implements Packet{
     /** the world clock, see World::getTime() */
     public int $time = 0;
 
+    public float $rainLevel = 0.0;
+
+    public float $lightningLevel = 0.0;
+
     public string $worldName = "";
     public string $levelId = "";
 
@@ -127,8 +131,8 @@ class StartGamePacket implements Packet{
         $writer->writeUnsignedVarInt(0); //education edition offer
         $writer->writeBool(false); //education features enabled
         $writer->writeString(""); //education product ID
-        $writer->writeFloat(0.0); //rain level
-        $writer->writeFloat(0.0); //lightning level
+        $writer->writeFloat($this->rainLevel);
+        $writer->writeFloat($this->lightningLevel);
         $writer->writeBool(false); //confirmed platform locked content
         $writer->writeBool(true); //multiplayer game
         $writer->writeBool(true); //LAN broadcast

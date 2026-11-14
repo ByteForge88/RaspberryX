@@ -122,6 +122,8 @@ use raspberry\command\defaults\GiveCommand;
 use raspberry\command\defaults\SummonCommand;
 use raspberry\command\defaults\TimeCommand;
 use raspberry\command\defaults\DaylockCommand;
+use raspberry\command\defaults\ToggleDownfallCommand;
+use raspberry\command\defaults\WeatherCommand;
 use raspberry\command\defaults\GameruleCommand;
 
 use raspberry\console\ConsoleReader;
@@ -964,7 +966,9 @@ class Server{
             "stop" => "op",
             "time" => "op",
             "daylock" => "op",
-            "gamerule" => "op"
+            "gamerule" => "op",
+            "weather" => "op",
+            "toggledownfall" => "op"
         ] as $command => $default){
             $permissions["raspberry.command.{$command}"] = [
                 "description" => $this->language->translate("permission.command", ["command" => $command]),
@@ -999,7 +1003,9 @@ class Server{
             new PluginsCommand(),
             new TimeCommand(),
             new DaylockCommand(),
-            new GameruleCommand(),
+            new WeatherCommand(),
+            new ToggleDownfallCommand(),
+            new GameruleCommand()
         ]);
     }
 

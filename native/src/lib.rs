@@ -13,6 +13,7 @@ pub mod encode;
 pub mod generator;
 pub mod growth;
 pub mod light;
+pub mod liquid;
 pub mod mob;
 pub mod noise;
 pub mod pool;
@@ -27,7 +28,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use chunk::{Chunk, Storage, SubChunk, MAX_LAYERS, SIZE, SUBCHUNKS};
 
 /// Bumped whenever a function below changes, PHP refuses a library it does not know.
-pub const ABI_VERSION: u32 = 7;
+pub const ABI_VERSION: u32 = 8;
 
 struct Entry {
     chunk: Chunk,
@@ -730,4 +731,130 @@ pub unsafe extern "C" fn rx_tree_grow(
 
 fn blocks_count() -> usize {
     generator::blocks::count()
+}
+
+struct LiquidEntry {
+    liquid: liquid::LiquidWorld,
+    chunks: HashMap<(i32, i32), u64>,
+}
+
+static LIQUID_WORLDS: Mutex<Option<HashMap<u64, LiquidEntry>>> = Mutex::new(None);
+
+fn liquid_worlds() -> MutexGuard<'static, Option<HashMap<u64, LiquidEntry>>> {
+    LIQUID_WORLDS.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+fn with_liquid<T>(world: u64, missing: T, action: impl FnOnce(&mut LiquidEntry) -> T) -> T {
+    let result = catch_unwind(AssertUnwindSafe(|| liquid_worlds().as_mut().and_then(|map| map.get_mut(&world)).map(action)));
+
+    match result {
+        Ok(Some(value)) => value,
+        _ => missing,
+    }
+}
+
+struct ChunkView<'a> {
+    handles: &'a HashMap<(i32, i32), u64>,
+    all: Option<&'a HashMap<u64, Entry>>,
+}
+
+impl liquid::View for ChunkView<'_> {
+    fn block(&self, x: i32, y: i32, z: i32, layer: usize) -> Option<u32> {
+        if !(chunk::MIN_Y..=chunk::MAX_Y).contains(&y) {
+            return None;
+        }
+
+        let handle = self.handles.get(&(x >> 4, z >> 4))?;
+        let entry = self.all?.get(handle)?;
+
+        Some(entry.chunk.get_block((x & 15) as usize, y, (z & 15) as usize, layer))
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn rx_liquid_new() -> u64 {
+    catch_unwind(|| {
+        let handle = NEXT_HANDLE.fetch_add(1, Ordering::Relaxed);
+        liquid_worlds().get_or_insert_with(HashMap::new).insert(handle, LiquidEntry { liquid: liquid::LiquidWorld::new(), chunks: HashMap::new() });
+        handle
+    })
+    .unwrap_or(0)
+}
+
+#[no_mangle]
+pub extern "C" fn rx_liquid_free(world: u64) {
+    let _ = catch_unwind(|| liquid_worlds().as_mut().map(|map| map.remove(&world)));
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rx_liquid_blocks(states: *const u32, kinds: *const u8, levels: *const u8, extras: *const u32, count: usize, results: *const u32) {
+    if states.is_null() || kinds.is_null() || levels.is_null() || extras.is_null() || results.is_null() || count == 0 {
+        return;
+    }
+
+    let states = std::slice::from_raw_parts(states, count);
+    let kinds = std::slice::from_raw_parts(kinds, count);
+    let levels = std::slice::from_raw_parts(levels, count);
+    let extras = std::slice::from_raw_parts(extras, count);
+    let results = std::slice::from_raw_parts(results, 5);
+
+    let _ = catch_unwind(|| {
+        let entries: Vec<(u32, liquid::Info)> = (0..count).map(|i| (states[i], liquid::Info { kind: kinds[i], level: levels[i], extra: extras[i] })).collect();
+        liquid::learn(&entries, [results[0], results[1], results[2], results[3], results[4]]);
+    });
+}
+
+#[no_mangle]
+pub extern "C" fn rx_liquid_add_chunk(world: u64, chunk_x: i32, chunk_z: i32, chunk: u64, now: u64) -> i32 {
+    with_liquid(world, 0, |entry| {
+        let all = chunks();
+        let Some(found) = all.as_ref().and_then(|map| map.get(&chunk)) else { return 0 };
+
+        entry.liquid.add_chunk(chunk_x, chunk_z, &found.chunk, now);
+        entry.chunks.insert((chunk_x, chunk_z), chunk);
+        1
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn rx_liquid_remove_chunk(world: u64, chunk_x: i32, chunk_z: i32) {
+    with_liquid(world, (), |entry| {
+        entry.chunks.remove(&(chunk_x, chunk_z));
+    });
+}
+
+#[no_mangle]
+pub extern "C" fn rx_liquid_changed(world: u64, x: i32, y: i32, z: i32, now: u64) {
+    with_liquid(world, (), |entry| {
+        let all = chunks();
+        let view = ChunkView { handles: &entry.chunks, all: all.as_ref() };
+        entry.liquid.changed(&view, x, y, z, now);
+    });
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rx_liquid_tick(world: u64, now: u64, out: *mut *mut u8, out_length: *mut usize) -> i32 {
+    let data = with_liquid(world, None, |entry| {
+        let all = chunks();
+        let view = ChunkView { handles: &entry.chunks, all: all.as_ref() };
+        let mut data = Vec::new();
+
+        for change in entry.liquid.tick(&view, now) {
+            data.extend_from_slice(&change.x.to_le_bytes());
+            data.extend_from_slice(&change.y.to_le_bytes());
+            data.extend_from_slice(&change.z.to_le_bytes());
+            data.extend_from_slice(&change.state.to_le_bytes());
+            data.push(change.flags);
+        }
+
+        Some(data)
+    });
+
+    match data {
+        Some(data) => {
+            give(data, out, out_length);
+            1
+        }
+        None => 0,
+    }
 }

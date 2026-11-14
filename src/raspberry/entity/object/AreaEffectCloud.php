@@ -4,9 +4,10 @@ declare(strict_types=1);
 
 namespace raspberry\entity\object;
 
-use raspberry\entity\Entity;
 use raspberry\entity\Human;
 use raspberry\entity\Living;
+use raspberry\entity\Entity;
+use raspberry\entity\EntityIds;
 use raspberry\entity\effect\EffectInstance;
 
 use raspberry\item\Potion;
@@ -66,7 +67,7 @@ class AreaEffectCloud extends Entity{
     }
 
     public function getNetworkTypeId() : string{
-        return "minecraft:area_effect_cloud";
+        return EntityIds::AREA_EFFECT_CLOUD;
     }
 
     public function getPotionMeta() : int{

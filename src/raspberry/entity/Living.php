@@ -115,7 +115,9 @@ abstract class Living extends Entity{
             return;
         }
 
-        if($this->isInWater()){
+        $position = $this->position;
+
+        if($this->isInWater() || $this->world->isRainingAt($position->getFloorX(), $position->getFloorY(), $position->getFloorZ())){
             $this->extinguish();
             return;
         }

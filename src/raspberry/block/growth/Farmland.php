@@ -31,7 +31,7 @@ class Farmland implements RandomTickBehavior{
     public function onRandomTick(World $world, int $x, int $y, int $z, BlockState $state) : void{
         $moisture = $state->getProperty(BlockProperties::MOISTURIZED_AMOUNT);
 
-        if(self::isNearWater($world, $x, $y, $z)){
+        if(self::isNearWater($world, $x, $y, $z) || $world->isRainingAt($x, $y + 1, $z)){
             if($moisture < self::WET){
                 $world->setBlock($x, $y, $z, $state->withProperty(BlockProperties::MOISTURIZED_AMOUNT, self::WET));
             }

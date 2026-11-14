@@ -71,7 +71,7 @@ class ItemEntity extends Entity{
     }
 
     public function getNetworkTypeId() : string{
-        return "minecraft:item";
+        return "minecraft:item";//EntityIds doesnt include this
     }
 
     public function getNetworkOffset() : float{

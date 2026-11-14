@@ -152,7 +152,7 @@ class RandomTicker{
     /**
      * @return list<Chunk>
      */
-    private function getTickingChunks() : array{
+    public function getTickingChunks() : array{
         $distance = Server::getInstance()->getTickDistance();
         $chunks = [];
 
