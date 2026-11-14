@@ -10,6 +10,7 @@
   <img src="https://img.shields.io/badge/Minecraft-Bedrock%201.26.60-62B47A?style=flat-square" alt="Minecraft Bedrock 1.26.60">
   <img src="https://img.shields.io/badge/PHP-8.5-777BB4?style=flat-square&logo=php&logoColor=white" alt="PHP 8.5">
   <img src="https://img.shields.io/badge/Rust-native-DEA584?style=flat-square&logo=rust&logoColor=black" alt="Rust">
+  <img src="https://img.shields.io/badge/Python-3-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3">
   <img src="https://img.shields.io/badge/status-alpha-C2185B?style=flat-square" alt="Status: alpha">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-blue?style=flat-square" alt="License: GPL-3.0"></a>
 </p>
