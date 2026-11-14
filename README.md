@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="logo/logo_without_background.png" alt="RaspberryX" width="320">
+  <img src="logo/logo_with_background.png" alt="RaspberryX" width="320">
 </p>
 
 <p align="center">
