@@ -112,6 +112,8 @@ class World{
 
     private Weather $weather;
 
+    private BlockTicker $blockTicker;
+
     private GameRules $gameRules;
 
     public function __construct(WorldMetadata $metadata, Generator $generator, WorldProvider $provider){
@@ -124,6 +126,7 @@ class World{
         $this->randomTicker = new RandomTicker($this);
         $this->liquids = new LiquidEngine($this);
         $this->weather = new Weather($this, $metadata);
+        $this->blockTicker = new BlockTicker($this);
         $this->gameRules = new GameRules($metadata->gameRules);
     }
 
@@ -210,6 +213,10 @@ class World{
         $brightness *= 1.0 - $this->weather->getRainLevel() * 5.0 / 16.0;
         $brightness *= 1.0 - $this->weather->getThunderLevel() * 5.0 / 16.0;
         return (int) ((1.0 - $brightness) * 11.0);
+    }
+
+    public function getBlockTicker() : BlockTicker{
+        return $this->blockTicker;
     }
 
     public function getWeather() : Weather{
@@ -602,6 +609,7 @@ class World{
             $this->redstoneUpdater->onBlockChanged($x, $y, $z, $oldState, $block);
             $this->randomTicker->onBlockChanged($x, $y, $z, $oldState, $block);
             $this->liquids->onBlockChanged($x, $y, $z);
+            $this->blockTicker->onBlockChanged($x, $y, $z, $oldState, $block);
         }
     }
 
@@ -771,6 +779,7 @@ class World{
         $this->redstoneUpdater->tick($currentTick);
         $this->randomTicker->tick();
         $this->liquids->tick($currentTick);
+        $this->blockTicker->tick($currentTick);
         $this->weather->tick($this->randomTicker->getTickingChunks());
 
         foreach($this->scheduledUpdates as $key => [$tick, $update]){

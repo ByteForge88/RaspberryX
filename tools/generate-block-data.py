@@ -24,6 +24,7 @@ Outputs:
   src/raspberry/entity/EntityIds.php        one constant per entity name
   resources/vanilla/entity_properties.json  the properties entities sync to the client (a pig's climate_variant), from behavior_pack/entities
   resources/vanilla/block_light.json        how much light each block gives off and lets through, from PrismarineJS minecraft-data
+  resources/vanilla/block_resistance.json   how well each block stands up to explosions, from PrismarineJS minecraft-data
 
   src/raspberry/network/mcpe/protocol/types/ParticleEffect.php  ---⌍
                                                                    ¦
@@ -72,6 +73,7 @@ BIOME_DEFINITIONS_JSON = ROOT / "resources" / "vanilla" / "biome_definitions.jso
 ENTITY_IDS_PHP = ROOT / "src" / "raspberry" / "entity" / "EntityIds.php"
 ENTITY_PROPERTIES_JSON = ROOT / "resources" / "vanilla" / "entity_properties.json"
 BLOCK_LIGHT_JSON = ROOT / "resources" / "vanilla" / "block_light.json"
+BLOCK_RESISTANCE_JSON = ROOT / "resources" / "vanilla" / "block_resistance.json"
 
 LIGHT_PATHS_URL = "https://raw.githubusercontent.com/PrismarineJS/minecraft-data/master/data/dataPaths.json"
 LIGHT_BLOCKS_URL = "https://raw.githubusercontent.com/PrismarineJS/minecraft-data/master/data/{path}/blocks.json"
@@ -426,7 +428,16 @@ def read_block_light(blocks, source):
 
 def block_light_json(version, light):
     entries = [f"    {json.dumps(name)}: {json.dumps(values)}" for name, values in light.items()]
+    return "{\n" + f'  "version": {json.dumps(version)},\n  "blocks": {{\n' + ",\n".join(entries) + "\n  }\n}\n"
 
+
+def read_block_resistance(blocks, source):
+    known = {"minecraft:" + entry["name"]: entry for entry in source}
+    return {name: float(known[name]["resistance"]) for name in sorted(blocks) if name in known}
+
+
+def block_resistance_json(version, resistance):
+    entries = [f"    {json.dumps(name)}: {json.dumps(value)}" for name, value in resistance.items()]
     return "{\n" + f'  "version": {json.dumps(version)},\n  "blocks": {{\n' + ",\n".join(entries) + "\n  }\n}\n"
 
 
@@ -1697,7 +1708,9 @@ def main():
     sound_protocol, sound_events = load_sound_events(args)
     item_blocks, not_placeable = read_item_blocks(blocks, items)
     particle_effects = read_particle_effects(load_pack_files(args, "particles", "resource_pack"))
-    block_light, unlit_blocks = read_block_light(blocks, load_light_source(args))
+    light_source = load_light_source(args)
+    block_light, unlit_blocks = read_block_light(blocks, light_source)
+    block_resistance = read_block_resistance(blocks, light_source)
     biome_definitions = read_biome_definitions(biomes, load_pack_files(args, "biomes") + load_pack_files(args, "biomes", "resource_pack"))
     biome_tags = sorted({tag for definition in biome_definitions.values() for tag in definition["tags"]})
     entities = sorted(item["name"] for item in load_source(args, "mojang-entities.json")["data_items"])
@@ -1720,6 +1733,7 @@ def main():
     write(BLOCK_PROPERTIES_PHP, php_class("raspberry\\block", "BlockProperties", "Names of every vanilla block state property.", args.version, property_constants))
     write(BLOCK_STATES_JSON, states_json(args.version, blocks))
     write(BLOCK_LIGHT_JSON, block_light_json(args.version, block_light))
+    write(BLOCK_RESISTANCE_JSON, block_resistance_json(args.version, block_resistance))
     write(ITEM_REGISTRY_JSON, items_json(args.version, items))
     write(ITEM_NAMES_JSON, names_json(args.version, item_names))
     write(RECIPES_JSON, recipes_json(args.version, item_tags, recipes))

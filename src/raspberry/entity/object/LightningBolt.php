@@ -4,6 +4,11 @@ declare(strict_types=1);
 
 namespace raspberry\entity\object;
 
+use raspberry\Server;
+
+use raspberry\block\Fire;
+use raspberry\block\BlockIds;
+use raspberry\block\growth\Nearby;
 use raspberry\block\growth\Oxidation;
 
 use raspberry\entity\Living;
@@ -14,8 +19,11 @@ use raspberry\entity\damage\DamageSource;
 use raspberry\math\Vector3;
 
 use raspberry\network\mcpe\protocol\LevelSoundEventPacket;
+use raspberry\network\mcpe\protocol\types\EntityMetadata;
 use raspberry\network\mcpe\protocol\types\LevelSoundEvent;
 
+use raspberry\world\Difficulty;
+use raspberry\world\GameRules;
 use raspberry\world\World;
 
 use function abs;
@@ -48,6 +56,16 @@ class LightningBolt extends Entity{
         return EntityIds::LIGHTNING_BOLT;
     }
 
+    public function getMotion() : Vector3{
+        return Vector3::zero();
+    }
+
+    public function createMetadata() : EntityMetadata{
+        $metadata = new EntityMetadata();
+        $metadata->setLong(EntityMetadata::KEY_FLAGS_TWO, 0);
+        return $metadata;
+    }
+
     public function tick(int $currentTick) : void{
         if($this->closed){
             return;
@@ -57,6 +75,7 @@ class LightningBolt extends Entity{
             $this->updateViewers();
             $this->world->broadcastPacket($this->position->getFloorX(), $this->position->getFloorZ(), LevelSoundEventPacket::create(LevelSoundEvent::THUNDER, $this->position->x, $this->position->y, $this->position->z));
             $this->clearCopper();
+            $this->spawnFire(4);
         }
 
         if(--$this->life < 0){
@@ -91,6 +110,30 @@ class LightningBolt extends Entity{
             $this->hit[$entity->getId()] = true;
             $entity->setOnFire(self::FIRE_SECONDS);
             $entity->damage(new DamageSource(DamageSource::CAUSE_LIGHTNING, self::DAMAGE));
+        }
+    }
+
+    /**
+     * On normal and hard, the bolt sets fire where it hits and to a few spots around it.
+     */
+    private function spawnFire(int $around) : void{
+        $difficulty = Server::getInstance()->getDifficulty();
+
+        if(($difficulty !== Difficulty::NORMAL && $difficulty !== Difficulty::HARD) || !$this->world->getGameRules()->getBool(GameRules::DO_FIRE_TICK)){
+            return;
+        }
+
+        [$x, $y, $z] = [(int) floor($this->position->x), (int) floor($this->position->y), (int) floor($this->position->z)];
+        $spots = [[$x, $y, $z]];
+
+        for($i = 0; $i < $around; ++$i){
+            $spots[] = [$x + mt_rand(-1, 1), $y + mt_rand(-1, 1), $z + mt_rand(-1, 1)];
+        }
+
+        foreach($spots as [$fx, $fy, $fz]){
+            if(Nearby::name($this->world, $fx, $fy, $fz) === BlockIds::AIR && Fire::canSurviveAt($this->world, $fx, $fy, $fz)){
+                $this->world->setBlock($fx, $fy, $fz, Fire::stateAt($this->world, $fx, $fy, $fz));
+            }
         }
     }
 

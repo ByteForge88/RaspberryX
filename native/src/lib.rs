@@ -10,6 +10,7 @@ pub mod biome;
 pub mod chunk;
 pub mod completions;
 pub mod encode;
+pub mod explosion;
 pub mod generator;
 pub mod growth;
 pub mod light;
@@ -28,7 +29,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use chunk::{Chunk, Storage, SubChunk, MAX_LAYERS, SIZE, SUBCHUNKS};
 
 /// Bumped whenever a function below changes, PHP refuses a library it does not know.
-pub const ABI_VERSION: u32 = 8;
+pub const ABI_VERSION: u32 = 9;
 
 struct Entry {
     chunk: Chunk,
@@ -856,5 +857,89 @@ pub unsafe extern "C" fn rx_liquid_tick(world: u64, now: u64, out: *mut *mut u8,
             1
         }
         None => 0,
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rx_explosion_blocks(states: *const u32, resistances: *const f32, solids: *const u8, count: usize, air: u32) {
+    if states.is_null() || resistances.is_null() || solids.is_null() || count == 0 {
+        return;
+    }
+
+    let states = std::slice::from_raw_parts(states, count);
+    let resistances = std::slice::from_raw_parts(resistances, count);
+    let solids = std::slice::from_raw_parts(solids, count);
+
+    let _ = catch_unwind(|| {
+        let entries: Vec<(u32, explosion::Info)> = (0..count).map(|i| (states[i], explosion::Info { resistance: resistances[i], solid: solids[i] != 0 })).collect();
+        explosion::learn(&entries, air);
+    });
+}
+
+struct ChunkMap<'a>(HashMap<(i32, i32), &'a chunk::Chunk>);
+
+impl explosion::View for ChunkMap<'_> {
+    fn block(&self, x: i32, y: i32, z: i32, layer: usize) -> Option<u32> {
+        if !(chunk::MIN_Y..=chunk::MAX_Y).contains(&y) {
+            return None;
+        }
+
+        let found = self.0.get(&(x >> 4, z >> 4))?;
+
+        Some(found.get_block((x & 15) as usize, y, (z & 15) as usize, layer))
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rx_explode(
+    handles: *const u64, positions: *const i32, chunk_count: usize,
+    x: f64, y: f64, z: f64, radius: f32, seed: i64,
+    boxes: *const f64, box_count: usize, exposures: *mut f32,
+    out: *mut *mut u8, out_length: *mut usize,
+) -> i32 {
+    if handles.is_null() || positions.is_null() || chunk_count == 0 {
+        return 0;
+    }
+
+    let handles = std::slice::from_raw_parts(handles, chunk_count);
+    let positions = std::slice::from_raw_parts(positions, chunk_count * 2);
+    let boxes = if boxes.is_null() || box_count == 0 { &[][..] } else { std::slice::from_raw_parts(boxes, box_count * 6) };
+    let exposures = if exposures.is_null() || box_count == 0 { &mut [][..] } else { std::slice::from_raw_parts_mut(exposures, box_count) };
+
+    let done = catch_unwind(AssertUnwindSafe(|| {
+        let all = chunks();
+        let map = all.as_ref()?;
+        let mut around = HashMap::new();
+
+        for (i, handle) in handles.iter().enumerate() {
+            if let Some(entry) = map.get(handle) {
+                around.insert((positions[i * 2], positions[i * 2 + 1]), &entry.chunk);
+            }
+        }
+
+        let view = ChunkMap(around);
+
+        for (i, exposure) in exposures.iter_mut().enumerate() {
+            let b = &boxes[i * 6..i * 6 + 6];
+            *exposure = explosion::exposure(&view, x, y, z, [b[0], b[1], b[2]], [b[3], b[4], b[5]]);
+        }
+
+        let mut data = Vec::new();
+
+        for (bx, by, bz) in explosion::blocks(&view, x, y, z, radius, seed) {
+            data.extend_from_slice(&bx.to_le_bytes());
+            data.extend_from_slice(&by.to_le_bytes());
+            data.extend_from_slice(&bz.to_le_bytes());
+        }
+
+        Some(data)
+    }));
+
+    match done {
+        Ok(Some(data)) => {
+            give(data, out, out_length);
+            1
+        }
+        _ => 0,
     }
 }

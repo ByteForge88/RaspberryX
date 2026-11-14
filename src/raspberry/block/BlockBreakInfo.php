@@ -111,12 +111,13 @@ class BlockBreakInfo{
     }
 
     /**
-     * What breaking $block with $item drops, nothing when the tool cannot harvest it.
+     * What breaking $block with $item drops, nothing when the tool cannot harvest it. An
+     * explosion breaks blocks with $anyTool: stone still drops cobblestone.
      *
      * @return list<Item>
      */
-    public function getDrops(BlockState $block, Item $item) : array{
-        if(!$this->canHarvest($item)){
+    public function getDrops(BlockState $block, Item $item, bool $anyTool = false) : array{
+        if(!$anyTool && !$this->canHarvest($item)){
             return [];
         }
 

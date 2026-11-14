@@ -6,6 +6,7 @@ namespace raspberry\player;
 
 use raspberry\block\BlockCollision;
 use raspberry\block\BoneMeal;
+use raspberry\block\Fire;
 use raspberry\block\Buckets;
 use raspberry\block\BlockIds;
 use raspberry\block\BlockOrientation;
@@ -144,6 +145,16 @@ class BlockPlacer{
             if($player->getGameMode()->allowsBuilding() && BoneMeal::grow($world, $x, $y, $z)){
                 $player->swingArm(AnimatePacket::SWING_INTERACT);
                 $this->useUpHeld($held);
+            }
+
+            return;
+        }
+
+        if($held->getId() === ItemIds::FLINT_AND_STEEL || $held->getId() === ItemIds::FIRE_CHARGE){
+            if($player->getGameMode()->allowsBuilding() && Fire::ignite($player, $x, $y, $z, $face, $clicked, $held)){
+                $player->swingArm(AnimatePacket::SWING_INTERACT);
+            }else{
+                $this->resend($x, $y, $z, $face);
             }
 
             return;

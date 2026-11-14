@@ -20,7 +20,7 @@ use const PHP_OS_FAMILY;
 class Native{
 
     /** the library has to speak this version of the functions below */
-    public const ABI_VERSION = 8;
+    public const ABI_VERSION = 9;
 
     private const HEADER = <<<'C'
         uint32_t rx_version(void);
@@ -78,6 +78,9 @@ class Native{
         void rx_liquid_remove_chunk(uint64_t world, int32_t chunk_x, int32_t chunk_z);
         void rx_liquid_changed(uint64_t world, int32_t x, int32_t y, int32_t z, uint64_t now);
         int32_t rx_liquid_tick(uint64_t world, uint64_t now, char** out, size_t* out_length);
+        
+        void rx_explosion_blocks(const uint32_t* states, const float* resistances, const uint8_t* solids, size_t count, uint32_t air);
+        int32_t rx_explode(const uint64_t* chunks, const int32_t* positions, size_t chunk_count, double x, double y, double z, float radius, int64_t seed, const double* boxes, size_t box_count, float* exposures, char** out, size_t* out_length);
         C;
 
     private static ?FFI $ffi = null;

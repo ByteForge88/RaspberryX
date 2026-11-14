@@ -26,6 +26,7 @@ class EntityMetadata{
     public const KEY_AIR_SUPPLY_MAX = 42;
     public const KEY_WIDTH = 53;
     public const KEY_HEIGHT = 54;
+    public const KEY_FUSE_TIME = 55;
     public const KEY_CLOUD_RADIUS = 61;
     public const KEY_CLOUD_WAITING = 62;
     public const KEY_CLOUD_PARTICLE = 63;
@@ -52,6 +53,7 @@ class EntityMetadata{
     public const FLAG_USING_ITEM = 4;
     public const FLAG_INVISIBLE = 5;
     public const FLAG_IN_LOVE = 7;
+    public const FLAG_IGNITED = 10;
     public const FLAG_BABY = 11;
     public const FLAG_SHOW_NAME = 14;
     public const FLAG_ALWAYS_SHOW_NAME = 15;

@@ -6,6 +6,7 @@ namespace raspberry\world;
 
 use raspberry\Server;
 
+use raspberry\block\Fire;
 use raspberry\block\BlockState;
 use raspberry\block\BlockStateIds;
 use raspberry\block\growth\Crops;
@@ -65,7 +66,7 @@ class RandomTicker{
 
         self::$taught = true;
 
-        foreach([new Crops(), new Saplings(), new Plants(), new Spreading(), new Leaves(), new Farmland(), new Melting(), new Oxidation(), new Others()] as $behavior){
+        foreach([new Crops(), new Saplings(), new Plants(), new Spreading(), new Leaves(), new Farmland(), new Melting(), new Oxidation(), new Others(), new Fire()] as $behavior){
             self::add($behavior);
         }
 

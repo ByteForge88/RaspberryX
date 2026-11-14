@@ -86,6 +86,9 @@ use raspberry\entity\effect\EffectInstance;
 use raspberry\entity\object\AreaEffectCloud;
 use raspberry\entity\object\ItemEntity;
 use raspberry\entity\object\ThrownPotion;
+use raspberry\entity\object\FallingBlock;
+use raspberry\entity\object\LightningBolt;
+use raspberry\entity\object\PrimedTNT;
 
 use raspberry\inventory\PlayerInventory;
 
@@ -715,6 +718,11 @@ class NetworkSession{
             return;
         }
 
+        if($entity instanceof LightningBolt || $entity instanceof FallingBlock || $entity instanceof PrimedTnt){
+            $this->spawnBlockActor($entity);
+            return;
+        }
+
         if(!$entity instanceof Human){
             return; //TODO: AddActorPacket for other entities
         }
@@ -792,6 +800,27 @@ class NetworkSession{
         $packet->pitch = $entity->getPitch();
         $packet->yaw = $entity->getYaw();
         $packet->metadata = self::createActorMetadata($entity);
+
+        $this->sendDataPacket($packet);
+    }
+
+    /**
+     * Lightning, falling blocks and lit TNT: plain actors that carry their own metadata.
+     */
+    private function spawnBlockActor(LightningBolt|FallingBlock|PrimedTnt $entity) : void{
+        $position = $entity->getPosition();
+        $motion = $entity->getMotion();
+
+        $packet = new AddActorPacket();
+        $packet->actorRuntimeId = $entity->getId();
+        $packet->type = $entity->getNetworkTypeId();
+        $packet->x = $position->x;
+        $packet->y = $position->y;
+        $packet->z = $position->z;
+        $packet->motionX = $motion->x;
+        $packet->motionY = $motion->y;
+        $packet->motionZ = $motion->z;
+        $packet->metadata = $entity->createMetadata();
 
         $this->sendDataPacket($packet);
     }

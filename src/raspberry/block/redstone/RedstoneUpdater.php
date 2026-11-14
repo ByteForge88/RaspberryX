@@ -6,6 +6,7 @@ namespace raspberry\block\redstone;
 
 use raspberry\Server;
 
+use raspberry\block\TNT;
 use raspberry\block\BlockIds;
 use raspberry\block\BlockState;
 use raspberry\block\BlockStateIds;
@@ -268,6 +269,7 @@ class RedstoneUpdater{
             $block->hasProperty(BlockProperties::DOOR_HINGE_BIT), preg_match('/(trapdoor|fence_gate)$/D', $name) === 1 => $this->updateOpenable($x, $y, $z, $block),
             $name === BlockIds::DISPENSER, $name === BlockIds::DROPPER, $name === BlockIds::CRAFTER => $this->updateTriggered($x, $y, $z, $block),
             $name === BlockIds::HOPPER => $this->updateHopper($x, $y, $z, $block),
+            $name === BlockIds::TNT => $this->updateTNT($x, $y, $z),
             default => null
         };
     }
@@ -520,6 +522,15 @@ class RedstoneUpdater{
             $this->world->setBlock($x, $y, $z, self::rename($block, BlockIds::LIT_REDSTONE_LAMP));
         }elseif(!$powered && $lit){
             $this->schedule($x, $y, $z, self::LAMP_OFF_DELAY);
+        }
+    }
+
+    /**
+     * Powered TNT lights.
+     */
+    private function updateTNT(int $x, int $y, int $z) : void{
+        if($this->signal->getReceivedPower($x, $y, $z) > 0){
+            TNT::ignite($this->world, $x, $y, $z);
         }
     }
 
