@@ -9,10 +9,15 @@ use raspberry\Server;
 use raspberry\block\growth\Nearby;
 use raspberry\block\growth\RandomTickBehavior;
 
+use raspberry\event\block\BlockBurnEvent;
+use raspberry\event\block\BlockFadeEvent;
+use raspberry\event\block\BlockIgniteEvent;
+
 use raspberry\item\Item;
 use raspberry\item\ItemIds;
 
 use raspberry\math\Facing;
+use raspberry\math\Vector3;
 
 use raspberry\network\mcpe\protocol\LevelSoundEventPacket;
 use raspberry\network\mcpe\protocol\types\LevelSoundEvent;
@@ -141,14 +146,14 @@ class Fire implements RandomTickBehavior{
 
         if($fire->getName() === BlockIds::SOUL_FIRE){
             if(!in_array(Nearby::name($world, $x, $y - 1, $z), self::SOUL_GROUND, true)){
-                $world->setBlock($x, $y, $z, $air);
+                BlockFadeEvent::set($world, $x, $y, $z, $air);
             }
 
             return;
         }
 
         if(!self::canSurviveAt($world, $x, $y, $z)){
-            $world->setBlock($x, $y, $z, $air);
+            BlockFadeEvent::set($world, $x, $y, $z, $air);
             return;
         }
 
@@ -161,8 +166,7 @@ class Fire implements RandomTickBehavior{
         $forever = in_array(Nearby::name($world, $x, $y - 1, $z), self::INFINIBURN, true);
         $age = $fire->getProperty("age");
 
-        if(!$forever && $world->getWeather()->isRaining() && self::isNearRain($world, $x, $y, $z) && mt_rand() / mt_getrandmax() < 0.2 + $age * 0.03){
-            $world->setBlock($x, $y, $z, $air);
+        if(!$forever && $world->getWeather()->isRaining() && self::isNearRain($world, $x, $y, $z) && mt_rand() / mt_getrandmax() < 0.2 + $age * 0.03 && BlockFadeEvent::set($world, $x, $y, $z, $air)){
             return;
         }
 
@@ -177,20 +181,19 @@ class Fire implements RandomTickBehavior{
                 $below = Nearby::block($world, $x, $y - 1, $z);
 
                 if($below === null || !BlockCollision::isFullCube($below) || $age > 3){
-                    $world->setBlock($x, $y, $z, $air);
+                    BlockFadeEvent::set($world, $x, $y, $z, $air);
                 }
 
                 return;
             }
 
-            if($age === self::MAX_AGE && mt_rand(0, 3) === 0 && !self::burns(Nearby::block($world, $x, $y - 1, $z))){
-                $world->setBlock($x, $y, $z, $air);
+            if($age === self::MAX_AGE && mt_rand(0, 3) === 0 && !self::burns(Nearby::block($world, $x, $y - 1, $z)) && BlockFadeEvent::set($world, $x, $y, $z, $air)){
                 return;
             }
         }
 
         foreach([[1, 0, 0, 300], [-1, 0, 0, 300], [0, -1, 0, 250], [0, 1, 0, 250], [0, 0, -1, 300], [0, 0, 1, 300]] as [$dx, $dy, $dz, $chance]){
-            self::burnAway($world, $x + $dx, $y + $dy, $z + $dz, $chance, $age);
+            self::burnAway($world, $x + $dx, $y + $dy, $z + $dz, $chance, $age, new Vector3($x, $y, $z));
         }
 
         $difficulty = Server::getInstance()->getDifficulty()->value;
@@ -214,14 +217,14 @@ class Fire implements RandomTickBehavior{
                     $spread = intdiv($encouragement + 40 + $difficulty * 7, $age + 30);
 
                     if($spread > 0 && mt_rand(0, $odds - 1) <= $spread && (!$world->getWeather()->isRaining() || !self::isNearRain($world, $tx, $ty, $tz))){
-                        $world->setBlock($tx, $ty, $tz, self::stateAt($world, $tx, $ty, $tz, min(self::MAX_AGE, $age + intdiv(mt_rand(0, 4), 4))));
+                        BlockIgniteEvent::ignite($world, $tx, $ty, $tz, self::stateAt($world, $tx, $ty, $tz, min(self::MAX_AGE, $age + intdiv(mt_rand(0, 4), 4))), BlockIgniteEvent::CAUSE_SPREAD, null, new Vector3($x, $y, $z));
                     }
                 }
             }
         }
     }
 
-    private static function burnAway(World $world, int $x, int $y, int $z, int $chance, int $age) : void{
+    private static function burnAway(World $world, int $x, int $y, int $z, int $chance, int $age, Vector3 $fire) : void{
         $block = Nearby::block($world, $x, $y, $z);
 
         if($block === null || mt_rand(0, $chance - 1) >= self::flammability($block)[1]){
@@ -229,15 +232,26 @@ class Fire implements RandomTickBehavior{
         }
 
         if($block->getName() === BlockIds::TNT){
-            Tnt::ignite($world, $x, $y, $z);
+            TNT::ignite($world, $x, $y, $z);
             return;
         }
 
-        if(mt_rand(0, $age + 9) < 5 && !$world->isRainingAt($x, $y, $z)){
-            $world->setBlock($x, $y, $z, self::stateAt($world, $x, $y, $z, min(self::MAX_AGE, $age + intdiv(mt_rand(0, 4), 4))));
-        }else{
-            $world->setBlock($x, $y, $z, Server::getInstance()->getBlockStateRegistry()->getDefaultState(BlockIds::AIR));
+        $new = mt_rand(0, $age + 9) < 5 && !$world->isRainingAt($x, $y, $z) ?
+            self::stateAt($world, $x, $y, $z, min(self::MAX_AGE, $age + intdiv(mt_rand(0, 4), 4))) :
+            Server::getInstance()->getBlockStateRegistry()->getDefaultState(BlockIds::AIR);
+
+        if(BlockBurnEvent::hasHandlers()){
+            $event = new BlockBurnEvent($world, $x, $y, $z, $new, $fire);
+            $event->call();
+
+            if($event->isCancelled()){
+                return;
+            }
+
+            $new = $event->getNewState();
         }
+
+        $world->setBlock($x, $y, $z, $new);
     }
 
     /**
@@ -294,7 +308,7 @@ class Fire implements RandomTickBehavior{
 
                 if($block->getName() === BlockIds::AIR){
                     if(self::touchesFlammable($world, $tx, $ty, $tz)){
-                        $world->setBlock($tx, $ty, $tz, self::stateAt($world, $tx, $ty, $tz));
+                        BlockIgniteEvent::ignite($world, $tx, $ty, $tz, self::stateAt($world, $tx, $ty, $tz), BlockIgniteEvent::CAUSE_LAVA, null, new Vector3($x, $y, $z));
                         return;
                     }
                 }elseif(BlockCollision::isSolid($block)){
@@ -309,7 +323,7 @@ class Fire implements RandomTickBehavior{
             [$tx, $tz] = [$x + mt_rand(-1, 1), $z + mt_rand(-1, 1)];
 
             if(Nearby::isAir($world, $tx, $y + 1, $tz) && self::burns(Nearby::block($world, $tx, $y, $tz))){
-                $world->setBlock($tx, $y + 1, $tz, self::stateAt($world, $tx, $y + 1, $tz));
+                BlockIgniteEvent::ignite($world, $tx, $y + 1, $tz, self::stateAt($world, $tx, $y + 1, $tz), BlockIgniteEvent::CAUSE_LAVA, null, new Vector3($x, $y, $z));
             }
         }
     }
@@ -320,7 +334,7 @@ class Fire implements RandomTickBehavior{
         $lit = null;
 
         if($name === BlockIds::TNT){
-            Tnt::ignite($world, $x, $y, $z);
+            TNT::ignite($world, $x, $y, $z);
         }elseif($clicked->hasProperty("extinguished") && $clicked->getProperty("extinguished") === true){
             $lit = $clicked->withProperty("extinguished", false);
         }elseif($clicked->hasProperty("lit") && $clicked->getProperty("lit") === false && preg_match('/candle(_cake)?$/D', $name) === 1){
@@ -333,7 +347,11 @@ class Fire implements RandomTickBehavior{
                 return false;
             }
 
-            $lit = self::stateAt($world, $x, $y, $z);
+            $cause = $held->getId() === ItemIds::FIRE_CHARGE ? BlockIgniteEvent::CAUSE_FIRE_CHARGE : BlockIgniteEvent::CAUSE_FLINT_AND_STEEL;
+
+            if(!BlockIgniteEvent::ignite($world, $x, $y, $z, self::stateAt($world, $x, $y, $z), $cause, $player)){
+                return false;
+            }
         }
 
         if($lit !== null){

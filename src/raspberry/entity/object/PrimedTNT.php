@@ -7,6 +7,8 @@ namespace raspberry\entity\object;
 use raspberry\entity\Entity;
 use raspberry\entity\EntityIds;
 
+use raspberry\event\entity\ExplosionPrimeEvent;
+
 use raspberry\math\Vector3;
 
 use raspberry\network\mcpe\protocol\types\EntityMetadata;
@@ -97,8 +99,19 @@ class PrimedTNT extends Entity{
 
         $this->close();
 
-        if($this->world->getGameRules()->getBool(GameRules::TNT_EXPLODES)){
-            (new Explosion($this->world, $this->position->add(0, self::SIZE / 16, 0), self::EXPLOSION_RADIUS, $this))->explode();
+        if(!$this->world->getGameRules()->getBool(GameRules::TNT_EXPLODES)){
+            return;
         }
+
+        $event = new ExplosionPrimeEvent($this, self::EXPLOSION_RADIUS);
+        $event->call();
+
+        if($event->isCancelled()){
+            return;
+        }
+
+        $explosion = new Explosion($this->world, $this->position->add(0, self::SIZE / 16, 0), $event->getRadius(), $this);
+        $explosion->setBlockBreaking($event->isBlockBreaking());
+        $explosion->explode();
     }
 }

@@ -31,6 +31,9 @@
     "make-server": [
       "@composer dump-autoload --optimize",
       "@php -d phar.readonly=0 build/make-server.php"
+    ],
+    "make-plugin": [
+      "@php -d phar.readonly=0 build/make-plugin.php"
     ]
   }
 }

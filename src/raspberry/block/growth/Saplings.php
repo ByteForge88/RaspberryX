@@ -9,6 +9,8 @@ use raspberry\block\BlockProperties;
 
 use raspberry\world\World;
 
+use raspberry\event\block\BlockGrowEvent;
+
 use function in_array;
 use function mt_rand;
 
@@ -40,7 +42,7 @@ class Saplings implements RandomTickBehavior{
     public function onRandomTick(World $world, int $x, int $y, int $z, BlockState $state) : void{
         if($state->getName() === self::PROPAGULE){
             if($state->getProperty(BlockProperties::HANGING) === true){
-                $world->setBlock($x, $y, $z, $state->withProperty(BlockProperties::PROPAGULE_STAGE, $state->getProperty(BlockProperties::PROPAGULE_STAGE) + 1));
+                BlockGrowEvent::set($world, $x, $y, $z, $state->withProperty(BlockProperties::PROPAGULE_STAGE, $state->getProperty(BlockProperties::PROPAGULE_STAGE) + 1));
             }elseif(mt_rand(0, 6) === 0){
                 Trees::grow($world, $x, $y, $z, $state);
             }
@@ -63,10 +65,10 @@ class Saplings implements RandomTickBehavior{
             if($sapling->getProperty(BlockProperties::HANGING) === false){
                 Trees::grow($world, $x, $y, $z, $sapling);
             }elseif($stage < self::PROPAGULE_GROWN){
-                $world->setBlock($x, $y, $z, $sapling->withProperty(BlockProperties::PROPAGULE_STAGE, $stage + 1));
+                BlockGrowEvent::set($world, $x, $y, $z, $sapling->withProperty(BlockProperties::PROPAGULE_STAGE, $stage + 1));
             }
         }elseif($sapling->getProperty(BlockProperties::AGE_BIT) === false){
-            $world->setBlock($x, $y, $z, $sapling->withProperty(BlockProperties::AGE_BIT, true));
+            BlockGrowEvent::set($world, $x, $y, $z, $sapling->withProperty(BlockProperties::AGE_BIT, true));
         }else{
             Trees::grow($world, $x, $y, $z, $sapling);
         }

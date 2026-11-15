@@ -34,7 +34,9 @@ class KickCommand extends Command{
                 continue;
             }
 
-            $player->kick($reason ?? $this->text("command.kick.default"));
+            if(!$player->kick($reason ?? $this->text("command.kick.default"))){
+                continue;
+            }
 
             if($reason === null){
                 $output->success("commands.kick.success", [$player->getName()]);

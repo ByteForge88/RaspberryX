@@ -8,6 +8,9 @@ use raspberry\Server;
 
 use raspberry\crafting\FurnaceData;
 
+use raspberry\event\inventory\FurnaceBurnEvent;
+use raspberry\event\inventory\FurnaceSmeltEvent;
+
 use raspberry\item\Item;
 use raspberry\item\ItemIds;
 
@@ -135,7 +138,13 @@ class Furnace extends ContainerBlockEntity implements TickableBlockEntity{
                 $ticks = FurnaceData::getBurnTicks($fuel);
 
                 if($ticks > 0){
-                    $this->burnTime = $this->burnDuration = $this->saveId === self::ID_FURNACE ? $ticks : (int) ($ticks / 2);
+                    $event = new FurnaceBurnEvent($world, $this, $fuel, $this->saveId === self::ID_FURNACE ? $ticks : (int) ($ticks / 2));
+                    $event->call();
+                    $ticks = $event->isCancelled() ? 0 : $event->getBurnTicks();
+                }
+
+                if($ticks > 0){
+                    $this->burnTime = $this->burnDuration = $ticks;
                     //a lava bucket leaves its bucket behind
                     $inventory->setItem(self::SLOT_FUEL, $fuel->getId() === ItemIds::LAVA_BUCKET ? new Item(ItemIds::BUCKET) : ($fuel->getCount() > 1 ? (clone $fuel)->setCount($fuel->getCount() - 1) : Item::air()));
                 }
@@ -144,7 +153,7 @@ class Furnace extends ContainerBlockEntity implements TickableBlockEntity{
             if($this->isBurning() && $output !== null){
                 if(++$this->cookTime >= $this->getCookTicks()){
                     $this->cookTime = 0;
-                    $this->cook($input, $output);
+                    $this->cook($world, $input, $output);
                 }
             }else{
                 $this->cookTime = 0;
@@ -193,9 +202,22 @@ class Furnace extends ContainerBlockEntity implements TickableBlockEntity{
         return $result;
     }
 
-    private function cook(Item $input, Item $result) : void{
+    private function cook(World $world, Item $input, Item $result) : void{
+        $event = new FurnaceSmeltEvent($world, $this, (clone $input)->setCount(1), $result);
+        $event->call();
+
+        if($event->isCancelled()){
+            return;
+        }
+
+        $result = $event->getResult();
         $inventory = $this->getInventory();
         $current = $inventory->getItem(self::SLOT_OUTPUT);
+
+        //a plugin's result may not fit what is there
+        if(!$current->isNull() && (!$current->canStackWith($result) || $current->getCount() + $result->getCount() > $current->getMaxStackSize())){
+            return;
+        }
 
         $inventory->setItem(self::SLOT_INPUT, $input->getCount() > 1 ? (clone $input)->setCount($input->getCount() - 1) : Item::air());
         $inventory->setItem(self::SLOT_OUTPUT, $current->isNull() ? clone $result : (clone $current)->setCount($current->getCount() + $result->getCount()));

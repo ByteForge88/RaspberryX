@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace raspberry\entity;
 
+use raspberry\event\entity\EntityDespawnEvent;
+use raspberry\event\entity\EntityTeleportEvent;
+
 use raspberry\nbt\tag\CompoundTag;
 
 use raspberry\math\Vector3;
@@ -160,10 +163,31 @@ abstract class Entity{
         return true;
     }
 
+    /**
+     * Moves the entity, to another world too. Plugins can stop it or send it somewhere else
+     * with EntityTeleportEvent.
+     */
     public function teleport(Vector3 $position, ?float $yaw = null, ?float $pitch = null, ?World $world = null) : void{
         if($this->closed){
             throw new LogicException("Cannot teleport a closed entity");
         }
+
+        if(EntityTeleportEvent::hasHandlers()){
+            $event = new EntityTeleportEvent($this, $this->world, $this->position, $world ?? $this->world, $position);
+            $event->call();
+
+            if($event->isCancelled()){
+                return;
+            }
+
+            $position = $event->getTo();
+            $world = $event->getToWorld();
+        }
+
+        $this->doTeleport($position, $yaw, $pitch, $world);
+    }
+
+    protected function doTeleport(Vector3 $position, ?float $yaw, ?float $pitch, ?World $world) : void{
 
         if($world !== null && $world !== $this->world){
             $this->despawnFromAll();
@@ -263,6 +287,8 @@ abstract class Entity{
         if($this->closed){
             return;
         }
+
+        (new EntityDespawnEvent($this))->call();
 
         $this->despawnFromAll();
 

@@ -13,6 +13,11 @@ use raspberry\block\BlockState;
 use raspberry\world\World;
 use raspberry\world\light\BlockLight;
 
+use raspberry\math\Vector3;
+
+use raspberry\event\block\BlockFadeEvent;
+use raspberry\event\block\BlockSpreadEvent;
+
 use function mt_rand;
 
 class Spreading implements RandomTickBehavior{
@@ -35,14 +40,14 @@ class Spreading implements RandomTickBehavior{
 
         if($name !== BlockIds::GRASS_BLOCK && $name !== BlockIds::MYCELIUM){
             if(!self::canStayCovered($world, $x, $y, $z)){
-                $world->setBlock($x, $y, $z, $registry->getDefaultState(BlockIds::NETHERRACK));
+                BlockFadeEvent::set($world, $x, $y, $z, $registry->getDefaultState(BlockIds::NETHERRACK));
             }
 
             return;
         }
 
         if(!self::canStayCovered($world, $x, $y, $z)){
-            $world->setBlock($x, $y, $z, $registry->getDefaultState(BlockIds::DIRT));
+            BlockFadeEvent::set($world, $x, $y, $z, $registry->getDefaultState(BlockIds::DIRT));
             return;
         }
 
@@ -54,7 +59,7 @@ class Spreading implements RandomTickBehavior{
             [$px, $py, $pz] = [$x + mt_rand(-1, 1), $y + mt_rand(-3, 1), $z + mt_rand(-1, 1)];
 
             if(Nearby::name($world, $px, $py, $pz) === BlockIds::DIRT && self::canStayCovered($world, $px, $py, $pz) && !Nearby::isWater(Nearby::block($world, $px, $py + 1, $pz))){
-                $world->setBlock($px, $py, $pz, $state);
+                BlockSpreadEvent::spread($world, $px, $py, $pz, $state, new Vector3($x, $y, $z));
             }
         }
     }

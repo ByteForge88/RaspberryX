@@ -12,6 +12,8 @@ use raspberry\block\BlockState;
 use raspberry\world\World;
 use raspberry\world\light\BlockLight;
 
+use raspberry\event\block\BlockGrowEvent;
+
 use function in_array;
 use function mt_getrandmax;
 use function mt_rand;
@@ -87,7 +89,7 @@ class Plants implements RandomTickBehavior{
     }
 
     private function addAge(World $world, int $x, int $y, int $z, BlockState $state, string $property) : void{
-        $world->setBlock($x, $y, $z, $state->withProperty($property, $state->getProperty($property) + 1));
+        BlockGrowEvent::set($world, $x, $y, $z, $state->withProperty($property, $state->getProperty($property) + 1));
     }
 
     private function state(string $name) : BlockState{
@@ -115,10 +117,10 @@ class Plants implements RandomTickBehavior{
         $age = $cane->getProperty(BlockProperties::AGE);
 
         if($age === self::MAX_AGE){
-            $world->setBlock($x, $y + 1, $z, $this->state(self::SUGAR_CANE));
-            $world->setBlock($x, $y, $z, $cane->withProperty(BlockProperties::AGE, 0));
+            BlockGrowEvent::set($world, $x, $y + 1, $z, $this->state(self::SUGAR_CANE));
+            BlockGrowEvent::set($world, $x, $y, $z, $cane->withProperty(BlockProperties::AGE, 0));
         }else{
-            $world->setBlock($x, $y, $z, $cane->withProperty(BlockProperties::AGE, $age + 1));
+            BlockGrowEvent::set($world, $x, $y, $z, $cane->withProperty(BlockProperties::AGE, $age + 1));
         }
     }
 
@@ -137,20 +139,20 @@ class Plants implements RandomTickBehavior{
         if($age === 8 && $this->cactusFits($world, $x, $y + 1, $z)){
             //halfway grown, a cactus may flower instead, a tall one more often
             if(mt_rand() / mt_getrandmax() <= ($height >= self::STACK_HEIGHT ? 0.25 : 0.1)){
-                $world->setBlock($x, $y + 1, $z, $this->state(self::CACTUS_FLOWER));
+                BlockGrowEvent::set($world, $x, $y + 1, $z, $this->state(self::CACTUS_FLOWER));
             }
         }elseif($age === self::MAX_AGE && $height < self::STACK_HEIGHT){
             if($this->cactusFits($world, $x, $y + 1, $z)){
-                $world->setBlock($x, $y + 1, $z, $this->state(self::CACTUS));
+                BlockGrowEvent::set($world, $x, $y + 1, $z, $this->state(self::CACTUS));
             }
 
-            $world->setBlock($x, $y, $z, $cactus->withProperty(BlockProperties::AGE, 0));
+            BlockGrowEvent::set($world, $x, $y, $z, $cactus->withProperty(BlockProperties::AGE, 0));
 
             return;
         }
 
         if($age < self::MAX_AGE){
-            $world->setBlock($x, $y, $z, $cactus->withProperty(BlockProperties::AGE, $age + 1));
+            BlockGrowEvent::set($world, $x, $y, $z, $cactus->withProperty(BlockProperties::AGE, $age + 1));
         }
     }
 
@@ -189,15 +191,15 @@ class Plants implements RandomTickBehavior{
             $leaves = "large_leaves";
 
             if($twoBamboo){
-                $world->setBlock($x, $y - 1, $z, $below->withProperty(BlockProperties::BAMBOO_LEAF_SIZE, "small_leaves"));
-                $world->setBlock($x, $y - 2, $z, $belowTwo->withProperty(BlockProperties::BAMBOO_LEAF_SIZE, "no_leaves"));
+                BlockGrowEvent::set($world, $x, $y - 1, $z, $below->withProperty(BlockProperties::BAMBOO_LEAF_SIZE, "small_leaves"));
+                BlockGrowEvent::set($world, $x, $y - 2, $z, $belowTwo->withProperty(BlockProperties::BAMBOO_LEAF_SIZE, "no_leaves"));
             }
         }
 
         $thick = $bamboo->getProperty(BlockProperties::BAMBOO_STALK_THICKNESS) === "thick" || $twoBamboo;
         $done = ($height >= 11 && mt_rand(0, 3) === 0) || $height === 15;
 
-        $world->setBlock($x, $y + 1, $z, $this->state(self::BAMBOO)
+        BlockGrowEvent::set($world, $x, $y + 1, $z, $this->state(self::BAMBOO)
             ->withProperty(BlockProperties::BAMBOO_STALK_THICKNESS, $thick ? "thick" : "thin")
             ->withProperty(BlockProperties::BAMBOO_LEAF_SIZE, $leaves)
             ->withProperty(BlockProperties::AGE_BIT, $done));
@@ -209,8 +211,8 @@ class Plants implements RandomTickBehavior{
         }
 
         $bamboo = $this->state(self::BAMBOO);
-        $world->setBlock($x, $y + 1, $z, $bamboo->withProperty(BlockProperties::BAMBOO_LEAF_SIZE, "small_leaves"));
-        $world->setBlock($x, $y, $z, $bamboo);
+        BlockGrowEvent::set($world, $x, $y + 1, $z, $bamboo->withProperty(BlockProperties::BAMBOO_LEAF_SIZE, "small_leaves"));
+        BlockGrowEvent::set($world, $x, $y, $z, $bamboo);
     }
 
     private function growKelp(World $world, int $x, int $y, int $z, BlockState $kelp) : void{
@@ -218,7 +220,7 @@ class Plants implements RandomTickBehavior{
             return;
         }
 
-        $world->setBlock($x, $y + 1, $z, $kelp->withProperty(BlockProperties::KELP_AGE, $kelp->getProperty(BlockProperties::KELP_AGE) + 1));
+        BlockGrowEvent::set($world, $x, $y + 1, $z, $kelp->withProperty(BlockProperties::KELP_AGE, $kelp->getProperty(BlockProperties::KELP_AGE) + 1));
     }
 
     private function growCaveVines(World $world, int $x, int $y, int $z, BlockState $vines) : void{
@@ -229,10 +231,10 @@ class Plants implements RandomTickBehavior{
         $age = $vines->getProperty(BlockProperties::GROWING_PLANT_AGE);
         $next = mt_rand(0, 99) < 11 ? self::CAVE_VINES_HEAD_BERRIES : self::CAVE_VINES;
 
-        $world->setBlock($x, $y - 1, $z, $this->state($next)->withProperty(BlockProperties::GROWING_PLANT_AGE, $age + 1));
+        BlockGrowEvent::set($world, $x, $y - 1, $z, $this->state($next)->withProperty(BlockProperties::GROWING_PLANT_AGE, $age + 1));
 
         if($vines->getName() === self::CAVE_VINES_HEAD_BERRIES){
-            $world->setBlock($x, $y, $z, $this->state(self::CAVE_VINES_BODY_BERRIES)->withProperty(BlockProperties::GROWING_PLANT_AGE, $age));
+            BlockGrowEvent::set($world, $x, $y, $z, $this->state(self::CAVE_VINES_BODY_BERRIES)->withProperty(BlockProperties::GROWING_PLANT_AGE, $age));
         }
     }
 
@@ -241,7 +243,7 @@ class Plants implements RandomTickBehavior{
             return;
         }
 
-        $world->setBlock($x, $y + $direction, $z, $vines->withProperty($property, $vines->getProperty($property) + 1));
+        BlockGrowEvent::set($world, $x, $y + $direction, $z, $vines->withProperty($property, $vines->getProperty($property) + 1));
     }
 
     /**
@@ -277,7 +279,7 @@ class Plants implements RandomTickBehavior{
         }
 
         if(Nearby::isAir($world, $px, $py, $pz) && $this->mushroomFits($world, $px, $py, $pz)){
-            $world->setBlock($px, $py, $pz, $mushroom);
+            BlockGrowEvent::set($world, $px, $py, $pz, $mushroom);
         }
     }
 

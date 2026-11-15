@@ -6,6 +6,8 @@ namespace raspberry\command;
 
 use raspberry\player\Player;
 
+use raspberry\plugin\PluginOwned;
+
 use raspberry\Server;
 
 use LogicException;
@@ -110,6 +112,10 @@ class CommandMap{
         }
 
         $command = $this->getCommand($name);
+
+        if($command instanceof PluginOwned && !$command->getOwningPlugin()->isEnabled()){
+            $command = null;
+        }
 
         if($command === null || !$command->testPermission($sender)){
             $output->error("commands.generic.unknown", [$name]);

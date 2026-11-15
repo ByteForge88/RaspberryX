@@ -13,6 +13,8 @@ use raspberry\block\BlockState;
 use raspberry\world\World;
 use raspberry\world\light\BlockLight;
 
+use raspberry\event\block\BlockFadeEvent;
+
 use function mt_rand;
 
 class Melting implements RandomTickBehavior{
@@ -33,8 +35,8 @@ class Melting implements RandomTickBehavior{
         $registry = Server::getInstance()->getBlockStateRegistry();
 
         match($state->getName()){
-            BlockIds::ICE => $world->getBlockLight($x, $y, $z) > self::MELT_LIGHT - BlockLight::filter($state) ? $world->setBlock($x, $y, $z, $registry->getDefaultState(BlockIds::WATER)) : null,
-            BlockIds::SNOW_LAYER => $world->getBlockLight($x, $y, $z) > self::MELT_LIGHT ? $world->setBlock($x, $y, $z, $registry->getDefaultState(BlockIds::AIR)) : null,
+            BlockIds::ICE => $world->getBlockLight($x, $y, $z) > self::MELT_LIGHT - BlockLight::filter($state) ? BlockFadeEvent::set($world, $x, $y, $z, $registry->getDefaultState(BlockIds::WATER)) : null,
+            BlockIds::SNOW_LAYER => $world->getBlockLight($x, $y, $z) > self::MELT_LIGHT ? BlockFadeEvent::set($world, $x, $y, $z, $registry->getDefaultState(BlockIds::AIR)) : null,
             BlockIds::FROSTED_ICE => $this->meltFrostedIce($world, $x, $y, $z, $state),
             default => null
         };
@@ -55,9 +57,9 @@ class Melting implements RandomTickBehavior{
         }
 
         if($age < self::FROSTED_ICE_MAX_AGE){
-            $world->setBlock($x, $y, $z, $ice->withProperty(BlockProperties::AGE, $age + 1));
+            BlockFadeEvent::set($world, $x, $y, $z, $ice->withProperty(BlockProperties::AGE, $age + 1));
         }else{
-            $world->setBlock($x, $y, $z, Server::getInstance()->getBlockStateRegistry()->getDefaultState(BlockIds::WATER));
+            BlockFadeEvent::set($world, $x, $y, $z, Server::getInstance()->getBlockStateRegistry()->getDefaultState(BlockIds::WATER));
         }
     }
 }

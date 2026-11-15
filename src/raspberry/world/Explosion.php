@@ -19,6 +19,8 @@ use raspberry\entity\object\FallingBlock;
 use raspberry\entity\object\ItemEntity;
 use raspberry\entity\object\PrimedTNT;
 
+use raspberry\event\world\ExplosionEvent;
+
 use raspberry\item\Item;
 
 use raspberry\math\Vector3;
@@ -65,12 +67,21 @@ class Explosion{
 
     private float $dropChance;
 
+    private bool $blockBreaking = true;
+
     public function __construct(World $world, Vector3 $center, float $radius, ?Entity $source = null, float $dropChance = 1.0){
         $this->world = $world;
         $this->center = $center;
         $this->radius = $radius;
         $this->source = $source;
         $this->dropChance = $dropChance;
+    }
+
+    /**
+     * Whether the blast breaks blocks, or only hurts and pushes things.
+     */
+    public function setBlockBreaking(bool $blockBreaking) : void{
+        $this->blockBreaking = $blockBreaking;
     }
 
     private static function teach() : void{
@@ -182,14 +193,30 @@ class Explosion{
         }
 
         $data = Native::take($out, $length->cdata);
+        $blocks = [];
+
+        if($this->blockBreaking){
+            for($offset = 0, $size = strlen($data); $offset < $size; $offset += 12){
+                $block = unpack("lx/ly/lz", $data, $offset);
+                $blocks[] = new Vector3($block["x"], $block["y"], $block["z"]);
+            }
+        }
+
+        $event = new ExplosionEvent($world, $center, $this->radius, $this->source, $blocks, $this->dropChance);
+        $event->call();
+
+        if($event->isCancelled()){
+            return;
+        }
+
+        $this->dropChance = $event->getDropChance();
 
         foreach($near as $i => $entity){
             $this->hit($entity, $exposures[$i]);
         }
 
-        for($offset = 0, $size = strlen($data); $offset < $size; $offset += 12){
-            $block = unpack("lx/ly/lz", $data, $offset);
-            $this->breakBlock($block["x"], $block["y"], $block["z"]);
+        foreach($event->getBlocks() as $block){
+            $this->breakBlock($block->getFloorX(), $block->getFloorY(), $block->getFloorZ());
         }
 
         $world->broadcastPacket($center->getFloorX(), $center->getFloorZ(), LevelSoundEventPacket::create(LevelSoundEvent::EXPLODE, $center->x, $center->y, $center->z));
@@ -232,13 +259,13 @@ class Explosion{
                 return;
             }
 
-            $cause = $this->source instanceof PrimedTnt || $this->source === null ? DamageSource::CAUSE_BLOCK_EXPLOSION : DamageSource::CAUSE_ENTITY_EXPLOSION;
+            $cause = $this->source instanceof PrimedTNT || $this->source === null ? DamageSource::CAUSE_BLOCK_EXPLOSION : DamageSource::CAUSE_ENTITY_EXPLOSION;
             $entity->damage(new DamageSource($cause, (float) (int) (($impact * $impact + $impact) / 2 * 7 * $diameter + 1)));
 
             $push = $impact * (1 - $entity->getKnockbackResistance());
             $motion = $entity->getMotion();
             $entity->setMotion(new Vector3($motion->x + $dx * $push, $motion->y + $dy * $push, $motion->z + $dz * $push));
-        }elseif($entity instanceof PrimedTnt || $entity instanceof FallingBlock){
+        }elseif($entity instanceof PrimedTNT || $entity instanceof FallingBlock){
             $motion = $entity->getMotion();
             $entity->setMotion(new Vector3($motion->x + $dx * $impact, $motion->y + $dy * $impact, $motion->z + $dz * $impact));
         }
@@ -249,7 +276,7 @@ class Explosion{
         $block = $world->getBlock($x, $y, $z);
 
         if($block->getName() === BlockIds::TNT){
-            Tnt::ignite($world, $x, $y, $z, Tnt::chainFuse());
+            TNT::ignite($world, $x, $y, $z, TNT::chainFuse());
             return;
         }
 

@@ -12,6 +12,8 @@ use raspberry\block\BlockState;
 
 use raspberry\world\World;
 
+use raspberry\event\block\BlockGrowEvent;
+
 use function in_array;
 use function mt_rand;
 
@@ -91,8 +93,8 @@ class Crops implements RandomTickBehavior{
         match(true){
             $stem => $this->growStem($world, $x, $y, $z, $state),
             $name === "minecraft:pitcher_crop" => $this->growPitcher($world, $x, $y, $z, $state),
-            $name === "minecraft:torchflower_crop" && $growth >= 1 => $world->setBlock($x, $y, $z, Server::getInstance()->getBlockStateRegistry()->getDefaultState(BlockIds::TORCHFLOWER)),
-            default => $world->setBlock($x, $y, $z, $state->withProperty(BlockProperties::GROWTH, $growth + 1))
+            $name === "minecraft:torchflower_crop" && $growth >= 1 => BlockGrowEvent::set($world, $x, $y, $z, Server::getInstance()->getBlockStateRegistry()->getDefaultState(BlockIds::TORCHFLOWER)),
+            default => BlockGrowEvent::set($world, $x, $y, $z, $state->withProperty(BlockProperties::GROWTH, $growth + 1))
         };
     }
 
@@ -149,7 +151,7 @@ class Crops implements RandomTickBehavior{
             return false;
         }
 
-        $world->setBlock($x, $y, $z, $stem->withProperty(BlockProperties::FACING_DIRECTION, self::UNATTACHED));
+        BlockGrowEvent::set($world, $x, $y, $z, $stem->withProperty(BlockProperties::FACING_DIRECTION, self::UNATTACHED));
 
         return true;
     }
@@ -158,7 +160,7 @@ class Crops implements RandomTickBehavior{
         $growth = $stem->getProperty(BlockProperties::GROWTH);
 
         if($growth < self::MAX_GROWTH){
-            $world->setBlock($x, $y, $z, $stem->withProperty(BlockProperties::GROWTH, $growth + 1));
+            BlockGrowEvent::set($world, $x, $y, $z, $stem->withProperty(BlockProperties::GROWTH, $growth + 1));
             return;
         }
 
@@ -173,8 +175,8 @@ class Crops implements RandomTickBehavior{
             return;
         }
 
-        $world->setBlock($x + $dx, $y, $z + $dz, Server::getInstance()->getBlockStateRegistry()->getDefaultState(self::fruitOf($stem->getName())));
-        $world->setBlock($x, $y, $z, $stem->withProperty(BlockProperties::FACING_DIRECTION, $facing));
+        BlockGrowEvent::set($world, $x + $dx, $y, $z + $dz, Server::getInstance()->getBlockStateRegistry()->getDefaultState(self::fruitOf($stem->getName())));
+        BlockGrowEvent::set($world, $x, $y, $z, $stem->withProperty(BlockProperties::FACING_DIRECTION, $facing));
     }
 
     private static function fruitOf(string $stem) : string{
@@ -191,9 +193,9 @@ class Crops implements RandomTickBehavior{
                 return;
             }
 
-            $world->setBlock($x, $y + 1, $z, $crop->withProperty(BlockProperties::GROWTH, $growth)->withProperty(BlockProperties::UPPER_BLOCK_BIT, true));
+            BlockGrowEvent::set($world, $x, $y + 1, $z, $crop->withProperty(BlockProperties::GROWTH, $growth)->withProperty(BlockProperties::UPPER_BLOCK_BIT, true));
         }
 
-        $world->setBlock($x, $y, $z, $crop->withProperty(BlockProperties::GROWTH, $growth));
+        BlockGrowEvent::set($world, $x, $y, $z, $crop->withProperty(BlockProperties::GROWTH, $growth));
     }
 }

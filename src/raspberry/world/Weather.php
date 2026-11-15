@@ -15,6 +15,10 @@ use raspberry\block\growth\Nearby;
 use raspberry\entity\Living;
 use raspberry\entity\object\LightningBolt;
 
+use raspberry\event\block\BlockFormEvent;
+use raspberry\event\world\LightningStrikeEvent;
+use raspberry\event\world\WeatherChangeEvent;
+
 use raspberry\math\Vector3;
 
 use raspberry\network\mcpe\protocol\LevelEventPacket;
@@ -175,6 +179,17 @@ class Weather{
         $raining = $this->metadata->raining;
         $thundering = $raining && $this->metadata->thundering;
 
+        if($raining !== $this->sentRain || $thundering !== $this->sentThunder){
+            $event = new WeatherChangeEvent($this->world, $this->sentRain, $this->sentThunder, $raining, $thundering);
+            $event->call();
+
+            if($event->isCancelled()){
+                $this->metadata->raining = $this->sentRain;
+                $this->metadata->thundering = $this->sentThunder;
+                return;
+            }
+        }
+
         if($raining !== $this->sentRain){
             $this->sentRain = $raining;
             $this->broadcast(LevelEventPacket::create($raining ? LevelEvent::START_RAINING : LevelEvent::STOP_RAINING, 0, 0, 0, $raining ? 65535 : 0));
@@ -222,8 +237,15 @@ class Weather{
 
         $target = $targets === [] ? new Vector3($x + 0.5, $y, $z + 0.5) : array_values($targets)[mt_rand(0, count($targets) - 1)];
 
-        if($this->isRainingAt($target->getFloorX(), $target->getFloorY(), $target->getFloorZ())){
-            new LightningBolt($this->world, $target);
+        if(!$this->isRainingAt($target->getFloorX(), $target->getFloorY(), $target->getFloorZ())){
+            return;
+        }
+
+        $event = new LightningStrikeEvent($this->world, $target);
+        $event->call();
+
+        if(!$event->isCancelled()){
+            new LightningBolt($this->world, $event->getPosition());
         }
     }
 

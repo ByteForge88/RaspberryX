@@ -10,6 +10,8 @@ use raspberry\block\BlockState;
 
 use raspberry\world\World;
 
+use raspberry\event\block\BlockGrowEvent;
+
 use function array_keys;
 use function array_rand;
 use function mt_rand;
@@ -47,11 +49,11 @@ class Others implements RandomTickBehavior{
         $name = $state->getName();
 
         if(isset(self::UNLIT[$name])){
-            $world->setBlock($x, $y, $z, $registry->getDefaultState(self::UNLIT[$name]));
+            BlockGrowEvent::set($world, $x, $y, $z, $registry->getDefaultState(self::UNLIT[$name]));
         }elseif($name === self::OPEN_EYEBLOSSOM && $world->isDaytime()){
-            $world->setBlock($x, $y, $z, $registry->getDefaultState(self::CLOSED_EYEBLOSSOM));
+            BlockGrowEvent::set($world, $x, $y, $z, $registry->getDefaultState(self::CLOSED_EYEBLOSSOM));
         }elseif($name === self::CLOSED_EYEBLOSSOM && !$world->isDaytime()){
-            $world->setBlock($x, $y, $z, $registry->getDefaultState(self::OPEN_EYEBLOSSOM));
+            BlockGrowEvent::set($world, $x, $y, $z, $registry->getDefaultState(self::OPEN_EYEBLOSSOM));
         }elseif($name === self::BUDDING_AMETHYST && mt_rand(0, 4) === 0){
             $this->growBud($world, $x, $y, $z);
         }
@@ -75,7 +77,7 @@ class Others implements RandomTickBehavior{
         };
 
         if($next !== null){
-            $world->setBlock($x + $dx, $y + $dy, $z + $dz, Server::getInstance()->getBlockStateRegistry()->get($next, ["minecraft:block_face" => $face]));
+            BlockGrowEvent::set($world, $x + $dx, $y + $dy, $z + $dz, Server::getInstance()->getBlockStateRegistry()->get($next, ["minecraft:block_face" => $face]));
         }
     }
 }

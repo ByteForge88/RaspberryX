@@ -12,6 +12,8 @@ use raspberry\block\BlockState;
 
 use raspberry\world\World;
 
+use raspberry\event\block\BlockFadeEvent;
+
 use function in_array;
 
 class Farmland implements RandomTickBehavior{
@@ -38,7 +40,7 @@ class Farmland implements RandomTickBehavior{
         }elseif($moisture > 0){
             $world->setBlock($x, $y, $z, $state->withProperty(BlockProperties::MOISTURIZED_AMOUNT, $moisture - 1));
         }elseif(!in_array(Nearby::name($world, $x, $y + 1, $z), Crops::NAMES, true)){
-            $world->setBlock($x, $y, $z, Server::getInstance()->getBlockStateRegistry()->getDefaultState(BlockIds::DIRT));
+            BlockFadeEvent::set($world, $x, $y, $z, Server::getInstance()->getBlockStateRegistry()->getDefaultState(BlockIds::DIRT));
         }
     }
 

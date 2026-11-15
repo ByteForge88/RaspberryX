@@ -12,6 +12,7 @@ use raspberry\block\StairsShape;
 use raspberry\block\entity\Lectern;
 
 use raspberry\event\block\BlockBreakEvent;
+use raspberry\event\player\PlayerInteractEvent;
 
 use raspberry\item\Item;
 use raspberry\item\ToolInfo;
@@ -104,7 +105,7 @@ class BlockBreaker{
                 $this->breakTicks = $ticks;
 
                 if($ticks > 0){
-                    $this->broadcast(LevelEventPacket::create(LevelEvent::UPDATE_BLOCK_CRACKING, $x, $y, $z, intdiv(65535, $ticks)), $x, $z);
+                    $this->broadcastToAll(LevelEventPacket::create(LevelEvent::UPDATE_BLOCK_CRACKING, $x, $y, $z, intdiv(65535, $ticks)), $x, $z);
                 }
             }
 
@@ -133,7 +134,19 @@ class BlockBreaker{
 
         $block = $this->getBreakableBlock($x, $y, $z);
 
-        if($block === null || $this->takeBook($x, $y, $z)){
+        if($block === null){
+            return;
+        }
+
+        $event = new PlayerInteractEvent($this->player, $block, new Vector3($x, $y, $z), $face, $this->player->getInventory()->getItemInHand(), PlayerInteractEvent::LEFT_CLICK_BLOCK);
+        $event->call();
+
+        if($event->isCancelled()){
+            $this->player->getNetworkSession()->sendBlock($x, $y, $z, $block);
+            return;
+        }
+
+        if($this->takeBook($x, $y, $z)){
             return;
         }
 
@@ -152,7 +165,7 @@ class BlockBreaker{
         $this->breakTicks = BlockBreakInfo::get($block->getName())->getBreakTicks($this->player->getInventory()->getItemInHand(), $block->getName(), $this->player->getEffects()->getBreakSpeedMultiplier());
 
         if($this->breakTicks > 0){
-            $this->broadcast(LevelEventPacket::create(LevelEvent::START_BLOCK_CRACKING, $x, $y, $z, intdiv(65535, $this->breakTicks)), $x, $z);
+            $this->broadcastToAll(LevelEventPacket::create(LevelEvent::START_BLOCK_CRACKING, $x, $y, $z, intdiv(65535, $this->breakTicks)), $x, $z);
         }else{
             $this->progress = 1.0;
         }
@@ -167,7 +180,7 @@ class BlockBreaker{
         $this->target = null;
 
         if($this->breakTicks > 0){
-            $this->broadcast(LevelEventPacket::create(LevelEvent::STOP_BLOCK_CRACKING, $x, $y, $z), $x, $z);
+            $this->broadcastToAll(LevelEventPacket::create(LevelEvent::STOP_BLOCK_CRACKING, $x, $y, $z), $x, $z);
         }
     }
 
@@ -289,14 +302,10 @@ class BlockBreaker{
 
         $world->setBlock($x, $y, $z, $this->air());
         $particles = LevelEventPacket::create(LevelEvent::PARTICLES_DESTROY_BLOCK, $x + 0.5, $y + 0.5, $z + 0.5, $this->getNetworkId($block));
-        $this->broadcast($particles, $x, $z);
+        $this->broadcastToAll($particles, $x, $z);
 
-        if($player->getGameMode()->hasInstantBuild()){
-            $player->getNetworkSession()->sendDataPacket($particles);
-            $player->getNetworkSession()->sendDataPacket(LevelSoundEventPacket::create(LevelSoundEvent::BREAK, $x + 0.5, $y + 0.5, $z + 0.5, $this->getNetworkId($block)));
-        }
+        $player->getNetworkSession()->sendDataPacket(LevelSoundEventPacket::create(LevelSoundEvent::BREAK, $x + 0.5, $y + 0.5, $z + 0.5, $this->getNetworkId($block)));
 
-        //the other half of a door, tall plant or bed goes with it
         $other = $this->getOtherHalf($block, $x, $y, $z);
 
         if($other !== null){
@@ -384,6 +393,13 @@ class BlockBreaker{
 
     private function getNetworkId(BlockState $block) : int{
         return $this->player->getNetworkSession()->getServer()->getBlockTranslator()->getNetworkId($block);
+    }
+
+    /**
+     * Sends a packet to the players who can see the block, the one breaking it too.
+     */
+    private function broadcastToAll(Packet $packet, int $x, int $z) : void{
+        $this->player->getWorld()->broadcastPacket($x, $z, $packet);
     }
 
     /**

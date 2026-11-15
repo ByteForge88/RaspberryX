@@ -6,6 +6,9 @@ namespace raspberry\world;
 
 use raspberry\utils\Logger;
 
+use raspberry\event\world\WorldLoadEvent;
+use raspberry\event\world\WorldUnloadEvent;
+
 use raspberry\world\format\io\RaspberryWorldProvider;
 use raspberry\world\format\io\WorldMetadata;
 use raspberry\world\generator\GeneratorFactory;
@@ -67,10 +70,11 @@ class WorldManager{
 
         $provider = new RaspberryWorldProvider($this->worldPath($name), $this->logger);
         $metadata = $provider->loadMetadata();
-
         $generator = $this->generatorFactory->create($metadata->generator, $metadata->generatorSettings, $metadata->seed);
+        $world = $this->worlds[strtolower($name)] = new World($metadata, $generator, $provider);
 
-        return $this->worlds[strtolower($name)] = new World($metadata, $generator, $provider);
+        (new WorldLoadEvent($world))->call();
+        return $world;
     }
 
     /**
@@ -92,7 +96,11 @@ class WorldManager{
         $provider = new RaspberryWorldProvider($this->worldPath($name), $this->logger);
         $provider->saveMetadata($metadata);
 
-        return $this->worlds[strtolower($name)] = new World($metadata, $generator, $provider);
+        $world = $this->worlds[strtolower($name)] = new World($metadata, $generator, $provider);
+
+        (new WorldLoadEvent($world))->call();
+
+        return $world;
     }
 
     public function getWorld(string $name) : ?World{
@@ -161,6 +169,8 @@ class WorldManager{
             throw new InvalidArgumentException("World '{$world->getName()}' is not managed by this WorldManager");
         }
 
+        (new WorldUnloadEvent($world))->call();
+
         unset($this->worlds[$key]);
 
         return $world->close();
@@ -175,6 +185,7 @@ class WorldManager{
         $saved = 0;
 
         foreach($this->worlds as $world){
+            (new WorldUnloadEvent($world))->call();
             $saved += $world->close();
         }
 

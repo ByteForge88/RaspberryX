@@ -11,6 +11,11 @@ use raspberry\block\entity\BrewingStand;
 use raspberry\crafting\FurnaceData;
 use raspberry\crafting\CraftingRecipe;
 
+use raspberry\event\inventory\SlotChange;
+use raspberry\event\inventory\CraftItemEvent;
+use raspberry\event\inventory\InventoryTransactionEvent;
+use raspberry\event\player\PlayerDropItemEvent;
+
 use raspberry\inventory\Inventory;
 use raspberry\inventory\ArmorInventory;
 use raspberry\inventory\PlayerInventory;
@@ -180,6 +185,8 @@ class ItemStackRequestHandler{
                 $this->handleAction($action);
             }
 
+            $this->callTransactionEvent();
+
             $response = new ItemStackResponse(ItemStackResponse::STATUS_OK, $request->requestId, $this->buildChanges());
             $this->collectFurnaceExperience($request);
 
@@ -286,8 +293,15 @@ class ItemStackRequestHandler{
             throw new UnexpectedValueException("Cannot drop {$count} items from a slot holding " . $item->getCount());
         }
 
+        $event = new PlayerDropItemEvent($this->player, (clone $item)->setCount($count));
+        $event->call();
+
+        if($event->isCancelled()){
+            throw new UnexpectedValueException("A plugin kept the item from being dropped");
+        }
+
         $this->setItem($slot, (clone $item)->setCount($item->getCount() - $count));
-        $this->drops[] = (clone $item)->setCount($count);
+        $this->drops[] = $event->getItem();
     }
 
     private function swap(StackRequestSlot $a, StackRequestSlot $b) : void{
@@ -335,6 +349,30 @@ class ItemStackRequestHandler{
         $this->createdCount = $item->getMaxStackSize();
     }
 
+    /**
+     * Plugins see every slot the request changed. Cancelling it undoes the whole request.
+     *
+     * @throws UnexpectedValueException
+     */
+    private function callTransactionEvent() : void{
+        if(($this->changes === [] && $this->drops === []) || !InventoryTransactionEvent::hasHandlers()){
+            return;
+        }
+
+        $changes = [];
+
+        foreach($this->changes as [$inventory, $index, $before]){
+            $changes[] = new SlotChange($inventory, $index, $before, $inventory->getItem($index));
+        }
+
+        $event = new InventoryTransactionEvent($this->player, $changes, $this->drops);
+        $event->call();
+
+        if($event->isCancelled()){
+            throw new UnexpectedValueException("A plugin cancelled the request");
+        }
+    }
+
     private function craftRecipe(int $networkId, int $times, bool $auto) : void{
         $recipe = Server::getInstance()->getCraftingManager()->getCraftingRecipe($networkId) ?? throw new UnexpectedValueException("There is no crafting recipe {$networkId}");
 
@@ -344,6 +382,13 @@ class ItemStackRequestHandler{
 
         if($times < 1){
             throw new UnexpectedValueException("A recipe must be crafted at least once");
+        }
+
+        $event = new CraftItemEvent($this->player, $recipe, $times);
+        $event->call();
+
+        if($event->isCancelled()){
+            throw new UnexpectedValueException("A plugin cancelled crafting {$recipe->getId()}");
         }
 
         if($recipe->getBlock() !== CraftingRecipe::BLOCK_CRAFTING_TABLE){

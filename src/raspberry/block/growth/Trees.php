@@ -10,10 +10,14 @@ use raspberry\block\BlockIds;
 use raspberry\block\BlockState;
 use raspberry\block\BlockStateIds;
 
+use raspberry\math\Vector3;
+
 use raspberry\native\Native;
 
 use raspberry\world\World;
 use raspberry\world\generator\NativeBlocks;
+
+use raspberry\event\block\StructureGrowEvent;
 
 use FFI;
 
@@ -98,11 +102,18 @@ class Trees{
 
         foreach($cleared as [$bx, $by, $bz]){
             if(!isset($changed[$bx . ":" . $by . ":" . $bz])){
-                $world->setBlock($bx, $by, $bz, $air);
+                $changes[] = [$bx, $by, $bz, $air];
             }
         }
 
-        foreach($changes as [$bx, $by, $bz, $state]){
+        $event = new StructureGrowEvent($world, new Vector3($x, $y, $z), $sapling, $changes);
+        $event->call();
+
+        if($event->isCancelled()){
+            return false;
+        }
+
+        foreach($event->getBlocks() as [$bx, $by, $bz, $state]){
             $world->setBlock($bx, $by, $bz, $state);
         }
 

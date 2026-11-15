@@ -28,6 +28,8 @@ use raspberry\player\Player;
 use raspberry\world\Chunk;
 use raspberry\world\World;
 
+use raspberry\event\entity\EntityDeathEvent;
+
 use function ceil;
 use function crc32;
 use function max;
@@ -350,14 +352,14 @@ abstract class Mob extends Living{
         $this->world->getMobEngine()->setMotion($this, $motion);
     }
 
-    public function teleport(Vector3 $position, ?float $yaw = null, ?float $pitch = null, ?World $world = null) : void{
+    protected function doTeleport(Vector3 $position, ?float $yaw, ?float $pitch, ?World $world) : void{
         $moving = $world !== null && $world !== $this->world;
 
         if($moving){
             $this->world->getMobEngine()->remove($this);
         }
 
-        parent::teleport($position, $yaw, $pitch, $world);
+        parent::doTeleport($position, $yaw, $pitch, $world);
         $this->headYaw = $this->yaw;
 
         if($moving){
@@ -421,11 +423,14 @@ abstract class Mob extends Living{
         $killer = $this->getKiller();
         $looting = $killer?->getInventory()->getItemInHand()->getEnchantmentLevel(Enchantment::LOOTING) ?? 0;
 
-        foreach($this->getDrops($looting) as $item){
+        $event = new EntityDeathEvent($this, $this->getDrops($looting), $killer !== null ? $this->getXpReward() : 0, $killer);
+        $event->call();
+
+        foreach($event->getDrops() as $item){
             $this->world->dropItem($this->position, $item);
         }
 
-        $killer?->addXp($this->getXpReward());
+        $killer?->addXp($event->getXp());
     }
 
     /**

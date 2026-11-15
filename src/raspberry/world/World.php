@@ -28,6 +28,13 @@ use raspberry\entity\EntityFactory;
 use raspberry\entity\ai\MobEngine;
 use raspberry\entity\object\ItemEntity;
 
+use raspberry\event\entity\EntitySpawnEvent;
+use raspberry\event\entity\ItemSpawnEvent;
+use raspberry\event\world\ChunkLoadEvent;
+use raspberry\event\world\ChunkUnloadEvent;
+use raspberry\event\world\SpawnChangeEvent;
+use raspberry\event\world\WorldSaveEvent;
+
 use raspberry\item\Item;
 
 use raspberry\player\Player;
@@ -113,6 +120,9 @@ class World{
     private Weather $weather;
 
     private BlockTicker $blockTicker;
+
+    /** @var array<int, Entity> */
+    private array $spawning = [];
 
     private GameRules $gameRules;
 
@@ -355,6 +365,8 @@ class World{
         if($generated){
             MobSpawner::populate($this, $chunk);
         }
+
+        (new ChunkLoadEvent($this, $chunk, $generated))->call();
     }
 
     /**
@@ -504,6 +516,8 @@ class World{
             return;
         }
 
+        (new ChunkUnloadEvent($this, $chunk))->call();
+
         $saved = $this->saveEntities()[$key] ?? [];
 
         if($saved !== [] || $chunk->getSavedEntities() !== []){
@@ -535,6 +549,7 @@ class World{
      * @return int number of chunks written
      */
     public function save() : int{
+        (new WorldSaveEvent($this))->call();
         $saved = 0;
         $entities = $this->saveEntities();
 
@@ -707,8 +722,10 @@ class World{
     }
 
     public function setSpawnPosition(Vector3 $position) : void{
+        $old = $this->metadata->spawn;
         $this->metadata->spawn = $position;
         $this->provider->saveMetadata($this->metadata);
+        (new SpawnChangeEvent($this, $old))->call();
     }
 
     /**
@@ -719,6 +736,8 @@ class World{
 
         if($entity instanceof Player){
             $this->players[$entity->getId()] = $entity;
+        }else{
+            $this->spawning[$entity->getId()] = $entity;
         }
     }
 
@@ -727,6 +746,7 @@ class World{
      */
     public function removeEntity(Entity $entity) : void{
         unset($this->entities[$entity->getId()], $this->players[$entity->getId()]);
+        unset($this->entities[$entity->getId()], $this->players[$entity->getId()], $this->spawning[$entity->getId()]);
     }
 
     public function getEntity(int $runtimeId) : ?Entity{
@@ -789,6 +809,17 @@ class World{
             }
         }
 
+        if($this->spawning !== []){
+            $spawning = $this->spawning;
+            $this->spawning = [];
+
+            foreach($spawning as $entity){
+                if(!$entity->isClosed()){
+                    (new EntitySpawnEvent($entity))->call();
+                }
+            }
+        }
+
         foreach($this->entities as $entity){
             if(!$entity instanceof Player && !$entity->isClosed()){
                 $entity->tick($currentTick);
@@ -804,6 +835,16 @@ class World{
     public function dropItem(Vector3 $position, Item $item, ?Vector3 $motion = null, int $pickupDelay = ItemEntity::DEFAULT_PICKUP_DELAY) : ?ItemEntity{
         if($item->isNull()){
             return null;
+        }
+
+        if(ItemSpawnEvent::hasHandlers()){
+            $event = new ItemSpawnEvent($this, $position, $item);
+            $event->call();
+            $item = $event->getItem();
+
+            if($event->isCancelled() || $item->isNull()){
+                return null;
+            }
         }
 
         $motion ??= new Vector3(mt_rand(-100, 100) / 1000, 0.2, mt_rand(-100, 100) / 1000);

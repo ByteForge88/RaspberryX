@@ -13,6 +13,18 @@ use raspberry\entity\object\ItemEntity;
 use raspberry\entity\effect\Effect;
 use raspberry\entity\effect\EffectInstance;
 
+use raspberry\event\player\PlayerDeathEvent;
+use raspberry\event\player\PlayerExhaustEvent;
+use raspberry\event\player\PlayerExperienceChangeEvent;
+use raspberry\event\player\PlayerGameModeChangeEvent;
+use raspberry\event\player\PlayerJumpEvent;
+use raspberry\event\player\PlayerKickEvent;
+use raspberry\event\player\PlayerRespawnEvent;
+use raspberry\event\player\PlayerToggleFlightEvent;
+use raspberry\event\player\PlayerToggleSneakEvent;
+use raspberry\event\player\PlayerToggleSprintEvent;
+use raspberry\event\player\PlayerToggleSwimEvent;
+
 use raspberry\inventory\ArmorInventory;
 use raspberry\inventory\Inventory;
 use raspberry\inventory\PlayerInventory;
@@ -507,6 +519,14 @@ class Player extends Human implements CommandSender{
             return;
         }
 
+        $event = new PlayerExperienceChangeEvent($this, $amount);
+        $event->call();
+        $amount = $event->getAmount();
+
+        if($event->isCancelled() || $amount <= 0){
+            return;
+        }
+
         $oldLevel = $this->xpLevel;
         $points = $this->xpProgress * self::getXpToNextLevel($this->xpLevel) + $amount;
 
@@ -629,6 +649,13 @@ class Player extends Human implements CommandSender{
             return;
         }
 
+        $event = new PlayerGameModeChangeEvent($this, $gameMode);
+        $event->call();
+
+        if($event->isCancelled()){
+            return;
+        }
+
         $this->gameMode = $gameMode;
         $this->flying = $gameMode->forcesFlying() || ($this->flying && $gameMode->allowsFlying());
         $this->movementCheck?->reset();
@@ -666,6 +693,16 @@ class Player extends Human implements CommandSender{
      * @internal
      */
     public function onClientFlightToggle(bool $flying) : void{
+        if($flying !== $this->flying && ($this->gameMode->allowsFlying() || !$flying)){
+            $event = new PlayerToggleFlightEvent($this, $flying);
+            $event->call();
+
+            if($event->isCancelled()){
+                $this->session->sendAbilities();
+                return;
+            }
+        }
+
         if($flying && !$this->gameMode->allowsFlying()){
             if($this->session->getServer()->isCheatsAllowed()){
                 $this->flying = true;
@@ -697,7 +734,7 @@ class Player extends Human implements CommandSender{
         return !$this->dead && ($this->gameMode->isVisible() || !$player->getGameMode()->isVisible());
     }
 
-    public function teleport(Vector3 $position, ?float $yaw = null, ?float $pitch = null, ?World $world = null) : void{
+    protected function doTeleport(Vector3 $position, ?float $yaw, ?float $pitch, ?World $world) : void{
         $changesWorld = $world !== null && $world !== $this->world;
 
         if($changesWorld){
@@ -706,7 +743,7 @@ class Player extends Human implements CommandSender{
             }
         }
 
-        parent::teleport($position, $yaw, $pitch, $world);
+        parent::doTeleport($position, $yaw, $pitch, $world);
         $this->fallDistance = 0.0;
         $this->movementCheck?->reset();
 
@@ -819,9 +856,22 @@ class Player extends Human implements CommandSender{
      * Creative and spectator players never get hungry.
      */
     public function exhaust(float $amount) : void{
-        if(!$this->gameMode->isInvulnerable()){
-            parent::exhaust($amount);
+        if($this->gameMode->isInvulnerable()){
+            return;
         }
+
+        if(PlayerExhaustEvent::hasHandlers()){
+            $event = new PlayerExhaustEvent($this, $amount);
+            $event->call();
+
+            if($event->isCancelled()){
+                return;
+            }
+
+            $amount = $event->getAmount();
+        }
+
+        parent::exhaust($amount);
     }
 
     protected function onDeath() : void{
@@ -837,10 +887,23 @@ class Player extends Human implements CommandSender{
         $this->dead = true;
         $this->effects->clear();
 
-        if(!$this->session->getServer()->isKeepInventory()){
-            $this->dropInventory();
+        $keep = $this->session->getServer()->isKeepInventory();
+        $event = new PlayerDeathEvent($this, $source, new Translation($cause, $parameters), $keep ? [] : $this->getInventoryDrops(), $keep);
+        $event->call();
+
+        if(!$event->getKeepInventory()){
+            $this->moveUIItemsToInventory();
+
+            foreach([$this->inventory, $this->armorInventory, $this->offHandInventory] as $inventory){
+                $inventory->clearAll();
+            }
+
             $this->xpLevel = 0;
             $this->xpProgress = 0.0;
+        }
+
+        foreach($event->getDrops() as $item){
+            $this->world->dropItem($this->position, $item);
         }
 
         foreach($this->viewers as $viewer){
@@ -848,7 +911,26 @@ class Player extends Human implements CommandSender{
         }
 
         $this->session->onDeath($cause, $parameters);
-        $this->session->getServer()->onPlayerDeath($this, $cause, $parameters);
+        $this->session->getServer()->onPlayerDeath($event, $cause, $parameters);
+    }
+
+    /**
+     * Everything the player carries that drops when they die, curse of vanishing left out.
+     *
+     * @return list<Item>
+     */
+    private function getInventoryDrops() : array{
+        $drops = [];
+
+        foreach([$this->inventory, $this->armorInventory, $this->offHandInventory, $this->uiInventory] as $inventory){
+            foreach($inventory->getContents() as $item){
+                if(!$item->hasEnchantment(Enchantment::VANISHING)){
+                    $drops[] = $item;
+                }
+            }
+        }
+
+        return $drops;
     }
 
     public function tick(int $currentTick) : void{
@@ -1031,6 +1113,7 @@ class Player extends Human implements CommandSender{
 
         if($jumped){
             $this->exhaust($this->sprinting ? 0.2 : 0.05);
+            (new PlayerJumpEvent($this))->call();
         }
 
         $this->onGround = $onGround;
@@ -1359,7 +1442,10 @@ class Player extends Human implements CommandSender{
      * @internal
      */
     public function setSprinting(bool $sprinting) : void{
-        $this->sprinting = $sprinting;
+        if($sprinting !== $this->sprinting){
+            $this->sprinting = $sprinting;
+            (new PlayerToggleSprintEvent($this, $sprinting))->call();
+        }
     }
 
     public function isSneaking() : bool{
@@ -1370,7 +1456,10 @@ class Player extends Human implements CommandSender{
      * @internal
      */
     public function setSneaking(bool $sneaking) : void{
-        $this->sneaking = $sneaking;
+        if($sneaking !== $this->sneaking){
+            $this->sneaking = $sneaking;
+            (new PlayerToggleSneakEvent($this, $sneaking))->call();
+        }
     }
 
     public function getInteractText() : string{
@@ -1395,7 +1484,10 @@ class Player extends Human implements CommandSender{
      * @internal
      */
     public function setSwimming(bool $swimming) : void{
-        $this->swimming = $swimming;
+        if($swimming !== $this->swimming){
+            $this->swimming = $swimming;
+            (new PlayerToggleSwimEvent($this, $swimming))->call();
+        }
     }
 
     public function getFallDistance() : float{
@@ -1417,8 +1509,11 @@ class Player extends Human implements CommandSender{
 
         [$world, $position] = $this->getSpawnLocation();
 
+        $event = new PlayerRespawnEvent($this, $world, $position);
+        $event->call();
+
         $this->despawnFromAll();
-        $this->teleport($position, null, null, $world);
+        $this->doTeleport($event->getPosition(), null, null, $event->getWorld());
 
         $this->session->onRespawn();
         $this->updateVisibility();
@@ -1489,10 +1584,18 @@ class Player extends Human implements CommandSender{
     }
 
     /**
-     * Disconnects the player and shows $reason on their screen.
+     * Disconnects the player and shows $reason on their screen. False when a plugin stopped it.
      */
-    public function kick(string $reason) : void{
-        $this->session->disconnect($reason);
+    public function kick(string $reason) : bool{
+        $event = new PlayerKickEvent($this, $reason);
+        $event->call();
+
+        if($event->isCancelled()){
+            return false;
+        }
+
+        $this->session->disconnect($event->getReason());
+        return true;
     }
 
     /**

@@ -30,6 +30,7 @@ use raspberry\network\mcpe\protocol\NetworkChunkPublisherUpdatePacket;
 use raspberry\network\mcpe\protocol\NetworkSettingsPacket;
 use raspberry\network\mcpe\protocol\Packet;
 use raspberry\network\mcpe\protocol\PlayerAuthInputPacket;
+use raspberry\network\mcpe\protocol\PlayerHotbarPacket;
 use raspberry\network\mcpe\protocol\UpdateBlockPacket;
 use raspberry\network\mcpe\protocol\PlayStatusPacket;
 use raspberry\network\mcpe\protocol\ProtocolInfo;
@@ -98,6 +99,15 @@ use raspberry\item\Potion;
 use raspberry\lang\Translation;
 
 use raspberry\event\player\PlayerCommandEvent;
+use raspberry\event\player\PlayerDropItemEvent;
+use raspberry\event\player\PlayerInteractEntityEvent;
+use raspberry\event\player\PlayerItemHeldEvent;
+use raspberry\event\player\PlayerLoginEvent;
+use raspberry\event\player\PlayerMoveEvent;
+use raspberry\event\player\PlayerPreLoginEvent;
+use raspberry\event\player\PlayerToggleGlideEvent;
+use raspberry\event\server\DataPacketReceiveEvent;
+use raspberry\event\server\DataPacketSendEvent;
 
 use InvalidArgumentException;
 
@@ -192,6 +202,9 @@ class NetworkSession{
 
     /** whether the client has its inventory screen open */
     private bool $inventoryOpen = false;
+
+    /** @var list<Packet> */
+    private array $buffer = [];
 
     /** true once the player finished joining, stays true while disconnecting so leaving is still handled */
     private bool $joined = false;
@@ -344,6 +357,21 @@ class NetworkSession{
 
         $this->server->getLogger()->debug(sprintf("Session %d received packet 0x%03X: %d bytes", $this->id, $packetId, strlen($buffer)));
 
+        if(DataPacketReceiveEvent::hasHandlers()){
+            try{
+                $packet = $this->server->getPacketTranslator()->decode($buffer)["packet"];
+            }catch(Throwable){
+                $packet = null;
+            }
+
+            $event = new DataPacketReceiveEvent($this, $packetId, $buffer, $packet);
+            $event->call();
+
+            if($event->isCancelled()){
+                return;
+            }
+        }
+
         switch($packetId){
             case ProtocolPacketIds::RESOURCE_PACK_CLIENT_RESPONSE_PACKET:
                 if($this->state !== self::STATE_RESOURCE_PACKS || !$reliable || !$fromPrimaryClient){
@@ -455,16 +483,64 @@ class NetworkSession{
         return $packet;
     }
 
-    public function sendDataPacket(Packet $packet) : void{
-        $this->sendDataPackets([$packet]);
+    /**
+     * Sends a packet. In game it waits for the end of the tick and goes out in one batch with
+     * the rest, unless $immediate.
+     */
+    public function sendDataPacket(Packet $packet, bool $immediate = false) : void{
+        $this->sendDataPackets([$packet], $immediate);
     }
 
     /**
-     * @param list<Packet> $packets sent together in one compressed batch
+     * @param list<Packet> $packets
      */
-    public function sendDataPackets(array $packets) : void{
+    public function sendDataPackets(array $packets, bool $immediate = false) : void{
         if($packets === [] || !$this->isConnected()){
             return;
+        }
+
+        if($this->state === self::STATE_IN_GAME && !$immediate){
+            foreach($packets as $packet){
+                $this->buffer[] = $packet;
+            }
+
+            return;
+        }
+
+        $this->flush();
+        $this->sendBatch($packets);
+    }
+
+    public function flush() : void{
+        if($this->buffer === []){
+            return;
+        }
+
+        $packets = $this->buffer;
+        $this->buffer = [];
+
+        if($this->isConnected()){
+            $this->sendBatch($packets);
+        }
+    }
+
+    /**
+     * @param list<Packet> $packets
+     */
+    private function sendBatch(array $packets) : void{
+        if(DataPacketSendEvent::hasHandlers()){
+            $event = new DataPacketSendEvent($this, $packets);
+            $event->call();
+
+            if($event->isCancelled()){
+                return;
+            }
+
+            $packets = $event->getPackets();
+
+            if($packets === []){
+                return;
+            }
         }
 
         $batch = $this->server->getPacketBatch()->encode($packets);
@@ -483,7 +559,7 @@ class NetworkSession{
         }
 
         if($this->compression->isEnabled()){
-            $this->sendDataPacket(DisconnectPacket::create($message));
+            $this->sendDataPacket(DisconnectPacket::create($message), true);
         }
 
         $this->closeReason = $logReason ?? $message;
@@ -718,7 +794,7 @@ class NetworkSession{
             return;
         }
 
-        if($entity instanceof LightningBolt || $entity instanceof FallingBlock || $entity instanceof PrimedTnt){
+        if($entity instanceof LightningBolt || $entity instanceof FallingBlock || $entity instanceof PrimedTNT){
             $this->spawnBlockActor($entity);
             return;
         }
@@ -807,7 +883,7 @@ class NetworkSession{
     /**
      * Lightning, falling blocks and lit TNT: plain actors that carry their own metadata.
      */
-    private function spawnBlockActor(LightningBolt|FallingBlock|PrimedTnt $entity) : void{
+    private function spawnBlockActor(LightningBolt|FallingBlock|PrimedTNT $entity) : void{
         $position = $entity->getPosition();
         $motion = $entity->getMotion();
 
@@ -1047,6 +1123,18 @@ class NetworkSession{
             return;
         }
 
+        if($packet->hotbarSlot === $player->getInventory()->getHeldSlot()){
+            return;
+        }
+
+        $event = new PlayerItemHeldEvent($player, $packet->hotbarSlot, $player->getInventory()->getItem($packet->hotbarSlot));
+        $event->call();
+
+        if($event->isCancelled()){
+            $this->sendDataPacket(PlayerHotbarPacket::create($player->getInventory()->getHeldSlot()));
+            return;
+        }
+
         $player->getInventory()->setHeldSlot($packet->hotbarSlot);
     }
 
@@ -1155,9 +1243,19 @@ class NetworkSession{
 
         if($data->action === UseItemOnEntityData::ACTION_ATTACK){
             $player->attackEntity($target);
-        }elseif($data->action === UseItemOnEntityData::ACTION_INTERACT && $target instanceof Mob && $this->canInteractWith($player, $target) && $target->onInteract($player)){
-            $player->swingArm(AnimatePacket::SWING_INTERACT);
-            $player->setInteractText($target->getInteractText($player));
+        }elseif($data->action === UseItemOnEntityData::ACTION_INTERACT && $target instanceof Mob && $this->canInteractWith($player, $target)){
+            $event = new PlayerInteractEntityEvent($player, $target, $player->getInventory()->getItemInHand());
+            $event->call();
+
+            if($event->isCancelled()){
+                $this->resendHeldItem();
+                return;
+            }
+
+            if($target->onInteract($player)){
+                $player->swingArm(AnimatePacket::SWING_INTERACT);
+                $player->setInteractText($target->getInteractText($player));
+            }
         }
     }
 
@@ -1205,8 +1303,16 @@ class NetworkSession{
             throw new UnexpectedValueException("The slot holds a different item");
         }
 
+        $event = new PlayerDropItemEvent($player, (clone $item)->setCount($count));
+        $event->call();
+
+        if($event->isCancelled()){
+            $this->inventoryManager?->sendSlot($player->getInventory(), $slot);
+            return;
+        }
+
         $player->getInventory()->setItem($slot, (clone $item)->setCount($item->getCount() - $count));
-        $player->dropItem((clone $item)->setCount($count));
+        $player->dropItem($event->getItem());
     }
 
     public function sendHeldItem(Player $holder) : void{
@@ -1375,8 +1481,13 @@ class NetworkSession{
             }
         }
 
-        if($this->server->getOnlinePlayerCount() >= $this->server->getMaxPlayers()){
-            $this->disconnect($language->translate("disconnect.serverFull"), "Server is full");
+        $full = $language->translate("disconnect.serverFull");
+        $event = new PlayerPreLoginEvent($identity, $this->server->getOnlinePlayerCount() >= $this->server->getMaxPlayers() ? $full : null);
+        $event->call();
+        $kickMessage = $event->getKickMessage();
+
+        if($kickMessage !== null){
+            $this->disconnect($kickMessage, $kickMessage === $full ? "Server is full" : "Kept out by a plugin");
             return;
         }
 
@@ -1449,6 +1560,18 @@ class NetworkSession{
         if($data !== null){
             $this->player->loadData($data);
         }
+
+        $event = new PlayerLoginEvent($this->player, $this->server->getLanguage()->translate("disconnect.loginRefused"));
+        $event->call();
+
+        if($event->isCancelled()){
+            $this->disconnect($event->getKickMessage(), "Kept out by a plugin");
+            return;
+        }
+
+        $world = $this->player->getWorld();
+        $yaw = $this->player->getYaw();
+        $pitch = $this->player->getPitch();
 
         $this->inventoryManager = new InventoryManager($this, $this->player);
         $this->itemStackRequestHandler = new ItemStackRequestHandler($this, $this->player, $this->inventoryManager);
@@ -1564,10 +1687,12 @@ class NetworkSession{
             $player->onClientFlightToggle(false);
         }
 
-        if($packet->hasFlag(PlayerAuthInputPacket::FLAG_START_GLIDING)){
+        if($packet->hasFlag(PlayerAuthInputPacket::FLAG_START_GLIDING) && !$this->gliding){
             $this->gliding = true;
-        }elseif($packet->hasFlag(PlayerAuthInputPacket::FLAG_STOP_GLIDING)){
+            (new PlayerToggleGlideEvent($player, true))->call();
+        }elseif($packet->hasFlag(PlayerAuthInputPacket::FLAG_STOP_GLIDING) && $this->gliding){
             $this->gliding = false;
+            (new PlayerToggleGlideEvent($player, false))->call();
         }
 
         if($packet->hasFlag(PlayerAuthInputPacket::FLAG_START_SPRINTING)){
@@ -1599,6 +1724,21 @@ class NetworkSession{
             $player->teleport($from);
             $player->getMovementCheck()->reset(0);
             return;
+        }
+
+        if(PlayerMoveEvent::hasHandlers() && ($position->x !== $from->x || $position->y !== $from->y || $position->z !== $from->z || $packet->yaw !== $player->getYaw() || $packet->pitch !== $player->getPitch())){
+            $event = new PlayerMoveEvent($player, $from, $position, $packet->yaw, $packet->pitch);
+            $event->call();
+
+            if($event->isCancelled()){
+                $player->teleport($from);
+                return;
+            }
+
+            if($event->isChanged()){
+                $player->teleport($event->getTo());
+                return;
+            }
         }
 
         $player->move($position, $packet->yaw, $packet->pitch);
@@ -1788,6 +1928,7 @@ class NetworkSession{
                 return;
             }
 
+            $this->flush();
             $this->server->getTransport()->sendReliable($this->id, $batch);
             $this->sentChunks[$key] = true;
         });

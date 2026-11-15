@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace raspberry\plugin;
 
+use raspberry\command\Command;
 use raspberry\command\CommandSender;
 
 use raspberry\scheduler\TaskScheduler;
@@ -14,10 +15,10 @@ use raspberry\Server;
 
 use Symfony\Component\Filesystem\Path;
 
-use InvalidArgumentException;
-use RecursiveDirectoryIterator;
-use RecursiveIteratorIterator;
 use SplFileInfo;
+use InvalidArgumentException;
+use RecursiveIteratorIterator;
+use RecursiveDirectoryIterator;
 
 use function copy;
 use function dirname;
@@ -37,10 +38,8 @@ abstract class PluginBase implements CommandExecutor{
 
     private PluginDescription $description;
 
-    /** the plugin's folder, with plugin.yml in it */
     private string $folder;
 
-    /** where the plugin keeps its files: plugin_data/<name> */
     private string $dataFolder;
 
     private PluginLogger $logger;
@@ -132,10 +131,34 @@ abstract class PluginBase implements CommandExecutor{
     }
 
     /**
-     * The plugin's own folder, with plugin.yml, src/ and resources/.
+     * The inside of the plugin's .phar, a phar:// path with plugin.yml, src/ and resources/.
+     * Nothing can be written there, files the plugin makes go in getDataFolder().
      */
     public function getFolder() : string{
         return $this->folder;
+    }
+
+    /**
+     * The plugin's .phar on disk.
+     */
+    public function getFile() : string{
+        return str_starts_with($this->folder, "phar://") ? substr($this->folder, 7) : $this->folder;
+    }
+
+    /**
+     * @return string
+     */
+    public function registerCommand(string $label, Command $command) : string{
+        return $this->server->getPluginManager()->registerCommand($this, $command, $label);
+    }
+
+    /**
+     * @param list<Command> $commands
+     */
+    public function registerCommands(string $label, array $commands) : void{
+        foreach($commands as $command){
+            $this->registerCommand($label, $command);
+        }
     }
 
     /**

@@ -9,7 +9,9 @@ use raspberry\entity\effect\EffectInstance;
 use raspberry\entity\effect\EffectManager;
 use raspberry\entity\damage\DamageSource;
 
+use raspberry\event\entity\EntityCombustEvent;
 use raspberry\event\entity\EntityDamageEvent;
+use raspberry\event\entity\EntityRegainHealthEvent;
 
 use raspberry\math\Vector3;
 
@@ -89,9 +91,15 @@ abstract class Living extends Entity{
      * Sets the entity burning for $seconds, unless it already burns for longer.
      */
     public function setOnFire(int $seconds) : void{
-        $ticks = $seconds * 20;
+        if($seconds * 20 <= $this->fireTicks){
+            return;
+        }
 
-        if($ticks <= $this->fireTicks){
+        $event = new EntityCombustEvent($this, $seconds);
+        $event->call();
+        $ticks = $event->getSeconds() * 20;
+
+        if($event->isCancelled() || $ticks <= $this->fireTicks){
             return;
         }
 
@@ -335,9 +343,21 @@ abstract class Living extends Entity{
      * Adds health, up to the maximum. Does nothing to a dead entity.
      */
     public function heal(float $amount) : void{
-        if($this->isAlive() && $amount > 0){
-            $this->setHealth($this->health + $amount);
+        if(!$this->isAlive() || $amount <= 0){
+            return;
         }
+
+        if(EntityRegainHealthEvent::hasHandlers()){
+            $event = new EntityRegainHealthEvent($this, $amount);
+            $event->call();
+            $amount = $event->getAmount();
+
+            if($event->isCancelled() || $amount <= 0){
+                return;
+            }
+        }
+
+        $this->setHealth($this->health + $amount);
     }
 
     /**

@@ -10,6 +10,8 @@ use raspberry\block\BlockIds;
 use raspberry\block\BlockState;
 use raspberry\block\FallingBlocks;
 
+use raspberry\event\entity\EntityBlockChangeEvent;
+
 use raspberry\entity\Entity;
 use raspberry\entity\Living;
 use raspberry\entity\damage\DamageSource;
@@ -147,7 +149,15 @@ class FallingBlock extends Entity{
             return;
         }
 
-        $this->world->setBlock($x, $y, $z, $block);
+        $event = new EntityBlockChangeEvent($this, new Vector3($x, $y, $z), $here, $block);
+        $event->call();
+
+        if($event->isCancelled()){
+            $this->dropAsItem();
+            return;
+        }
+
+        $this->world->setBlock($x, $y, $z, $event->getNewState());
     }
 
     private function hitWithAnvil(int $x, int $y, int $z, float $fallDistance) : ?BlockState{

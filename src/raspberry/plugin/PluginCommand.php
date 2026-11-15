@@ -14,7 +14,7 @@ use raspberry\command\CommandSender;
  * A command from plugin.yml. It takes any words after its name and hands them to its executor,
  * the plugin unless setExecutor() gave it another one.
  */
-class PluginCommand extends Command{
+class PluginCommand extends Command implements PluginOwned{
 
     private PluginBase $plugin;
 
@@ -35,6 +35,10 @@ class PluginCommand extends Command{
     }
 
     public function getPlugin() : PluginBase{
+        return $this->plugin;
+    }
+
+    public function getOwningPlugin() : PluginBase{
         return $this->plugin;
     }
 

@@ -25,4 +25,11 @@ abstract class Event{
     public function call() : void{
         Server::getInstance()->getPluginManager()->getEventManager()->call($this);
     }
+
+    /**
+     * Whether any plugin listens to this event.
+     */
+    public static function hasHandlers() : bool{
+        return Server::getInstance()->getPluginManager()->getEventManager()->hasHandlers(static::class);
+    }
 }

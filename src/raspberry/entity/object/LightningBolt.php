@@ -16,6 +16,8 @@ use raspberry\entity\Entity;
 use raspberry\entity\EntityIds;
 use raspberry\entity\damage\DamageSource;
 
+use raspberry\event\block\BlockIgniteEvent;
+
 use raspberry\math\Vector3;
 
 use raspberry\network\mcpe\protocol\LevelSoundEventPacket;
@@ -132,7 +134,7 @@ class LightningBolt extends Entity{
 
         foreach($spots as [$fx, $fy, $fz]){
             if(Nearby::name($this->world, $fx, $fy, $fz) === BlockIds::AIR && Fire::canSurviveAt($this->world, $fx, $fy, $fz)){
-                $this->world->setBlock($fx, $fy, $fz, Fire::stateAt($this->world, $fx, $fy, $fz));
+                BlockIgniteEvent::ignite($this->world, $fx, $fy, $fz, Fire::stateAt($this->world, $fx, $fy, $fz), BlockIgniteEvent::CAUSE_LIGHTNING);
             }
         }
     }

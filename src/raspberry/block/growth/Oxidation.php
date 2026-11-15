@@ -11,6 +11,8 @@ use raspberry\block\BlockState;
 
 use raspberry\world\World;
 
+use raspberry\event\block\BlockFormEvent;
+
 use function abs;
 use function mt_getrandmax;
 use function mt_rand;
@@ -107,13 +109,13 @@ class Oxidation implements RandomTickBehavior{
         }
 
         $next = self::$chains[$base][$stage + 1];
-        $world->setBlock($x, $y, $z, self::rename($state, $next));
+        BlockFormEvent::set($world, $x, $y, $z, self::rename($state, $next));
 
         if($state->hasProperty(BlockProperties::UPPER_BLOCK_BIT)){
             $upper = Nearby::block($world, $x, $y + 1, $z);
 
             if($upper !== null && $upper->getName() === $state->getName()){
-                $world->setBlock($x, $y + 1, $z, self::rename($upper, $next));
+                BlockFormEvent::set($world, $x, $y + 1, $z, self::rename($upper, $next));
             }
         }
     }

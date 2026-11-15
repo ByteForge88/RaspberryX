@@ -9,6 +9,8 @@ use raspberry\block\BlockCollision;
 use raspberry\entity\Entity;
 use raspberry\entity\Human;
 
+use raspberry\event\player\PlayerPickupItemEvent;
+
 use raspberry\item\Item;
 
 use raspberry\math\Vector3;
@@ -259,6 +261,15 @@ class ItemEntity extends Entity{
 
             if(!$this->isNear($feet->x - $half, $feet->y, $feet->z - $half, $feet->x + $half, $feet->y + Human::HEIGHT, $feet->z + $half)){
                 continue;
+            }
+
+            if(PlayerPickupItemEvent::hasHandlers()){
+                $event = new PlayerPickupItemEvent($player, $this);
+                $event->call();
+
+                if($event->isCancelled()){
+                    continue;
+                }
             }
 
             $leftover = $player->getInventory()->addItem($this->item)[0] ?? null;

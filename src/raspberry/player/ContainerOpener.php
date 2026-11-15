@@ -20,6 +20,8 @@ use raspberry\block\entity\Hopper;
 use raspberry\block\entity\ShulkerBox;
 use raspberry\block\entity\ContainerBlockEntity;
 
+use raspberry\event\inventory\InventoryOpenEvent;
+
 use raspberry\inventory\Inventory;
 
 use raspberry\math\Facing;
@@ -55,6 +57,15 @@ class ContainerOpener{
      */
     public function open(int $x, int $y, int $z, BlockState $block) : bool{
         $name = $block->getName();
+
+        if(InventoryOpenEvent::hasHandlers()){
+            $event = new InventoryOpenEvent($this->player, $block, new Vector3($x, $y, $z));
+            $event->call();
+
+            if($event->isCancelled()){
+                return true;
+            }
+        }
 
         return match(true){
             $name === BlockIds::CRAFTING_TABLE => $this->openCraftingTable($x, $y, $z),

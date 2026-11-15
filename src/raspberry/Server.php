@@ -132,6 +132,7 @@ use raspberry\event\player\PlayerChatEvent;
 use raspberry\event\player\PlayerDeathEvent;
 use raspberry\event\player\PlayerJoinEvent;
 use raspberry\event\player\PlayerQuitEvent;
+use raspberry\event\server\ServerCommandEvent;
 
 use raspberry\permission\OperatorList;
 use raspberry\permission\PermissionManager;
@@ -672,10 +673,6 @@ class Server{
         return $found;
     }
 
-    /**
-     * Called by NetworkSession once a player has loaded the world: everyone gets the new player's
-     * player-list entry (with skin), the new player gets everyone else's, then they see each other.
-     */
     public function onPlayerJoin(Player $player) : void{
         $operators = $this->operatorList->getAll();
 
@@ -708,9 +705,6 @@ class Server{
         $this->broadcastEventMessage($event->getJoinMessage(), TextFormat::YELLOW);
     }
 
-    /**
-     * Called by NetworkSession when an in-game player disconnects, before the player is closed.
-     */
     public function onPlayerQuit(Player $player, string $reason = "") : void{
         $event = new PlayerQuitEvent($player, new Translation("multiplayer.player.left", [$player->getName()]), $reason);
         $event->call();
@@ -727,13 +721,13 @@ class Server{
         }
     }
 
-    public function onPlayerDeath(Player $player, string $cause, array $parameters) : void{
-        $default = new Translation($cause, $parameters);
-        $event = new PlayerDeathEvent($player, $player->getLastDamageSource(), $default);
-        $event->call();
+    /**
+     * @internal
+     */
+    public function onPlayerDeath(PlayerDeathEvent $event, string $cause, array $parameters) : void{
         $message = $event->getDeathMessage();
 
-        if($message === $default){
+        if($message instanceof Translation && $message->getKey() === $cause && $message->getParams() === $parameters){
             $this->logger->info($this->language->translate($cause, ["player" => $parameters[0], "attacker" => $parameters[1] ?? ""]));
         }elseif($message !== null){
             $this->logger->info($message instanceof Translation ? $this->language->translateObject($message) : $message);
@@ -1153,7 +1147,12 @@ class Server{
             $this->logger->info($this->language->translate("server.done", ["time" => sprintf("%.3f", (hrtime(true) - $this->startTime) / 1e9)]));
 
             $this->consoleReader = new ConsoleReader($this->logger, function(string $line) : void{
-                $this->dispatchCommand($this->consoleSender, $line);
+                $event = new ServerCommandEvent($this->consoleSender, $line);
+                $event->call();
+
+                if(!$event->isCancelled()){
+                    $this->dispatchCommand($this->consoleSender, $event->getCommand());
+                }
             });
 
             $this->consoleReader->start();
@@ -1288,6 +1287,7 @@ class Server{
                 try{
                     $this->transport?->poll();
                     Native::poll();
+                    $this->flushSessions();
                 }catch(Throwable $exception){
                     $failure = $exception;
                     $this->stop();
@@ -1340,6 +1340,14 @@ class Server{
         if($this->autoSaveTicks > 0 && $this->currentTick % $this->autoSaveTicks === 0){
             $this->saveWorlds(false);
             $this->savePlayers();
+        }
+
+        $this->flushSessions();
+    }
+
+    private function flushSessions() : void{
+        foreach($this->sessions as $session){
+            $session->flush();
         }
     }
 

@@ -34,6 +34,8 @@ use function trim;
 
 class NetherNetTransport{
 
+    private const MESSAGES_PER_FLUSH = 256;
+
     private WebRtcSessionManager $sessions;
 
     private ?SocketServer $socket = null;
@@ -292,7 +294,7 @@ class NetherNetTransport{
             return;
         }
 
-        for($sent = 0; $sent < 16 && !$queue->isEmpty(); ++$sent){
+        for($sent = 0; $sent < self::MESSAGES_PER_FLUSH && !$queue->isEmpty(); ++$sent){
             if($session->getReliableBufferedAmount() > 1048576){
                 return;
             }

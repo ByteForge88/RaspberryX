@@ -9,6 +9,10 @@ use raspberry\event\EventManager;
 use raspberry\event\EventPriority;
 use raspberry\event\Listener;
 use raspberry\event\RegisteredListener;
+use raspberry\event\plugin\PluginDisableEvent;
+use raspberry\event\plugin\PluginEnableEvent;
+
+use raspberry\command\Command;
 
 use raspberry\Server;
 
@@ -17,11 +21,15 @@ use Symfony\Component\Yaml\Exception\ParseException;
 use Symfony\Component\Yaml\Yaml;
 
 use Closure;
+use Phar;
 use Throwable;
+use UnexpectedValueException;
 
 use function array_reverse;
 use function class_exists;
 use function file_exists;
+use function file_get_contents;
+use function realpath;
 use function implode;
 use function is_array;
 use function is_dir;
@@ -71,18 +79,18 @@ class PluginManager{
             return;
         }
 
-        /** @var array<string, array{PluginDescription, string}> $found lowercase name => description, folder */
+        /** @var array<string, array{PluginDescription, string}> $found */
         $found = [];
 
         foreach(scandir($directory) ?: [] as $entry){
-            $folder = Path::join($directory, $entry);
+            $file = Path::join($directory, $entry);
 
-            if($entry === "." || $entry === ".." || !is_file(Path::join($folder, "plugin.yml"))){
+            if(!is_file($file) || strtolower(Path::getExtension($entry)) !== "phar"){
                 continue;
             }
 
             try{
-                $description = self::readDescription($folder);
+                [$description, $folder] = self::readPhar($file);
             }catch(PluginException $exception){
                 $this->error($entry, $exception->getMessage());
                 continue;
@@ -143,11 +151,15 @@ class PluginManager{
             $this->server->getLogger()->error($language->translate("plugin.enableError", ["plugin" => $plugin->getName(), "reason" => $exception::class . ": " . $exception->getMessage()]));
             $this->server->getLogger()->debug($exception->getTraceAsString());
             $this->disablePlugin($plugin);
+            return;
         }
+
+        (new PluginEnableEvent($plugin))->call();
     }
 
     public function disablePlugin(PluginBase $plugin) : void{
         if($plugin->isEnabled()){
+            (new PluginDisableEvent($plugin))->call();
             $this->server->getLogger()->info($this->server->getLanguage()->translate("plugin.disabling", ["plugin" => $plugin->getDescription()->getFullName()]));
 
             try{
@@ -244,7 +256,7 @@ class PluginManager{
         $main = $description->getMain();
 
         if(!class_exists($main)){
-            $this->error($name, "the main class {$main} is not in src/");
+            $this->error($name, "the main class {$main} is not in the .phar's src/");
             return;
         }
 
@@ -298,6 +310,32 @@ class PluginManager{
     }
 
     /**
+     * Registers a command the plugin made itself. When its name is taken it gets the plugin's
+     * name in front, like /urplugin:heal. It is removed when the plugin is disabled.
+     *
+     * @return string
+     */
+    public function registerCommand(PluginBase $plugin, Command $command, ?string $label = null) : string{
+        if($command instanceof PluginOwned && $command->getOwningPlugin() !== $plugin){
+            throw new PluginException("/{$command->getName()} belongs to {$command->getOwningPlugin()->getName()}, not {$plugin->getName()}");
+        }
+
+        $commandMap = $this->server->getCommandMap();
+        $label = strtolower($label ?? $command->getName());
+
+        if($commandMap->getCommand($label) !== null){
+            $taken = $label;
+            $label = strtolower(str_replace(" ", "_", $plugin->getName())) . ":" . $label;
+            $this->server->getLogger()->warning($this->server->getLanguage()->translate("plugin.commandTaken", ["plugin" => $plugin->getName(), "command" => $taken, "label" => $label]));
+        }
+
+        $commandMap->registerCommand($label, $command);
+        $this->registeredCommands[strtolower($plugin->getName())][] = $command;
+        $this->resendCommands();
+        return $label;
+    }
+
+    /**
      * Players online get the new list of commands for their suggestions.
      */
     private function resendCommands() : void{
@@ -307,22 +345,55 @@ class PluginManager{
     }
 
     private function unregisterCommands(PluginBase $plugin) : void{
+        $commandMap = $this->server->getCommandMap();
+        $removed = false;
+
         foreach($this->registeredCommands[strtolower($plugin->getName())] ?? [] as $command){
-            $this->server->getCommandMap()->unregisterCommand($command);
+            $commandMap->unregisterCommand($command);
+            $removed = true;
         }
 
-        if(isset($this->registeredCommands[strtolower($plugin->getName())])){
-            unset($this->registeredCommands[strtolower($plugin->getName())]);
+        unset($this->registeredCommands[strtolower($plugin->getName())]);
+
+        foreach($commandMap->getCommands() as $command){
+            if($command instanceof PluginOwned && $command->getOwningPlugin() === $plugin){
+                $commandMap->unregisterCommand($command);
+                $removed = true;
+            }
+        }
+
+        if($removed){
             $this->resendCommands();
         }
     }
 
     /**
+     * @return array{PluginDescription, string}
+     *
      * @throws PluginException
      */
-    private static function readDescription(string $folder) : PluginDescription{
+    private static function readPhar(string $file) : array{
         try{
-            $data = Yaml::parseFile(Path::join($folder, "plugin.yml"));
+            $phar = new Phar($file);
+        }catch(UnexpectedValueException $exception){
+            throw new PluginException("it is not a valid .phar: " . $exception->getMessage());
+        }
+
+        if(!isset($phar["plugin.yml"])){
+            throw new PluginException("there is no plugin.yml in the .phar");
+        }
+
+        unset($phar);
+
+        $folder = "phar://" . Path::canonicalize(realpath($file) ?: $file);
+        $contents = file_get_contents(Path::join($folder, "plugin.yml"));
+
+        if($contents === false){
+            throw new PluginException("plugin.yml cannot be read");
+        }
+
+        try{
+            $data = Yaml::parse($contents);
         }catch(ParseException $exception){
             throw new PluginException("plugin.yml is not valid YAML: " . $exception->getMessage());
         }
@@ -332,10 +403,10 @@ class PluginManager{
         }
 
         if(!is_dir(Path::join($folder, "src"))){
-            throw new PluginException("there is no src/ folder");
+            throw new PluginException("there is no src/ folder in the .phar");
         }
 
-        return new PluginDescription($data);
+        return [new PluginDescription($data), $folder];
     }
 
     private static function registerAutoloader(PluginDescription $description, string $src) : void{

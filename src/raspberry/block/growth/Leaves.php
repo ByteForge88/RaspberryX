@@ -17,6 +17,8 @@ use raspberry\math\Vector3;
 
 use raspberry\world\World;
 
+use raspberry\event\block\LeavesDecayEvent;
+
 use SplQueue;
 
 use function preg_match;
@@ -46,6 +48,10 @@ class Leaves implements RandomTickBehavior{
     public function onRandomTick(World $world, int $x, int $y, int $z, BlockState $state) : void{
         if(self::hasLogNear($world, $x, $y, $z)){
             $world->setBlock($x, $y, $z, $state->withProperty(BlockProperties::UPDATE_BIT, false));
+            return;
+        }
+
+        if(!LeavesDecayEvent::set($world, $x, $y, $z, Server::getInstance()->getBlockStateRegistry()->getDefaultState(BlockIds::AIR))){
             return;
         }
 

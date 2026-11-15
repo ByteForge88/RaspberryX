@@ -8,6 +8,8 @@ use raspberry\Server;
 
 use raspberry\entity\object\FallingBlock;
 
+use raspberry\event\block\BlockFallEvent;
+
 use raspberry\math\Vector3;
 
 use raspberry\world\Chunk;
@@ -42,6 +44,13 @@ class FallingBlocks{
 
     public static function tick(World $world, int $x, int $y, int $z, BlockState $block) : void{
         if($y <= Chunk::MIN_Y || !$world->isChunkLoaded($x >> 4, $z >> 4) || !self::canFallThrough($world->getBlock($x, $y - 1, $z))){
+            return;
+        }
+
+        $event = new BlockFallEvent($world, new Vector3($x, $y, $z), $block);
+        $event->call();
+
+        if($event->isCancelled()){
             return;
         }
 

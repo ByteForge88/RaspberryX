@@ -120,6 +120,13 @@ class EventManager{
 
     /**
      * @param class-string<Event> $class
+     */
+    public function hasHandlers(string $class) : bool{
+        return $this->getHandlers($class) !== [];
+    }
+
+    /**
+     * @param class-string<Event> $class
      *
      * @return list<RegisteredListener>
      */

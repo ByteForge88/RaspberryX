@@ -10,6 +10,9 @@ use raspberry\entity\effect\Effect;
 use raspberry\entity\effect\EffectInstance;
 use raspberry\entity\object\ThrownPotion;
 
+use raspberry\event\player\PlayerItemUseEvent;
+use raspberry\event\player\PlayerItemConsumeEvent;
+
 use raspberry\item\Food;
 use raspberry\item\Item;
 use raspberry\item\ItemIds;
@@ -88,6 +91,14 @@ class ItemUser{
             return;
         }
 
+        $event = new PlayerItemUseEvent($player, $held);
+        $event->call();
+
+        if($event->isCancelled()){
+            $player->getNetworkSession()->resendHeldItem();
+            return;
+        }
+
         if($id === ItemIds::SPLASH_POTION || $id === ItemIds::LINGERING_POTION){
             $this->throwPotion($held);
             return;
@@ -123,6 +134,14 @@ class ItemUser{
 
         if($player->isDead() || $player->getInventory()->getHeldSlot() !== $slot || $held->getId() !== $id || $this->getTick() - $start < $ticks - self::TICK_TOLERANCE){
             $player->getNetworkSession()->getInventoryManager()?->sendSlot($player->getInventory(), $player->getInventory()->getHeldSlot());
+            return;
+        }
+
+        $event = new PlayerItemConsumeEvent($player, $held);
+        $event->call();
+
+        if($event->isCancelled()){
+            $player->getNetworkSession()->resendHeldItem();
             return;
         }
 

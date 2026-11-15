@@ -28,6 +28,8 @@ use raspberry\entity\Human;
 use raspberry\entity\EntityFactory;
 
 use raspberry\event\block\BlockPlaceEvent;
+use raspberry\event\block\SignChangeEvent;
+use raspberry\event\player\PlayerInteractEvent;
 
 use raspberry\item\Item;
 use raspberry\item\ItemIds;
@@ -120,6 +122,14 @@ class BlockPlacer{
 
         $clicked = $world->getBlock($x, $y, $z);
         $held = $player->getInventory()->getItemInHand();
+
+        $event = new PlayerInteractEvent($player, $clicked, new Vector3($x, $y, $z), $face, $held, PlayerInteractEvent::RIGHT_CLICK_BLOCK);
+        $event->call();
+
+        if($event->isCancelled()){
+            $this->resend($x, $y, $z, $face);
+            return;
+        }
 
         if(($held->getId() === ItemIds::FLINT_AND_STEEL || $held->getId() === ItemIds::FIRE_CHARGE) && $this->light($x, $y, $z, $clicked, $held)){
             $player->swingArm(AnimatePacket::SWING_INTERACT);
@@ -768,8 +778,15 @@ class BlockPlacer{
                 return;
             }
 
-            if($text !== $sign->getText($front)){
-                $sign->setText($front, $text, $this->player->getXuid());
+            if($text === $sign->getText($front)){
+                continue;
+            }
+
+            $event = new SignChangeEvent($this->player, $sign, $front, $text);
+            $event->call();
+
+            if(!$event->isCancelled()){
+                $sign->setText($front, $event->getText(), $this->player->getXuid());
             }
         }
 

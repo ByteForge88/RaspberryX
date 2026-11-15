@@ -9,6 +9,9 @@ use raspberry\Server;
 use raspberry\item\Item;
 use raspberry\item\ItemIds;
 
+use raspberry\event\player\PlayerBucketEmptyEvent;
+use raspberry\event\player\PlayerBucketFillEvent;
+
 use raspberry\math\Facing;
 use raspberry\math\Vector3;
 
@@ -57,10 +60,16 @@ class Buckets{
                 return false;
             }
 
+            $event = new PlayerBucketFillEvent($player, $clicked, new Vector3($x, $y, $z), $held, new Item($filled));
+            $event->call();
+
+            if($event->isCancelled()){
+                return false;
+            }
+
             $world->setBlock($x, $y, $z, Server::getInstance()->getBlockStateRegistry()->getDefaultState(BlockIds::AIR));
             self::playSound($world, $sound, $x, $y, $z);
-            self::exchange($player, $held, new Item($filled));
-
+            self::exchange($player, $held, $event->getResult());
             return true;
         }
 
@@ -76,6 +85,13 @@ class Buckets{
             }
         }
 
+        $event = new PlayerBucketEmptyEvent($player, $clicked, new Vector3($x, $y, $z), $held, new Item(ItemIds::BUCKET));
+        $event->call();
+
+        if($event->isCancelled()){
+            return false;
+        }
+
         if(!str_starts_with($clicked->getName(), "minecraft:flowing_") && $clicked->getName() !== BlockIds::AIR && $clicked->getName() !== BlockIds::WATER && $clicked->getName() !== BlockIds::LAVA){
             foreach(BlockBreakInfo::get($clicked->getName())->getDrops($clicked, Item::air()) as $item){
                 $world->dropItem(new Vector3($x + 0.5, $y + 0.5, $z + 0.5), $item);
@@ -84,8 +100,7 @@ class Buckets{
 
         $world->setBlock($x, $y, $z, Server::getInstance()->getBlockStateRegistry()->getDefaultState($liquid));
         self::playSound($world, $sound, $x, $y, $z);
-        self::exchange($player, $held, new Item(ItemIds::BUCKET));
-
+        self::exchange($player, $held, $event->getResult());
         return true;
     }
 

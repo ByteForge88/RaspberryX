@@ -9,6 +9,8 @@ use raspberry\block\entity\BlockEntity;
 use raspberry\inventory\Inventory;
 use raspberry\inventory\InventoryListener;
 
+use raspberry\event\inventory\InventoryCloseEvent;
+
 use raspberry\item\Item;
 
 use raspberry\network\mcpe\protocol\ContainerClosePacket;
@@ -158,6 +160,7 @@ class InventoryManager implements InventoryListener{
         }
 
         $window->onClose();
+        (new InventoryCloseEvent($this->player, $window))->call();
     }
 
     public function setStackId(Inventory $inventory, int $slot, int $stackId) : void{

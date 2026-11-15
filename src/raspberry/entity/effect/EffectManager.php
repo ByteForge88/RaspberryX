@@ -8,6 +8,9 @@ use raspberry\entity\Human;
 use raspberry\entity\Living;
 use raspberry\entity\damage\DamageSource;
 
+use raspberry\event\entity\EntityEffectAddEvent;
+use raspberry\event\entity\EntityEffectRemoveEvent;
+
 use function max;
 use function min;
 
@@ -62,9 +65,15 @@ class EffectManager{
             return false;
         }
 
+        $event = new EntityEffectAddEvent($this->entity, $effect, $old);
+        $event->call();
+
+        if($event->isCancelled()){
+            return false;
+        }
+
         $this->effects[$type->value] = $effect;
         $this->entity->onEffectAdded($effect, $old);
-
         return true;
     }
 
@@ -74,6 +83,7 @@ class EffectManager{
         if($old !== null){
             unset($this->effects[$effect->value]);
             $this->entity->onEffectRemoved($old);
+            (new EntityEffectRemoveEvent($this->entity, $old))->call();
         }
     }
 
