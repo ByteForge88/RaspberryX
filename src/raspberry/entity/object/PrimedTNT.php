@@ -27,14 +27,14 @@ use const M_PI;
 class PrimedTNT extends Entity{
     use BlockPhysics;
 
-    public const SIZE = 0.98;
+    public const float SIZE = 0.98;
 
-    public const DEFAULT_FUSE = 80;
+    public const int DEFAULT_FUSE = 80;
 
-    public const EXPLOSION_RADIUS = 4.0;
+    public const float EXPLOSION_RADIUS = 4.0;
 
-    private const GRAVITY = 0.04;
-    private const DRAG = 0.02;
+    private const float GRAVITY = 0.04;
+    private const float DRAG = 0.02;
 
     private int $fuse;
 

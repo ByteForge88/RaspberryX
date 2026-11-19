@@ -28,18 +28,20 @@ use raspberry\world\Difficulty;
 use raspberry\world\GameRules;
 use raspberry\world\World;
 
+use JsonException;
+
 use function abs;
 use function floor;
 use function mt_rand;
 
 class LightningBolt extends Entity{
 
-    public const DAMAGE = 5.0;
+    public const float DAMAGE = 5.0;
 
-    public const FIRE_SECONDS = 8;
+    public const int FIRE_SECONDS = 8;
 
-    private const REACH = 3.0;
-    private const REACH_UP = 6.0;
+    private const float REACH = 3.0;
+    private const float REACH_UP = 6.0;
 
     private int $life = 2;
 
@@ -68,6 +70,9 @@ class LightningBolt extends Entity{
         return $metadata;
     }
 
+    /**
+     * @throws JsonException
+     */
     public function tick(int $currentTick) : void{
         if($this->closed){
             return;
@@ -117,6 +122,8 @@ class LightningBolt extends Entity{
 
     /**
      * On normal and hard, the bolt sets fire where it hits and to a few spots around it.
+     *
+     * @throws JsonException
      */
     private function spawnFire(int $around) : void{
         $difficulty = Server::getInstance()->getDifficulty();

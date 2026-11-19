@@ -4,29 +4,34 @@ declare(strict_types=1);
 
 namespace raspberry\world\generator;
 
-use InvalidArgumentException;
 use raspberry\block\BlockStateRegistry;
+
+use InvalidArgumentException;
+
 use function implode;
 use function strtolower;
 use function trim;
 
 class GeneratorFactory{
 
-    public const FLAT = "flat";
-    public const OLD = "old";
-    public const PRE_NORMAL = "pre-normal";
-    public const VOID = "void";
-    public const DEFAULT = self::PRE_NORMAL;
+    public const string FLAT = "flat";
+    public const string OLD = "old";
+    public const string PRE_NORMAL = "pre-normal";
+    public const string VOID = "void";
+    public const string DEFAULT = self::PRE_NORMAL;
 
     /** @var list<string> */
-    public const NAMES = [self::FLAT, self::OLD, self::PRE_NORMAL, self::VOID];
+    public const array NAMES = [self::FLAT, self::OLD, self::PRE_NORMAL, self::VOID];
 
     public function __construct(
         private readonly BlockStateRegistry $blockStateRegistry
     ){}
 
     /**
+     * @param string $name
      * @param string $settings
+     * @param int $seed
+     * @return Generator
      */
     public function create(string $name, string $settings = "", int $seed = 0) : Generator{
         return match(strtolower(trim($name))){

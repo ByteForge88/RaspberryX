@@ -21,6 +21,7 @@ class EntityMetadata{
     public const KEY_EFFECT_AMBIENCE = 9;
     public const KEY_CUSTOM_DISPLAY = 18;
     public const KEY_PLAYER_FLAGS = 26;
+    public const KEY_PLAYER_BED_POSITION = 28;
     public const KEY_AUX_VALUE_DATA = 36;
     public const KEY_SCALE = 38;
     public const KEY_AIR_SUPPLY_MAX = 42;
@@ -45,7 +46,11 @@ class EntityMetadata{
     public const TYPE_INT = 2;
     public const TYPE_FLOAT = 3;
     public const TYPE_STRING = 4;
+    public const TYPE_POSITION = 6;
     public const TYPE_LONG = 7;
+
+    /** bits of KEY_PLAYER_FLAGS */
+    public const PLAYER_FLAG_SLEEPING = 1;
 
     public const FLAG_ON_FIRE = 0;
     public const FLAG_SNEAKING = 1;
@@ -63,7 +68,6 @@ class EntityMetadata{
     public const FLAG_HAS_COLLISION = 48;
     public const FLAG_HAS_GRAVITY = 49;
 
-    /** @var array<int, array{int, int|float|string}> key => [type, value] */
     private array $values = [];
 
     public function setByte(int $key, int $value) : void{
@@ -88,6 +92,10 @@ class EntityMetadata{
 
     public function setLong(int $key, int $value) : void{
         $this->values[$key] = [self::TYPE_LONG, $value];
+    }
+
+    public function setBlockPosition(int $key, int $x, int $y, int $z) : void{
+        $this->values[$key] = [self::TYPE_POSITION, [$x, $y, $z]];
     }
 
     /**
@@ -123,8 +131,18 @@ class EntityMetadata{
                 self::TYPE_INT => $writer->writeVarInt($value),
                 self::TYPE_FLOAT => $writer->writeFloat($value),
                 self::TYPE_STRING => $writer->writeString($value),
+                self::TYPE_POSITION => $this->writePosition($writer, $value),
                 self::TYPE_LONG => $writer->writeVarLong($value)
             };
         }
+    }
+
+    /**
+     * @param array{int, int, int} $position
+     */
+    private function writePosition(BinaryWriter $writer, array $position) : void{
+        $writer->writeVarInt($position[0]);
+        $writer->writeVarInt($position[1]);
+        $writer->writeVarInt($position[2]);
     }
 }

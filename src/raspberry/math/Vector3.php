@@ -67,6 +67,6 @@ class Vector3{
     }
 
     public function __toString() : string{
-        return "({$this->x}, {$this->y}, {$this->z})";
+        return "($this->x, $this->y, $this->z)";
     }
 }

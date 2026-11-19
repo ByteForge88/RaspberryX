@@ -12,7 +12,7 @@ use function substr;
 class ItemProperties{
 
     /** @var array<string, int> tool and weapon durability per material */
-    private const TIER_DURABILITY = [
+    private const array TIER_DURABILITY = [
         "wooden" => 59,
         "stone" => 131,
         "copper" => 190,
@@ -23,7 +23,7 @@ class ItemProperties{
     ];
 
     /** @var array<string, array{int, int, int, int}> armor durability per material: helmet, chestplate, leggings, boots */
-    private const ARMOR_DURABILITY = [
+    private const array ARMOR_DURABILITY = [
         "leather" => [55, 80, 75, 65],
         "chainmail" => [165, 240, 225, 195],
         "copper" => [121, 176, 165, 143],
@@ -34,7 +34,7 @@ class ItemProperties{
     ];
 
     /** @var array<string, int> */
-    private const DURABILITY = [
+    private const array DURABILITY = [
         ItemIds::BOW => 384,
         ItemIds::CROSSBOW => 465,
         ItemIds::TRIDENT => 250,
@@ -52,7 +52,7 @@ class ItemProperties{
     ];
 
     /** @var array<string, true> items that do not stack, besides everything with durability */
-    private const UNSTACKABLE = [
+    private const array UNSTACKABLE = [
         ItemIds::SADDLE => true,
         ItemIds::CAKE => true,
         ItemIds::BED => true,
@@ -81,7 +81,7 @@ class ItemProperties{
     ];
 
     /** @var array<string, true> items that stack to 16 */
-    private const STACK_16 = [
+    private const array STACK_16 = [
         ItemIds::ENDER_PEARL => true,
         ItemIds::SNOWBALL => true,
         ItemIds::EGG => true,
@@ -154,7 +154,7 @@ class ItemProperties{
     /**
      * How well the enchanting table enchants it, 0 when it cannot.
      */
-    public static function getEnchantability(string $name) : int{
+    public static function getMerchantability(string $name) : int{
         if(preg_match('/^minecraft:([a-z]+)_(sword|shovel|pickaxe|axe|hoe|spear|helmet|chestplate|leggings|boots)$/D', $name, $matches) === 1){
             $armor = in_array($matches[2], ["helmet", "chestplate", "leggings", "boots"], true);
 

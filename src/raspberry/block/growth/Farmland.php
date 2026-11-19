@@ -10,17 +10,27 @@ use raspberry\block\BlockIds;
 use raspberry\block\BlockProperties;
 use raspberry\block\BlockState;
 
+use raspberry\entity\Entity;
+
+use raspberry\math\Vector3;
+
+use raspberry\player\Player;
+
+use raspberry\world\GameRules;
 use raspberry\world\World;
 
 use raspberry\event\block\BlockFadeEvent;
+use raspberry\event\entity\EntityTrampleFarmlandEvent;
 
 use function in_array;
+use function mt_getrandmax;
+use function mt_rand;
 
 class Farmland implements RandomTickBehavior{
 
-    private const WET = 7;
+    private const int WET = 7;
 
-    private const WATER_REACH = 4;
+    private const int WATER_REACH = 4;
 
     public function getBlockNames() : array{
         return [BlockIds::FARMLAND];
@@ -42,6 +52,31 @@ class Farmland implements RandomTickBehavior{
         }elseif(!in_array(Nearby::name($world, $x, $y + 1, $z), Crops::NAMES, true)){
             BlockFadeEvent::set($world, $x, $y, $z, Server::getInstance()->getBlockStateRegistry()->getDefaultState(BlockIds::DIRT));
         }
+    }
+
+    public static function trample(World $world, int $x, int $y, int $z, Entity $entity, float $fall) : void{
+        if($fall <= 0.5 || mt_rand() / mt_getrandmax() >= $fall - 0.5 || $world->getBlock($x, $y, $z)->getName() !== BlockIds::FARMLAND){
+            return;
+        }
+
+        if(!$entity instanceof Player && !$world->getGameRules()->getBool(GameRules::MOB_GRIEFING)){
+            return;
+        }
+
+        if($entity->getWidth() * $entity->getWidth() * $entity->getHeight() <= 0.512){
+            return;
+        }
+
+        if(EntityTrampleFarmlandEvent::hasHandlers()){
+            $event = new EntityTrampleFarmlandEvent($entity, new Vector3($x, $y, $z));
+            $event->call();
+
+            if($event->isCancelled()){
+                return;
+            }
+        }
+
+        $world->setBlock($x, $y, $z, Server::getInstance()->getBlockStateRegistry()->getDefaultState(BlockIds::DIRT));
     }
 
     private static function isNearWater(World $world, int $x, int $y, int $z) : bool{

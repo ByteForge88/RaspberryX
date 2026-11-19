@@ -34,18 +34,18 @@ use function zlib_encode;
 
 final class ChunkSerializer{
 
-    private const MAGIC = "RXCH";
-    private const VERSION = 1;
+    private const string MAGIC = "RXCH";
+    private const int VERSION = 1;
 
-    private const TYPE_BOOL = 0;
-    private const TYPE_INT = 1;
-    private const TYPE_STRING = 2;
+    private const int TYPE_BOOL = 0;
+    private const int TYPE_INT = 1;
+    private const int TYPE_STRING = 2;
 
     /** blocks or biomes in a sub-chunk */
-    private const STORAGE_SIZE = 4096;
+    private const int STORAGE_SIZE = 4096;
 
     /** decompressed chunks above this size are treated as corrupt */
-    private const MAX_BODY_SIZE = 64 * 1024 * 1024;
+    private const int MAX_BODY_SIZE = 64 * 1024 * 1024;
 
     public static function serialize(Chunk $chunk) : string{
         $chunk->collectGarbage();

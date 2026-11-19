@@ -4,14 +4,14 @@ declare(strict_types=1);
 
 namespace raspberry\block;
 
-use raspberry\block\entity\BlockEntityFactory;
 use raspberry\block\entity\Cauldron;
+use raspberry\block\entity\BlockEntityFactory;
 
 use raspberry\item\Item;
 use raspberry\item\ItemIds;
 
-use raspberry\nbt\tag\ListTag;
 use raspberry\nbt\tag\Tag;
+use raspberry\nbt\tag\ListTag;
 
 use raspberry\network\mcpe\protocol\LevelEventPacket;
 use raspberry\network\mcpe\protocol\LevelSoundEventPacket;
@@ -21,6 +21,8 @@ use raspberry\network\mcpe\protocol\types\LevelSoundEvent;
 use raspberry\player\Player;
 
 use raspberry\world\World;
+
+use JsonException;
 
 use function array_pop;
 use function in_array;
@@ -33,20 +35,20 @@ use function preg_match;
 
 class Cauldrons{
 
-    public const MAX_LEVEL = 6;
+    public const int MAX_LEVEL = 6;
 
     /** a bottle fills a third of the cauldron */
-    private const BOTTLE_LEVELS = 2;
+    private const int BOTTLE_LEVELS = 2;
 
     /** each third of a potion tips this many arrows */
-    private const ARROWS_PER_BOTTLE = 16;
+    private const int ARROWS_PER_BOTTLE = 16;
 
-    private const LIQUID_WATER = "water";
-    private const LIQUID_LAVA = "lava";
-    private const LIQUID_POWDER_SNOW = "powder_snow";
+    public const string LIQUID_WATER = "water";
+    public const string LIQUID_LAVA = "lava";
+    public const string LIQUID_POWDER_SNOW = "powder_snow";
 
     /** dye => 0xRRGGBB */
-    private const DYE_COLORS = [
+    private const array DYE_COLORS = [
         ItemIds::WHITE_DYE => 0xf0f0f0,
         ItemIds::ORANGE_DYE => 0xf9801d,
         ItemIds::MAGENTA_DYE => 0xc74ebd,
@@ -66,16 +68,16 @@ class Cauldrons{
     ];
 
     /** items dyed water colors */
-    private const DYEABLE = [ItemIds::LEATHER_HELMET, ItemIds::LEATHER_CHESTPLATE, ItemIds::LEATHER_LEGGINGS, ItemIds::LEATHER_BOOTS, ItemIds::LEATHER_HORSE_ARMOR, ItemIds::WOLF_ARMOR];
+    private const array DYEABLE = [ItemIds::LEATHER_HELMET, ItemIds::LEATHER_CHESTPLATE, ItemIds::LEATHER_LEGGINGS, ItemIds::LEATHER_BOOTS, ItemIds::LEATHER_HORSE_ARMOR, ItemIds::WOLF_ARMOR];
 
-    private const POTIONS = [
+    private const array POTIONS = [
         ItemIds::POTION => Cauldron::TYPE_NORMAL,
         ItemIds::SPLASH_POTION => Cauldron::TYPE_SPLASH,
         ItemIds::LINGERING_POTION => Cauldron::TYPE_LINGERING
     ];
 
     /** bucket => liquid it holds, and the events of filling and emptying */
-    private const BUCKETS = [
+    private const array BUCKETS = [
         ItemIds::WATER_BUCKET => [self::LIQUID_WATER, LevelEvent::CAULDRON_FILL_WATER, LevelEvent::CAULDRON_TAKE_WATER, LevelSoundEvent::BUCKET_EMPTY_WATER, LevelSoundEvent::BUCKET_FILL_WATER],
         ItemIds::LAVA_BUCKET => [self::LIQUID_LAVA, LevelEvent::CAULDRON_FILL_LAVA, LevelEvent::CAULDRON_TAKE_LAVA, LevelSoundEvent::BUCKET_EMPTY_LAVA, LevelSoundEvent::BUCKET_FILL_LAVA],
         ItemIds::POWDER_SNOW_BUCKET => [self::LIQUID_POWDER_SNOW, LevelEvent::CAULDRON_FILL_POWDER_SNOW, LevelEvent::CAULDRON_TAKE_POWDER_SNOW, LevelSoundEvent::BUCKET_EMPTY_POWDER_SNOW, LevelSoundEvent::BUCKET_FILL_POWDER_SNOW]
@@ -85,7 +87,7 @@ class Cauldrons{
     }
 
     /**
-     * The player used their held item on the cauldron at x y z. False when that does nothing.
+     * @throws JsonException
      */
     public static function use(Player $player, int $x, int $y, int $z, BlockState $block) : bool{
         $world = $player->getWorld();
@@ -95,16 +97,10 @@ class Cauldrons{
             return false;
         }
 
-        $cauldron = $world->getBlockEntity($x, $y, $z);
+        $cauldron = self::getCauldron($world, $x, $y, $z);
 
-        if(!$cauldron instanceof Cauldron){
-            $cauldron = BlockEntityFactory::create(BlockIds::CAULDRON, $x, $y, $z);
-
-            if(!$cauldron instanceof Cauldron){
-                return false;
-            }
-
-            $world->addBlockEntity($cauldron);
+        if($cauldron === null){
+            return false;
         }
 
         $id = $held->getId();
@@ -183,6 +179,9 @@ class Cauldrons{
         return $water && self::wash($player, $world, $x, $y, $z, $block, $cauldron, $held, $level);
     }
 
+    /**
+     * @throws JsonException
+     */
     private static function pourPotion(Player $player, World $world, int $x, int $y, int $z, BlockState $block, Cauldron $cauldron, Item $held, int $level, ?string $liquid) : bool{
         $type = self::POTIONS[$held->getId()];
         $isWater = $held->getMeta() === 0 && $type === Cauldron::TYPE_NORMAL;
@@ -218,6 +217,8 @@ class Cauldrons{
 
     /**
      * Arrows dipped in a potion become tipped arrows of it, 16 for each bottle of it there is.
+     *
+     * @throws JsonException
      */
     private static function tipArrows(Player $player, World $world, int $x, int $y, int $z, BlockState $block, Cauldron $cauldron, Item $held, int $level) : bool{
         $bottles = intdiv($level + self::BOTTLE_LEVELS - 1, self::BOTTLE_LEVELS);
@@ -242,6 +243,7 @@ class Cauldrons{
     /**
      * Dyed water dyes leather, plain water washes the dye out of leather, the top pattern off a
      * banner and the color off a shulker box. Each takes a little of the water.
+     * @throws JsonException
      */
     private static function wash(Player $player, World $world, int $x, int $y, int $z, BlockState $block, Cauldron $cauldron, Item $held, int $level) : bool{
         $id = $held->getId();
@@ -298,13 +300,15 @@ class Cauldrons{
     /**
      * Rain and snow fill an open cauldron a little now and then: rain with water, snow with
      * powder snow. Potions and dyed water stay as they are.
+     *
+     * @throws JsonException
      */
     public static function catchPrecipitation(World $world, int $x, int $y, int $z, BlockState $block, bool $snow) : void{
         $liquid = $snow ? self::LIQUID_POWDER_SNOW : self::LIQUID_WATER;
         $level = (int) $block->getProperty(BlockProperties::FILL_LEVEL);
-        $cauldron = $world->getBlockEntity($x, $y, $z);
+        $cauldron = self::getCauldron($world, $x, $y, $z);
 
-        if(!$cauldron instanceof Cauldron || $level >= self::MAX_LEVEL || $cauldron->hasPotion() || $cauldron->getColor() !== null){
+        if($cauldron === null || $level >= self::MAX_LEVEL || $cauldron->hasPotion() || $cauldron->getColor() !== null){
             return;
         }
 
@@ -318,8 +322,40 @@ class Cauldrons{
     }
 
     /**
+     * A drip from pointed dripstone: lava fills an empty cauldron at once, water adds a third.
+     *
+     * @throws JsonException
+     */
+    public static function catchDrip(World $world, int $x, int $y, int $z, BlockState $block, string $liquid) : bool{
+        $level = (int) $block->getProperty(BlockProperties::FILL_LEVEL);
+        $cauldron = self::getCauldron($world, $x, $y, $z);
+
+        if($cauldron === null || $level >= self::MAX_LEVEL || $cauldron->hasPotion() || $cauldron->getColor() !== null){
+            return false;
+        }
+
+        if($liquid === self::LIQUID_LAVA){
+            if($level > 0){
+                return false;
+            }
+
+            self::update($world, $x, $y, $z, $block, $cauldron, $liquid, self::MAX_LEVEL);
+            return true;
+        }
+
+        if($level > 0 && $block->getProperty(BlockProperties::CAULDRON_LIQUID) !== $liquid){
+            return false;
+        }
+
+        self::update($world, $x, $y, $z, $block, $cauldron, $liquid, min(self::MAX_LEVEL, $level + 2));
+        return true;
+    }
+
+    /**
      * Sets the cauldron's liquid and level. The block entity goes first so the client draws the
      * new block with its color.
+     *
+     * @throws JsonException
      */
     private static function update(World $world, int $x, int $y, int $z, BlockState $block, Cauldron $cauldron, string $liquid, int $level) : void{
         if($level <= 0){
@@ -329,6 +365,26 @@ class Cauldrons{
 
         $world->sendBlockEntity($cauldron);
         $world->setBlock($x, $y, $z, $block->withProperty(BlockProperties::CAULDRON_LIQUID, $liquid)->withProperty(BlockProperties::FILL_LEVEL, max(0, $level)));
+    }
+
+    /**
+     * A cauldron set without its block entity, by a structure or a plugin, gets one here.
+     */
+    private static function getCauldron(World $world, int $x, int $y, int $z) : ?Cauldron{
+        $cauldron = $world->getBlockEntity($x, $y, $z);
+
+        if($cauldron instanceof Cauldron){
+            return $cauldron;
+        }
+
+        $cauldron = BlockEntityFactory::create(BlockIds::CAULDRON, $x, $y, $z);
+
+        if(!$cauldron instanceof Cauldron){
+            return null;
+        }
+
+        $world->addBlockEntity($cauldron);
+        return $cauldron;
     }
 
     private static function effects(World $world, int $x, int $y, int $z, int $event, ?string $sound) : void{

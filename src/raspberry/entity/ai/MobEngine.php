@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace raspberry\entity\ai;
 
 use raspberry\entity\Mob;
+use raspberry\entity\Entity;
+use raspberry\entity\effect\Effect;
 
 use raspberry\math\Vector3;
 
@@ -26,18 +28,22 @@ use function unpack;
 
 class MobEngine{
 
-    private const COMMAND_ADD = 1;
-    private const COMMAND_REMOVE = 2;
-    private const COMMAND_UPDATE = 3;
-    private const COMMAND_TELEPORT = 4;
-    private const COMMAND_MOTION = 5;
-    private const COMMAND_HURT = 6;
-    private const COMMAND_PLAYERS = 7;
+    private const int COMMAND_ADD = 1;
+    private const int COMMAND_REMOVE = 2;
+    private const int COMMAND_UPDATE = 3;
+    private const int COMMAND_TELEPORT = 4;
+    private const int COMMAND_MOTION = 5;
+    private const int COMMAND_HURT = 6;
+    private const int COMMAND_PLAYERS = 7;
+    private const int COMMAND_TICKING = 8;
 
-    private const PLAYER_SPECTATOR = 1;
+    private const int PLAYER_SPECTATOR = 1;
+    private const int PLAYER_NO_TARGET = 2;
+    private const int PLAYER_SNEAKING = 4;
+    private const int PLAYER_INVISIBLE = 8;
 
-    private const MOVE_SIZE = 48;
-    private const EVENT_SIZE = 36;
+    private const int MOVE_SIZE = 48;
+    private const int EVENT_SIZE = 36;
 
     private FFI $ffi;
 
@@ -118,9 +124,20 @@ class MobEngine{
         }
     }
 
-    public function hurt(Mob $mob) : void{
+    public function setTickingChunks(array $chunks) : void{
+        $this->commands .= pack("CV", self::COMMAND_TICKING, count($chunks));
+
+        foreach($chunks as [$chunkX, $chunkZ]){
+            $this->commands .= pack("VV", $chunkX, $chunkZ);
+        }
+    }
+
+    /**
+     * The mob was hurt, by $attacker when something hit it.
+     */
+    public function hurt(Mob $mob, ?Entity $attacker = null) : void{
         if(isset($this->mobs[$mob->getId()])){
-            $this->commands .= pack("CP", self::COMMAND_HURT, $mob->getId());
+            $this->commands .= pack("CPP", self::COMMAND_HURT, $mob->getId(), $attacker?->getId() ?? 0);
         }
     }
 
@@ -158,7 +175,19 @@ class MobEngine{
             }
 
             $position = $player->getPosition();
-            $flags = $player->getGameMode() === GameMode::SPECTATOR ? self::PLAYER_SPECTATOR : 0;
+            $flags = match($player->getGameMode()){
+                GameMode::SPECTATOR => self::PLAYER_SPECTATOR | self::PLAYER_NO_TARGET,
+                GameMode::CREATIVE => self::PLAYER_NO_TARGET,
+                default => 0
+            };
+
+            if($player->isSneaking()){
+                $flags |= self::PLAYER_SNEAKING;
+            }
+
+            if($player->getEffects()->has(Effect::INVISIBILITY)){
+                $flags |= self::PLAYER_INVISIBLE;
+            }
 
             $players .= pack("PeeegVP", $player->getId(), $position->x, $position->y, $position->z, $player->getEyeHeight(), $flags, TemptItems::mask($player->getInventory()->getItemInHand()->getId()));
             ++$playerCount;

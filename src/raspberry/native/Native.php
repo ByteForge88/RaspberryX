@@ -20,9 +20,9 @@ use const PHP_OS_FAMILY;
 class Native{
 
     /** the library has to speak this version of the functions below */
-    public const ABI_VERSION = 9;
+    public const int ABI_VERSION = 9;
 
-    private const HEADER = <<<'C'
+    private const string HEADER = <<<'C'
         uint32_t rx_version(void);
         void rx_free(char* data, size_t length);
         int32_t rx_poll(uint64_t* id, char** out, size_t* out_length);
@@ -77,12 +77,14 @@ class Native{
         int32_t rx_liquid_add_chunk(uint64_t world, int32_t chunk_x, int32_t chunk_z, uint64_t chunk, uint64_t now);
         void rx_liquid_remove_chunk(uint64_t world, int32_t chunk_x, int32_t chunk_z);
         void rx_liquid_changed(uint64_t world, int32_t x, int32_t y, int32_t z, uint64_t now);
+        void rx_liquid_ticking(uint64_t world, const int32_t* chunks, size_t count);
         int32_t rx_liquid_tick(uint64_t world, uint64_t now, char** out, size_t* out_length);
         
         void rx_explosion_blocks(const uint32_t* states, const float* resistances, const uint8_t* solids, size_t count, uint32_t air);
         int32_t rx_explode(const uint64_t* chunks, const int32_t* positions, size_t chunk_count, double x, double y, double z, float radius, int64_t seed, const double* boxes, size_t box_count, float* exposures, char** out, size_t* out_length);
         C;
 
+    /** @var (FFI&NativeLibrary)|null */
     private static ?FFI $ffi = null;
 
     private static ?string $error = "the native library was not loaded";
@@ -118,11 +120,12 @@ class Native{
         }
 
         if(!is_file($path)){
-            self::$error = "{$path} does not exist, build it with composer make-native";
+            self::$error = "$path does not exist, build it with composer make-native";
             return false;
         }
 
         try{
+            /** @var FFI&NativeLibrary $ffi */
             $ffi = FFI::cdef(self::HEADER, $path);
             $version = $ffi->rx_version();
         }catch(Throwable $exception){
@@ -131,13 +134,12 @@ class Native{
         }
 
         if($version !== self::ABI_VERSION){
-            self::$error = "{$path} is version {$version} but this RaspberryX needs version " . self::ABI_VERSION . ", build it again";
+            self::$error = "$path is version $version but this RaspberryX needs version " . self::ABI_VERSION . ", build it again";
             return false;
         }
 
         self::$ffi = $ffi;
         self::$error = null;
-
         return true;
     }
 
@@ -151,6 +153,8 @@ class Native{
 
     /**
      * @internal
+     *
+     * @return FFI&NativeLibrary
      */
     public static function get() : FFI{
         return self::$ffi ?? throw new NativeException("The native library is not available: " . self::$error);
@@ -181,6 +185,7 @@ class Native{
             return 0;
         }
 
+        /** @var FFI&NativeLibrary $ffi */
         $ffi = self::$ffi;
         $id = $ffi->new("uint64_t");
         $out = $ffi->new("char*");

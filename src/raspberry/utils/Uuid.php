@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace raspberry\utils;
 
+use Random\RandomException;
+
 use InvalidArgumentException;
 
 use function bin2hex;
@@ -15,7 +17,6 @@ use function preg_match;
 use function random_bytes;
 use function str_replace;
 use function strlen;
-use function substr;
 use function vsprintf;
 use function str_split;
 
@@ -30,6 +31,9 @@ class Uuid{
         $this->bytes = $bytes;
     }
 
+    /**
+     * @throws RandomException
+     */
     public static function random() : self{
         return self::withVersion(random_bytes(16), 4);
     }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace raspberry\entity;
 
+use JsonException;
 use RuntimeException;
 use UnexpectedValueException;
 
@@ -25,6 +26,7 @@ class EntityProperties{
 
     /**
      * @return array<string, list<array{name: string, type: string, values?: list<string>, min?: int|float, max?: int|float}>>
+     * @throws JsonException
      */
     public static function getAll() : array{
         if(self::$entities === null){
@@ -51,6 +53,7 @@ class EntityProperties{
      * @param array<string, string|int|float|bool> $values
      *
      * @return array{array<int, int>, array<int, float>}
+     * @throws JsonException
      */
     public static function encode(string $entity, array $values) : array{
         $ints = [];

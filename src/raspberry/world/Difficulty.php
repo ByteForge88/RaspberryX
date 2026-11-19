@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace raspberry\world;
 
-use function strtolower;
 use function trim;
+use function strtolower;
 
 enum Difficulty : int{
 

@@ -27,7 +27,7 @@ use function str_starts_with;
 
 class Buckets{
 
-    private const FILLED = [
+    private const array FILLED = [
         ItemIds::WATER_BUCKET => [BlockIds::WATER, LevelSoundEvent::BUCKET_EMPTY_WATER],
         ItemIds::LAVA_BUCKET => [BlockIds::LAVA, LevelSoundEvent::BUCKET_EMPTY_LAVA],
         ItemIds::COD_BUCKET => [BlockIds::WATER, LevelSoundEvent::BUCKET_EMPTY_FISH],

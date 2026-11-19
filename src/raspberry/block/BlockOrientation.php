@@ -12,13 +12,13 @@ use function substr;
 class BlockOrientation{
 
     /** blocks that only go on the side of another block */
-    private const WALL_ONLY = '/^(\w*wall_sign|wall_banner|ladder|\w+_coral_wall_fan|tripwire_hook|cocoa)$/D';
+    private const string WALL_ONLY = '/^(\w*wall_sign|wall_banner|ladder|\w+_coral_wall_fan|tripwire_hook|cocoa)$/D';
 
     /** blocks that cannot hang under a block */
-    private const NOT_ON_CEILING = '/^(\w*torch(_\w+)?|\w*standing_sign|standing_banner|\w+_skull|\w+_head|\w*_door)$/D';
+    private const string NOT_ON_CEILING = '/^(\w*torch(_\w+)?|\w*standing_sign|standing_banner|\w+_skull|\w+_head|\w*_door)$/D';
 
     /** blocks with facing_direction that point out of the clicked face (skulls: 1 standing) */
-    private const FACING_CLICKED = '/^(\w*wall_sign|wall_banner|ladder|\w+_button|(glow_)?frame|(\w+_)?lightning_rod|\w+_skull|\w+_head)$/D';
+    private const string FACING_CLICKED = '/^(\w*wall_sign|wall_banner|ladder|\w+_button|(glow_)?frame|(\w+_)?lightning_rod|\w+_skull|\w+_head)$/D';
 
     private function __construct(){
     }

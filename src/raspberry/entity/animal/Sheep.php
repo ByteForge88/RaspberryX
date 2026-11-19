@@ -29,38 +29,38 @@ use function mt_rand;
 
 class Sheep extends Animal{
 
-    public const WHITE = 0;
-    public const ORANGE = 1;
-    public const MAGENTA = 2;
-    public const LIGHT_BLUE = 3;
-    public const YELLOW = 4;
-    public const LIME = 5;
-    public const PINK = 6;
-    public const GRAY = 7;
-    public const LIGHT_GRAY = 8;
-    public const CYAN = 9;
-    public const PURPLE = 10;
-    public const BLUE = 11;
-    public const BROWN = 12;
-    public const GREEN = 13;
-    public const RED = 14;
-    public const BLACK = 15;
+    public const int WHITE = 0;
+    public const int ORANGE = 1;
+    public const int MAGENTA = 2;
+    public const int LIGHT_BLUE = 3;
+    public const int YELLOW = 4;
+    public const int LIME = 5;
+    public const int PINK = 6;
+    public const int GRAY = 7;
+    public const int LIGHT_GRAY = 8;
+    public const int CYAN = 9;
+    public const int PURPLE = 10;
+    public const int BLUE = 11;
+    public const int BROWN = 12;
+    public const int GREEN = 13;
+    public const int RED = 14;
+    public const int BLACK = 15;
 
-    private const WOOL = [
+    private const array WOOL = [
         ItemIds::WHITE_WOOL, ItemIds::ORANGE_WOOL, ItemIds::MAGENTA_WOOL, ItemIds::LIGHT_BLUE_WOOL,
         ItemIds::YELLOW_WOOL, ItemIds::LIME_WOOL, ItemIds::PINK_WOOL, ItemIds::GRAY_WOOL,
         ItemIds::LIGHT_GRAY_WOOL, ItemIds::CYAN_WOOL, ItemIds::PURPLE_WOOL, ItemIds::BLUE_WOOL,
         ItemIds::BROWN_WOOL, ItemIds::GREEN_WOOL, ItemIds::RED_WOOL, ItemIds::BLACK_WOOL
     ];
 
-    private const DYES = [
+    private const array DYES = [
         ItemIds::WHITE_DYE, ItemIds::ORANGE_DYE, ItemIds::MAGENTA_DYE, ItemIds::LIGHT_BLUE_DYE,
         ItemIds::YELLOW_DYE, ItemIds::LIME_DYE, ItemIds::PINK_DYE, ItemIds::GRAY_DYE,
         ItemIds::LIGHT_GRAY_DYE, ItemIds::CYAN_DYE, ItemIds::PURPLE_DYE, ItemIds::BLUE_DYE,
         ItemIds::BROWN_DYE, ItemIds::GREEN_DYE, ItemIds::RED_DYE, ItemIds::BLACK_DYE
     ];
 
-    private const GRASS_GROWTH = 1200;
+    private const int GRASS_GROWTH = 1200;
 
     private int $color;
 

@@ -20,34 +20,34 @@ use function mt_rand;
 
 class Plants implements RandomTickBehavior{
 
-    private const SUGAR_CANE = "minecraft:reeds";
-    private const CACTUS = "minecraft:cactus";
-    private const CACTUS_FLOWER = "minecraft:cactus_flower";
-    private const BAMBOO = "minecraft:bamboo";
-    private const BAMBOO_SAPLING = "minecraft:bamboo_sapling";
-    private const KELP = "minecraft:kelp";
-    private const CAVE_VINES = "minecraft:cave_vines";
-    private const CAVE_VINES_HEAD_BERRIES = "minecraft:cave_vines_head_with_berries";
-    private const CAVE_VINES_BODY_BERRIES = "minecraft:cave_vines_body_with_berries";
-    private const TWISTING_VINES = "minecraft:twisting_vines";
-    private const WEEPING_VINES = "minecraft:weeping_vines";
-    private const NETHER_WART = "minecraft:nether_wart";
-    private const SWEET_BERRY_BUSH = "minecraft:sweet_berry_bush";
-    private const COCOA = "minecraft:cocoa";
-    private const BROWN_MUSHROOM = "minecraft:brown_mushroom";
-    private const RED_MUSHROOM = "minecraft:red_mushroom";
+    private const string SUGAR_CANE = "minecraft:reeds";
+    private const string CACTUS = "minecraft:cactus";
+    private const string CACTUS_FLOWER = "minecraft:cactus_flower";
+    private const string BAMBOO = "minecraft:bamboo";
+    private const string BAMBOO_SAPLING = "minecraft:bamboo_sapling";
+    private const string KELP = "minecraft:kelp";
+    private const string CAVE_VINES = "minecraft:cave_vines";
+    private const string CAVE_VINES_HEAD_BERRIES = "minecraft:cave_vines_head_with_berries";
+    private const string CAVE_VINES_BODY_BERRIES = "minecraft:cave_vines_body_with_berries";
+    private const string TWISTING_VINES = "minecraft:twisting_vines";
+    private const string WEEPING_VINES = "minecraft:weeping_vines";
+    private const string NETHER_WART = "minecraft:nether_wart";
+    private const string SWEET_BERRY_BUSH = "minecraft:sweet_berry_bush";
+    private const string COCOA = "minecraft:cocoa";
+    private const string BROWN_MUSHROOM = "minecraft:brown_mushroom";
+    private const string RED_MUSHROOM = "minecraft:red_mushroom";
 
     /** sugar cane and cactus stop at this many blocks */
-    private const STACK_HEIGHT = 3;
+    private const int STACK_HEIGHT = 3;
 
-    private const MAX_AGE = 15;
+    private const int MAX_AGE = 15;
 
-    private const VINE_MAX_AGE = 25;
+    private const int VINE_MAX_AGE = 25;
 
-    private const BAMBOO_MAX_HEIGHT = 16;
+    private const int BAMBOO_MAX_HEIGHT = 16;
 
     /** what mushrooms grow on in any light */
-    private const MUSHROOM_GROUND = ["minecraft:mycelium", "minecraft:podzol", "minecraft:crimson_nylium", "minecraft:warped_nylium"];
+    private const array MUSHROOM_GROUND = ["minecraft:mycelium", "minecraft:podzol", "minecraft:crimson_nylium", "minecraft:warped_nylium"];
 
     public function getBlockNames() : array{
         return [

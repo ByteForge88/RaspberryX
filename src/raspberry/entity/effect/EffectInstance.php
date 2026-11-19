@@ -9,10 +9,10 @@ use function min;
 
 class EffectInstance{
 
-    public const MAX_DURATION = 2147483647;
+    public const int MAX_DURATION = 2147483647;
 
     /** never runs out, like /effect ... infinite */
-    public const INFINITE = -1;
+    public const int INFINITE = -1;
 
     private Effect $effect;
 

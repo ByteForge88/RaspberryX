@@ -38,21 +38,25 @@ use function str_ends_with;
 class FallingBlock extends Entity{
     use BlockPhysics;
 
-    public const SIZE = 0.98;
+    public const float SIZE = 0.98;
 
-    private const GRAVITY = 0.04;
-    private const DRAG = 0.02;
+    private const float GRAVITY = 0.04;
+    private const float DRAG = 0.02;
 
-    private const MAX_AGE = 600;
+    private const int MAX_AGE = 600;
 
-    private const ANVIL_DAMAGE_PER_BLOCK = 2.0;
-    private const ANVIL_MAX_DAMAGE = 40.0;
+    private const float ANVIL_DAMAGE_PER_BLOCK = 2.0;
+    private const float ANVIL_MAX_DAMAGE = 40.0;
 
-    private const ANVILS = [BlockIds::ANVIL => "minecraft:chipped_anvil", "minecraft:chipped_anvil" => "minecraft:damaged_anvil", "minecraft:damaged_anvil" => null];
+    private const array ANVILS = [BlockIds::ANVIL => "minecraft:chipped_anvil", "minecraft:chipped_anvil" => "minecraft:damaged_anvil", "minecraft:damaged_anvil" => null];
 
     private BlockState $block;
 
     private int $age = 0;
+
+    private float $hurtPerBlock = 0.0;
+
+    private float $hurtMax = 0.0;
 
     private bool $viewersUpdated = false;
 
@@ -126,6 +130,13 @@ class FallingBlock extends Entity{
         $name = $block->getName();
         $this->close();
 
+        if($name === BlockIds::POINTED_DRIPSTONE){
+            $this->hurtBelow($x, $y, $z, $fallDistance, $this->hurtPerBlock, $this->hurtMax, DamageSource::CAUSE_STALACTITE);
+            $this->world->broadcastPacket($x, $z, LevelEventPacket::create(LevelEvent::SOUND_POINTED_DRIPSTONE_LAND, $x + 0.5, $y + 0.5, $z + 0.5));
+            $this->dropAsItem();
+            return;
+        }
+
         if(str_ends_with($name, "suspicious_sand") || str_ends_with($name, "suspicious_gravel")){
             $this->world->broadcastPacket($x, $z, LevelEventPacket::create(LevelEvent::PARTICLES_DESTROY_BLOCK, $x + 0.5, $y + 0.5, $z + 0.5, Server::getInstance()->getBlockTranslator()->getNetworkId($block)));
             return;
@@ -160,22 +171,43 @@ class FallingBlock extends Entity{
         $this->world->setBlock($x, $y, $z, $event->getNewState());
     }
 
-    private function hitWithAnvil(int $x, int $y, int $z, float $fallDistance) : ?BlockState{
+    /**
+     * Pointed dripstone set to fall hurts what it lands on, $perBlock for each block it fell.
+     */
+    public function setHurtsEntities(float $perBlock, float $max) : void{
+        $this->hurtPerBlock = $perBlock;
+        $this->hurtMax = $max;
+    }
+
+    /**
+     * Hurts every living thing in the block it landed in, the blocks it fell are returned.
+     */
+    private function hurtBelow(int $x, int $y, int $z, float $fallDistance, float $perBlock, float $max, int $cause) : int{
         $blocks = (int) ceil($fallDistance - 1.0);
 
-        if($blocks <= 0){
-            return $this->block;
+        if($blocks <= 0 || $perBlock <= 0.0){
+            return $blocks;
         }
 
-        $damage = min(floor($blocks * self::ANVIL_DAMAGE_PER_BLOCK), self::ANVIL_MAX_DAMAGE);
+        $damage = min(floor($blocks * $perBlock), $max);
 
         foreach($this->world->getEntities() as $entity){
             $position = $entity->getPosition();
             $half = $entity->getWidth() / 2;
 
             if($entity instanceof Living && $entity->isAlive() && $position->x + $half > $x && $position->x - $half < $x + 1 && $position->z + $half > $z && $position->z - $half < $z + 1 && $position->y + $entity->getHeight() > $y && $position->y < $y + 1){
-                $entity->damage(new DamageSource(DamageSource::CAUSE_FALLING_BLOCK, $damage));
+                $entity->damage(new DamageSource($cause, $damage));
             }
+        }
+
+        return $blocks;
+    }
+
+    private function hitWithAnvil(int $x, int $y, int $z, float $fallDistance) : ?BlockState{
+        $blocks = $this->hurtBelow($x, $y, $z, $fallDistance, self::ANVIL_DAMAGE_PER_BLOCK, self::ANVIL_MAX_DAMAGE, DamageSource::CAUSE_FALLING_BLOCK);
+
+        if($blocks <= 0){
+            return $this->block;
         }
 
         if(mt_rand() / mt_getrandmax() >= 0.05 + $blocks * 0.05){

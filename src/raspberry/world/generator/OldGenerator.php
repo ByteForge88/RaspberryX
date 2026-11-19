@@ -29,11 +29,11 @@ use function usleep;
 class OldGenerator implements Generator{
 
     /** the world is this many chunks along each side, from chunk 0 */
-    public const SIZE_CHUNKS = 16;
+    public const int SIZE_CHUNKS = 16;
 
-    public const HEIGHT = 128;
+    public const int HEIGHT = 128;
 
-    private const WAIT_MICROSECONDS = 1000;
+    private const int WAIT_MICROSECONDS = 1000;
 
     private int $seed;
 

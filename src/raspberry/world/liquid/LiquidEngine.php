@@ -38,24 +38,24 @@ use function unpack;
 class LiquidEngine{
 
     //what a block is to a liquid, as native/src/liquid.rs numbers them
-    private const EMPTY = 0;
-    private const FLOODABLE = 1;
-    private const WATER = 3;
-    private const FLOWING_WATER = 4;
-    private const LAVA = 5;
-    private const FLOWING_LAVA = 6;
-    private const WATERY = 7;
-    private const BUBBLE_COLUMN = 8;
-    private const CONCRETE_POWDER = 9;
-    private const SOUL_SAND = 10;
-    private const MAGMA = 11;
-    private const SOUL_SOIL = 12;
-    private const BLUE_ICE = 13;
+    private const int EMPTY = 0;
+    private const int FLOODABLE = 1;
+    private const int WATER = 3;
+    private const int FLOWING_WATER = 4;
+    private const int LAVA = 5;
+    private const int FLOWING_LAVA = 6;
+    private const int WATERY = 7;
+    private const int BUBBLE_COLUMN = 8;
+    private const int CONCRETE_POWDER = 9;
+    private const int SOUL_SAND = 10;
+    private const int MAGMA = 11;
+    private const int SOUL_SOIL = 12;
+    private const int BLUE_ICE = 13;
 
-    private const DROPS = 1;
-    private const FIZZ = 2;
+    private const int DROPS = 1;
+    private const int FIZZ = 2;
 
-    private const KINDS = [
+    private const array KINDS = [
         BlockIds::AIR => self::EMPTY,
         BlockIds::WATER => self::WATER,
         BlockIds::FLOWING_WATER => self::FLOWING_WATER,
@@ -70,7 +70,7 @@ class LiquidEngine{
         "minecraft:blue_ice" => self::BLUE_ICE
     ];
 
-    private const KEEPS_OUT = '/^minecraft:(\w*sign|\w*_banner|ladder|reeds|portal|end_portal|end_gateway|structure_void|light_block_\d+|powder_snow|' .
+    private const string KEEPS_OUT = '/^minecraft:(\w*sign|\w*_banner|ladder|reeds|portal|end_portal|end_gateway|structure_void|light_block_\d+|powder_snow|' .
     '(dead_)?\w+_coral(_wall)?(_fan)?|sea_pickle|small_dripleaf_block|hanging_roots|glow_lichen|sculk_vein|\w*rail|\w+_pressure_plate|frog_spawn|underwater_torch)$/D';
 
     private static bool $taught = false;
@@ -178,6 +178,27 @@ class LiquidEngine{
 
     public function removeChunk(int $chunkX, int $chunkZ) : void{
         $this->ffi->rx_liquid_remove_chunk($this->handle, $chunkX, $chunkZ);
+    }
+
+    /**
+     * @param list<array{int, int}> $chunks
+     */
+    public function setTickingChunks(array $chunks) : void{
+        $count = count($chunks);
+
+        if($count === 0){
+            $this->ffi->rx_liquid_ticking($this->handle, null, 0);
+            return;
+        }
+
+        $coords = $this->ffi->new("int32_t[" . ($count * 2) . "]");
+
+        foreach($chunks as $index => [$chunkX, $chunkZ]){
+            $coords[$index * 2] = $chunkX;
+            $coords[$index * 2 + 1] = $chunkZ;
+        }
+
+        $this->ffi->rx_liquid_ticking($this->handle, $coords, $count);
     }
 
     public function onBlockChanged(int $x, int $y, int $z) : void{

@@ -24,8 +24,10 @@ use raspberry\network\mcpe\protocol\types\LevelSoundEvent;
 
 use raspberry\player\Player;
 
-use raspberry\world\GameRules;
 use raspberry\world\World;
+use raspberry\world\GameRules;
+
+use JsonException;
 
 use function in_array;
 use function intdiv;
@@ -37,15 +39,15 @@ use function preg_match;
 
 class Fire implements RandomTickBehavior{
 
-    public const MAX_AGE = 15;
+    public const int MAX_AGE = 15;
 
-    private const INFINIBURN = [BlockIds::NETHERRACK, BlockIds::MAGMA];
+    private const array INFINIBURN = [BlockIds::NETHERRACK, BlockIds::MAGMA];
 
-    private const SOUL_GROUND = ["minecraft:soul_sand", "minecraft:soul_soil"];
+    private const array SOUL_GROUND = ["minecraft:soul_sand", "minecraft:soul_soil"];
 
-    private const WOODS = '(oak|spruce|birch|jungle|acacia|dark_oak|mangrove|cherry|pale_oak|bamboo)';
+    private const string WOODS = '(oak|spruce|birch|jungle|acacia|dark_oak|mangrove|cherry|pale_oak|bamboo)';
 
-    private const FLAMMABLE = [
+    private const array FLAMMABLE = [
         '/^minecraft:(' . self::WOODS . '_(planks|slab|double_slab|stairs|fence|fence_gate)|fence_gate|bamboo_mosaic(_slab|_double_slab|_stairs)?|mangrove_roots|composter|beehive)$/D' => [5, 20],
         '/^minecraft:((stripped_)?' . self::WOODS . '_(log|wood)|(stripped_)?bamboo_block|coal_block)$/D' => [5, 5],
         '/^minecraft:\w+_leaves(_flowered)?$/D' => [30, 60],
@@ -120,6 +122,9 @@ class Fire implements RandomTickBehavior{
         return false;
     }
 
+    /**
+     * @throws JsonException
+     */
     public static function stateAt(World $world, int $x, int $y, int $z, int $age = 0) : BlockState{
         $registry = Server::getInstance()->getBlockStateRegistry();
         $below = Nearby::block($world, $x, $y - 1, $z);
@@ -141,6 +146,9 @@ class Fire implements RandomTickBehavior{
         return $fire;
     }
 
+    /**
+     * @throws JsonException
+     */
     public static function tick(World $world, int $x, int $y, int $z, BlockState $fire) : void{
         $air = Server::getInstance()->getBlockStateRegistry()->getDefaultState(BlockIds::AIR);
 
@@ -224,6 +232,9 @@ class Fire implements RandomTickBehavior{
         }
     }
 
+    /**
+     * @throws JsonException
+     */
     private static function burnAway(World $world, int $x, int $y, int $z, int $chance, int $age, Vector3 $fire) : void{
         $block = Nearby::block($world, $x, $y, $z);
 
@@ -288,6 +299,9 @@ class Fire implements RandomTickBehavior{
         return true;
     }
 
+    /**
+     * @throws JsonException
+     */
     public function onRandomTick(World $world, int $x, int $y, int $z, BlockState $state) : void{
         if(!$world->getGameRules()->getBool(GameRules::DO_FIRE_TICK)){
             return;
@@ -328,6 +342,9 @@ class Fire implements RandomTickBehavior{
         }
     }
 
+    /**
+     * @throws JsonException
+     */
     public static function ignite(Player $player, int $x, int $y, int $z, int $face, BlockState $clicked, Item $held) : bool{
         $world = $player->getWorld();
         $name = $clicked->getName();

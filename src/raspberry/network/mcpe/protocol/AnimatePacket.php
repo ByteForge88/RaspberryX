@@ -12,6 +12,7 @@ use UnexpectedValueException;
 class AnimatePacket implements Packet{
 
     public const ACTION_SWING_ARM = 1;
+    public const ACTION_STOP_SLEEP = 3;
     public const ACTION_CRITICAL_HIT = 4;
     public const ACTION_MAGIC_CRITICAL_HIT = 5;
 

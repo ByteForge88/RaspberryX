@@ -19,7 +19,7 @@ use function mt_rand;
 
 class Crops implements RandomTickBehavior{
 
-    public const NAMES = [
+    public const array NAMES = [
         "minecraft:wheat",
         "minecraft:carrots",
         "minecraft:potatoes",
@@ -30,20 +30,20 @@ class Crops implements RandomTickBehavior{
         "minecraft:pumpkin_stem"
     ];
 
-    private const MAX_GROWTH = 7;
+    private const int MAX_GROWTH = 7;
 
     /** a pitcher crop is two blocks tall from this growth on, and done at the last */
-    private const PITCHER_TALL = 3;
-    private const PITCHER_DONE = 4;
+    private const int PITCHER_TALL = 3;
+    private const int PITCHER_DONE = 4;
 
     /** facing_direction of a stem that holds no fruit */
-    private const UNATTACHED = 0;
+    private const int UNATTACHED = 0;
 
     /** facing_direction => x, z of the fruit */
-    private const STEM_SIDES = [2 => [0, -1], 3 => [0, 1], 4 => [-1, 0], 5 => [1, 0]];
+    private const array STEM_SIDES = [2 => [0, -1], 3 => [0, 1], 4 => [-1, 0], 5 => [1, 0]];
 
     /** what a stem's fruit may grow on */
-    private const FRUIT_GROUND = [
+    private const array FRUIT_GROUND = [
         "minecraft:farmland",
         "minecraft:dirt",
         "minecraft:coarse_dirt",

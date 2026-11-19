@@ -6,7 +6,15 @@ namespace raspberry\scheduler;
 
 abstract class Task{
 
-    private ?TaskHandler $handler = null;
+    public ?TaskHandler $handler = null{
+        get{
+            return $this->handler;
+        }
+
+        set{
+            $this->handler = $value;
+        }
+    }
 
     abstract public function onRun() : void;
 
@@ -14,16 +22,6 @@ abstract class Task{
      * Called when the task is cancelled, also when the plugin is disabled.
      */
     public function onCancel() : void{
-    }
 
-    public function getHandler() : ?TaskHandler{
-        return $this->handler;
-    }
-
-    /**
-     * @internal
-     */
-    public function setHandler(?TaskHandler $handler) : void{
-        $this->handler = $handler;
     }
 }

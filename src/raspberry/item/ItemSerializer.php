@@ -104,7 +104,7 @@ class ItemSerializer{
                 self::readTag($item, self::copy($tag));
             }
         }catch(InvalidArgumentException $exception){
-            throw new NbtException("Invalid item {$id}: " . $exception->getMessage(), 0, $exception);
+            throw new NbtException("Invalid item $id: " . $exception->getMessage(), 0, $exception);
         }
 
         return $item;

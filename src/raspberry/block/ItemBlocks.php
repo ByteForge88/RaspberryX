@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace raspberry\block;
 
+use JsonException;
 use RuntimeException;
 use UnexpectedValueException;
 
@@ -28,6 +29,7 @@ class ItemBlocks{
 
     /**
      * @return array{string, ?string}|null
+     * @throws JsonException
      */
     public static function get(string $itemId, BlockStateRegistry $registry) : ?array{
         self::$items ??= self::load(dirname(__DIR__, 3) . "/resources/vanilla/item_blocks.json");
@@ -45,6 +47,7 @@ class ItemBlocks{
 
     /**
      * @return array<string, array{block: string, wall?: string}>
+     * @throws JsonException
      */
     private static function load(string $path) : array{
         $contents = @file_get_contents($path);

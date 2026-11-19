@@ -4,57 +4,57 @@ declare(strict_types=1);
 
 namespace raspberry\utils;
 
+use function strtolower;
 use function preg_replace;
 use function preg_replace_callback;
-use function strtolower;
 
 abstract class TextFormat{
 
     //§
-    public const ESCAPE = "\xc2\xa7";
+    public const string ESCAPE = "\xc2\xa7";
 
     //case-break
-    public const EOL = "\n";
+    public const string EOL = "\n";
 
-    public const RESET = self::ESCAPE . "r";
+    public const string RESET = self::ESCAPE . "r";
 
-    public const OBFUSCATED = self::ESCAPE . "k";
-    public const ITALIC = self::ESCAPE . "o";
-    public const BOLD = self::ESCAPE . "l";
+    public const string OBFUSCATED = self::ESCAPE . "k";
+    public const string ITALIC = self::ESCAPE . "o";
+    public const string BOLD = self::ESCAPE . "l";
 
-    public const GREEN = self::ESCAPE . "a";
-    public const WHITE = self::ESCAPE . "f";
-    public const YELLOW = self::ESCAPE . "e";
-    public const RED = self::ESCAPE . "c";
-    public const AQUA = self::ESCAPE . "b";
-    public const BLUE = self::ESCAPE . "9";
-    public const BLACK = self::ESCAPE . "0";
-    public const GRAY = self::ESCAPE . "7";
-    public const GOLD = self::ESCAPE . "6";
-    public const MINECOIN_GOLD = self::ESCAPE . "g";
-    public const MATERIAL_GOLD = self::ESCAPE . "p";
-    public const MATERIAL_EMERALD = self::ESCAPE . "q";
-    public const MATERIAL_DIAMOND = self::ESCAPE . "s";
-    public const MATERIAL_LAPIS = self::ESCAPE . "t";
-    public const MATERIAL_AMETHYST = self::ESCAPE . "u";
-    public const MATERIAL_RESIN = self::ESCAPE . "v";
-    public const MATERIAL_QUARTZ = self::ESCAPE . "h";
-    public const MATERIAL_IRON = self::ESCAPE . "i";
-    public const MATERIAL_NETHERITE = self::ESCAPE . "j";
-    public const MATERIAL_REDSTONE = self::ESCAPE . "m";
-    public const MATERIAL_COPPER = self::ESCAPE . "n";
-    public const LIGHT_BLUE = self::ESCAPE . "w";
-    public const LIGHT_PURPLE = self::ESCAPE . "d";
-    public const DARK_PURPLE = self::ESCAPE . "5";
-    public const DARK_AQUA = self::ESCAPE . "3";
-    public const DARK_BLUE = self::ESCAPE . "1";
-    public const DARK_GRAY = self::ESCAPE . "8";
-    public const DARK_RED = self::ESCAPE . "4";
-    public const DARK_GREEN = self::ESCAPE . "2";
+    public const string GREEN = self::ESCAPE . "a";
+    public const string WHITE = self::ESCAPE . "f";
+    public const string YELLOW = self::ESCAPE . "e";
+    public const string RED = self::ESCAPE . "c";
+    public const string AQUA = self::ESCAPE . "b";
+    public const string BLUE = self::ESCAPE . "9";
+    public const string BLACK = self::ESCAPE . "0";
+    public const string GRAY = self::ESCAPE . "7";
+    public const string GOLD = self::ESCAPE . "6";
+    public const string MINECOIN_GOLD = self::ESCAPE . "g";
+    public const string MATERIAL_GOLD = self::ESCAPE . "p";
+    public const string MATERIAL_EMERALD = self::ESCAPE . "q";
+    public const string MATERIAL_DIAMOND = self::ESCAPE . "s";
+    public const string MATERIAL_LAPIS = self::ESCAPE . "t";
+    public const string MATERIAL_AMETHYST = self::ESCAPE . "u";
+    public const string MATERIAL_RESIN = self::ESCAPE . "v";
+    public const string MATERIAL_QUARTZ = self::ESCAPE . "h";
+    public const string MATERIAL_IRON = self::ESCAPE . "i";
+    public const string MATERIAL_NETHERITE = self::ESCAPE . "j";
+    public const string MATERIAL_REDSTONE = self::ESCAPE . "m";
+    public const string MATERIAL_COPPER = self::ESCAPE . "n";
+    public const string LIGHT_BLUE = self::ESCAPE . "w";
+    public const string LIGHT_PURPLE = self::ESCAPE . "d";
+    public const string DARK_PURPLE = self::ESCAPE . "5";
+    public const string DARK_AQUA = self::ESCAPE . "3";
+    public const string DARK_BLUE = self::ESCAPE . "1";
+    public const string DARK_GRAY = self::ESCAPE . "8";
+    public const string DARK_RED = self::ESCAPE . "4";
+    public const string DARK_GREEN = self::ESCAPE . "2";
 
 
     /** color codes as 24-bit terminal colors, using the same RGB values as the game */
-    private const ANSI = [
+    private const array ANSI = [
         "0" => "\e[38;2;0;0;0m",
         "1" => "\e[38;2;0;0;170m",
         "2" => "\e[38;2;0;170;0m",

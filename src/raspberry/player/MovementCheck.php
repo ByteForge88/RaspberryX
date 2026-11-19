@@ -22,22 +22,22 @@ use function sqrt;
 
 class MovementCheck{
 
-    public const OK = 0;
+    public const int OK = 0;
 
-    public const CORRECT = 1;
+    public const int CORRECT = 1;
 
-    public const FLYING = 2;
+    public const int FLYING = 2;
 
-    private const BASE_SPEED = 0.7;
+    private const float BASE_SPEED = 0.7;
 
-    private const BURST = 2.0;
+    private const float BURST = 2.0;
 
-    private const JUMP_HEIGHT = 1.25;
-    private const RISE_LEEWAY = 0.5;
+    private const float JUMP_HEIGHT = 1.25;
+    private const float RISE_LEEWAY = 0.5;
 
-    private const FLOAT_TICKS = 80;
+    private const int FLOAT_TICKS = 80;
 
-    public const GRACE_TICKS = 5;
+    public const int GRACE_TICKS = 5;
 
     private Player $player;
 
@@ -52,6 +52,9 @@ class MovementCheck{
     private float $extraRise = 0.0;
 
     private float $extraSpeed = 0.0;
+
+    /** how long a bounce keeps its extra rise when the client still says it is on the ground */
+    private int $bounceTicks = 0;
 
     private int $iceTicks = 1000;
 
@@ -73,6 +76,7 @@ class MovementCheck{
         $this->graceTicks = $grace;
         $this->extraRise = 0.0;
         $this->extraSpeed = 0.0;
+        $this->bounceTicks = 0;
     }
 
     /**
@@ -82,6 +86,15 @@ class MovementCheck{
         $horizontal = sqrt($motion->x * $motion->x + $motion->z * $motion->z);
         $this->extraSpeed = max($this->extraSpeed, $horizontal * 10);
         $this->extraRise = max($this->extraRise, max(0.0, $motion->y) * 8);
+        $this->floatTicks = 0;
+    }
+
+    /**
+     * The player bounced off a slime block or a bed and goes back up about $height blocks.
+     */
+    public function onBounce(float $height) : void{
+        $this->extraRise = max($this->extraRise, $height);
+        $this->bounceTicks = 2;
         $this->floatTicks = 0;
     }
 
@@ -112,8 +125,13 @@ class MovementCheck{
 
         if($onGround || $surroundings["liquid"] || $surroundings["climbable"] || $surroundings["web"]){
             $this->groundY = $to->y;
-            $this->extraRise = 0.0;
+
+            if($this->bounceTicks <= 0){
+                $this->extraRise = 0.0;
+            }
         }
+
+        $this->bounceTicks -= $ticks;
 
         if($surroundings["ice"]){
             $this->iceTicks = 0;

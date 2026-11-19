@@ -72,6 +72,7 @@ class WorldManager{
         $metadata = $provider->loadMetadata();
         $generator = $this->generatorFactory->create($metadata->generator, $metadata->generatorSettings, $metadata->seed);
         $world = $this->worlds[strtolower($name)] = new World($metadata, $generator, $provider);
+        $world->preloadTickingAreas();
 
         (new WorldLoadEvent($world))->call();
         return $world;

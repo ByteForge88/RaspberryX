@@ -41,24 +41,24 @@ use function str_ends_with;
 class Weather{
 
     //how long clear and rainy spells last, in ticks
-    private const RAIN_DELAY = [12000, 180000];
-    private const RAIN_DURATION = [12000, 24000];
-    private const THUNDER_DELAY = [12000, 180000];
-    private const THUNDER_DURATION = [3600, 15600];
+    private const array RAIN_DELAY = [12000, 180000];
+    private const array RAIN_DURATION = [12000, 24000];
+    private const array THUNDER_DELAY = [12000, 180000];
+    private const array THUNDER_DURATION = [3600, 15600];
 
-    public const COMMAND_DURATION = [6000, 18000];
+    public const array COMMAND_DURATION = [6000, 18000];
 
-    private const FADE = 0.01;
+    private const float FADE = 0.01;
 
-    private const LIGHTNING_CHANCE = 100000;
+    private const int LIGHTNING_CHANCE = 100000;
 
-    private const PRECIPITATION_CHANCE = 16;
+    private const int PRECIPITATION_CHANCE = 16;
 
-    private const FREEZE_LIGHT = 10;
+    private const int FREEZE_LIGHT = 10;
 
-    private const MAX_SNOW_LAYERS = 8;
+    private const int MAX_SNOW_LAYERS = 8;
 
-    private const NO_SNOW_ON = [BlockIds::ICE, "minecraft:packed_ice", "minecraft:barrier"];
+    private const array NO_SNOW_ON = [BlockIds::ICE, "minecraft:packed_ice", "minecraft:barrier"];
 
     private World $world;
 

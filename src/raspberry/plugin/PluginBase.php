@@ -25,6 +25,7 @@ use function dirname;
 use function file_exists;
 use function is_dir;
 use function is_file;
+use function is_string;
 use function mkdir;
 use function str_replace;
 use function str_starts_with;
@@ -153,11 +154,11 @@ abstract class PluginBase implements CommandExecutor{
     }
 
     /**
-     * @param list<Command> $commands
+     * @param array<int|string, Command> $commands
      */
-    public function registerCommands(string $label, array $commands) : void{
-        foreach($commands as $command){
-            $this->registerCommand($label, $command);
+    public function registerCommands(array $commands) : void{
+        foreach($commands as $label => $command){
+            $this->registerCommand(is_string($label) ? $label : $command->getName(), $command);
         }
     }
 

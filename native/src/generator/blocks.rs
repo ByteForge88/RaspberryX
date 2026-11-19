@@ -168,6 +168,19 @@ blocks! {
     PALE_OAK_LEAVES = "minecraft:pale_oak_leaves[persistent_bit=false,update_bit=false]",
     PALE_HANGING_MOSS = "minecraft:pale_hanging_moss[tip=false]",
     PALE_HANGING_MOSS_TIP = "minecraft:pale_hanging_moss[tip=true]",
+    ROOTED_DIRT = "minecraft:dirt_with_roots",
+    AZALEA_LEAVES = "minecraft:azalea_leaves[persistent_bit=false,update_bit=false]",
+    AZALEA_LEAVES_FLOWERED = "minecraft:azalea_leaves_flowered[persistent_bit=false,update_bit=false]",
+    CRIMSON_NYLIUM = "minecraft:crimson_nylium",
+    WARPED_NYLIUM = "minecraft:warped_nylium",
+    CRIMSON_STEM = "minecraft:crimson_stem[pillar_axis=y]",
+    WARPED_STEM = "minecraft:warped_stem[pillar_axis=y]",
+    NETHER_WART_BLOCK = "minecraft:nether_wart_block",
+    WARPED_WART_BLOCK = "minecraft:warped_wart_block",
+    SHROOMLIGHT = "minecraft:shroomlight",
+    WEEPING_VINES_23 = "minecraft:weeping_vines[weeping_vines_age=23]",
+    WEEPING_VINES_24 = "minecraft:weeping_vines[weeping_vines_age=24]",
+    WEEPING_VINES_25 = "minecraft:weeping_vines[weeping_vines_age=25]",
 }
 
 pub fn brown_mushroom_block(bits: u8) -> Block {
@@ -199,7 +212,7 @@ pub fn is_solid(block: Block) -> bool {
 }
 
 pub fn is_leaves(block: Block) -> bool {
-    matches!(block, OAK_LEAVES | BIRCH_LEAVES | SPRUCE_LEAVES | JUNGLE_LEAVES | ACACIA_LEAVES | DARK_OAK_LEAVES | CHERRY_LEAVES | MANGROVE_LEAVES | PALE_OAK_LEAVES)
+    matches!(block, OAK_LEAVES | BIRCH_LEAVES | SPRUCE_LEAVES | JUNGLE_LEAVES | ACACIA_LEAVES | DARK_OAK_LEAVES | CHERRY_LEAVES | MANGROVE_LEAVES | PALE_OAK_LEAVES | AZALEA_LEAVES | AZALEA_LEAVES_FLOWERED)
 }
 
 pub fn is_log(block: Block) -> bool {

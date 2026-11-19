@@ -12,7 +12,7 @@ class ByteTag extends Tag{
 
     public function __construct(int $value){
         if($value < -128 || $value > 127){
-            throw new NbtException("ByteTag value {$value} is out of range");
+            throw new NbtException("ByteTag value $value is out of range");
         }
 
         $this->value = $value;

@@ -12,14 +12,13 @@ use function mt_rand;
 
 trait ClimateVariantTrait{
 
-    protected ClimateVariant $variant = ClimateVariant::TEMPERATE;
-
-    public function getVariant() : ClimateVariant{
-        return $this->variant;
-    }
-
-    public function setVariant(ClimateVariant $variant) : void{
-        $this->variant = $variant;
+    protected ClimateVariant $variant = ClimateVariant::TEMPERATE{
+        get{
+            return $this->variant;
+        }
+        set{
+            $this->variant = $value;
+        }
     }
 
     protected function pickVariant() : void{

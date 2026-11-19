@@ -13,6 +13,8 @@ use raspberry\nbt\tag\ListTag;
 use raspberry\nbt\tag\StringTag;
 use raspberry\nbt\tag\Tag;
 
+use JsonException;
+
 use function base64_decode;
 use function dirname;
 use function file_get_contents;
@@ -27,10 +29,10 @@ use const JSON_THROW_ON_ERROR;
 class Food{
 
     /** use_action of chorus fruit and suspicious stew */
-    public const ACTION_CHORUS_TELEPORT = 0;
-    public const ACTION_SUSPICIOUS_STEW = 1;
+    public const int ACTION_CHORUS_TELEPORT = 0;
+    public const int ACTION_SUSPICIOUS_STEW = 1;
 
-    private const DEFAULT_USE_TICKS = 32;
+    private const int DEFAULT_USE_TICKS = 32;
 
     /** @var array<string, self>|null */
     private static ?array $foods = null;
@@ -68,6 +70,9 @@ class Food{
         $this->useAction = $useAction;
     }
 
+    /**
+     * @throws JsonException
+     */
     public static function get(string $itemId) : ?self{
         if(self::$foods === null){
             self::load(dirname(__DIR__, 3) . "/resources/vanilla/item_components.json");
@@ -120,6 +125,9 @@ class Food{
         return $this->useAction;
     }
 
+    /**
+     * @throws JsonException
+     */
     private static function load(string $path) : void{
         self::$foods = [];
         $contents = @file_get_contents($path);

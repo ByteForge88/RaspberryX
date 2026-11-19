@@ -12,23 +12,23 @@ use function round;
 
 class Facing{
 
-    public const DOWN = 0;
-    public const UP = 1;
-    public const NORTH = 2;
-    public const SOUTH = 3;
-    public const WEST = 4;
-    public const EAST = 5;
+    public const int DOWN = 0;
+    public const int UP = 1;
+    public const int NORTH = 2;
+    public const int SOUTH = 3;
+    public const int WEST = 4;
+    public const int EAST = 5;
 
-    public const HORIZONTAL = [self::NORTH, self::SOUTH, self::WEST, self::EAST];
+    public const array HORIZONTAL = [self::NORTH, self::SOUTH, self::WEST, self::EAST];
 
-    public const ALL = [self::DOWN, self::UP, self::NORTH, self::SOUTH, self::WEST, self::EAST];
+    public const array ALL = [self::DOWN, self::UP, self::NORTH, self::SOUTH, self::WEST, self::EAST];
 
-    private const NAMES = ["down", "up", "north", "south", "west", "east"];
+    private const array NAMES = ["down", "up", "north", "south", "west", "east"];
 
-    private const OFFSETS = [[0, -1, 0], [0, 1, 0], [0, 0, -1], [0, 0, 1], [-1, 0, 0], [1, 0, 0]];
+    private const array OFFSETS = [[0, -1, 0], [0, 1, 0], [0, 0, -1], [0, 0, 1], [-1, 0, 0], [1, 0, 0]];
 
     /** Bedrock's old horizontal "direction" numbers: south 0, west 1, north 2, east 3 */
-    private const LEGACY_DIRECTIONS = [self::SOUTH, self::WEST, self::NORTH, self::EAST];
+    private const array LEGACY_DIRECTIONS = [self::SOUTH, self::WEST, self::NORTH, self::EAST];
 
     private function __construct(){
     }

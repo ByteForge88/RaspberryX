@@ -13,6 +13,8 @@ use raspberry\entity\object\ItemEntity;
 use raspberry\entity\effect\Effect;
 use raspberry\entity\effect\EffectInstance;
 
+use raspberry\event\player\PlayerBedEnterEvent;
+use raspberry\event\player\PlayerBedLeaveEvent;
 use raspberry\event\player\PlayerDeathEvent;
 use raspberry\event\player\PlayerExhaustEvent;
 use raspberry\event\player\PlayerExperienceChangeEvent;
@@ -43,9 +45,13 @@ use raspberry\nbt\tag\ListTag;
 use raspberry\nbt\tag\StringTag;
 use raspberry\nbt\NbtException;
 
+use raspberry\block\Beds;
+use raspberry\block\BigDripleaf;
 use raspberry\block\BlockIds;
 use raspberry\block\BlockCollision;
 use raspberry\block\BlockProperties;
+use raspberry\block\PointedDripstone;
+use raspberry\block\growth\Farmland;
 
 use raspberry\command\CommandOutput;
 use raspberry\command\CommandSender;
@@ -78,8 +84,10 @@ use raspberry\utils\TextFormat;
 
 use raspberry\world\Chunk;
 use raspberry\world\World;
+use raspberry\world\Difficulty;
 use raspberry\world\WorldManager;
 
+use function abs;
 use function array_map;
 use function sin;
 use function ceil;
@@ -98,70 +106,85 @@ class Player extends Human implements CommandSender{
     use PermissibleTrait;
 
     /** players this far below the bottom of the world (Y -104) are hurt by the void */
-    public const VOID_DEPTH = 40;
+    public const int VOID_DEPTH = 40;
 
     /** 4 health (2 hearts) every half second */
-    public const VOID_DAMAGE = 4.0;
+    public const float VOID_DAMAGE = 4.0;
 
-    private const VOID_DAMAGE_TICKS = 10;
+    private const int VOID_DAMAGE_TICKS = 10;
 
-    public const MAX_XP_LEVEL = 24791;
+    public const int MAX_XP_LEVEL = 24791;
 
     /** a head inside a full block takes this much damage every this many ticks */
-    private const SUFFOCATION_DAMAGE = 1.0;
-    private const SUFFOCATION_TICKS = 10;
+    private const float SUFFOCATION_DAMAGE = 1.0;
+    private const int SUFFOCATION_TICKS = 10;
 
-    private const FIRE_SECONDS = 8;
-    private const LAVA_SECONDS = 15;
+    private const int FIRE_SECONDS = 8;
+    private const int LAVA_SECONDS = 15;
 
-    private const TURTLE_BREATHING_TICKS = 200;
+    private const int TURTLE_BREATHING_TICKS = 200;
 
     /** falls up to this many blocks do no damage */
-    public const SAFE_FALL_DISTANCE = 3.0;
+    public const float SAFE_FALL_DISTANCE = 3.0;
+
+    /** blocks that catch a falling player, by climbing them or getting stuck in them */
+    private const array BREAKS_FALL = [
+        BlockIds::LADDER => true,
+        BlockIds::VINE => true,
+        BlockIds::SCAFFOLDING => true,
+        BlockIds::WEEPING_VINES => true,
+        BlockIds::TWISTING_VINES => true,
+        BlockIds::CAVE_VINES => true,
+        BlockIds::CAVE_VINES_BODY_WITH_BERRIES => true,
+        BlockIds::CAVE_VINES_HEAD_WITH_BERRIES => true,
+        BlockIds::WEB => true,
+        BlockIds::SWEET_BERRY_BUSH => true,
+        BlockIds::POWDER_SNOW => true
+    ];
 
     /** how far a hit reaches from the eyes to the target's box, with some room for lag */
-    public const ATTACK_REACH = 3.0;
-    public const CREATIVE_ATTACK_REACH = 5.0;
-    private const REACH_LEEWAY = 1.5;
+    public const float ATTACK_REACH = 3.0;
+    public const float CREATIVE_ATTACK_REACH = 5.0;
+    private const float REACH_LEEWAY = 1.5;
 
     /** a hit while falling does half as much again */
-    public const CRITICAL_MULTIPLIER = 1.5;
+    public const float CRITICAL_MULTIPLIER = 1.5;
 
     /** extra push from a sprinting hit, and from each level of knockback */
-    public const SPRINT_KNOCKBACK = 0.5;
+    public const float SPRINT_KNOCKBACK = 0.5;
 
     /** what sharpness adds per level on Bedrock; smite and bane of arthropods add 2.5 */
-    public const SHARPNESS_DAMAGE = 1.25;
-    public const SMITE_DAMAGE = 2.5;
+    public const float SHARPNESS_DAMAGE = 1.25;
+    public const float SMITE_DAMAGE = 2.5;
 
-    public const ENDER_CHEST_SIZE = 27;
+    public const int ENDER_CHEST_SIZE = 27;
 
     /** the UI inventory holds the item on the cursor and what the creative menu or crafting makes */
-    public const UI_SIZE = 54;
-    public const UI_CURSOR = 0;
-    public const UI_CREATED_OUTPUT = 50;
+    public const int UI_SIZE = 54;
+    public const int UI_CURSOR = 0;
+    public const int UI_CREATED_OUTPUT = 50;
 
     /** first slot of the 2x2 crafting grid of the inventory screen, and of the crafting table's 3x3 grid */
-    public const UI_CRAFTING_SMALL = 28;
-    public const UI_CRAFTING_LARGE = 32;
+    public const int UI_CRAFTING_SMALL = 28;
+    public const int UI_CRAFTING_LARGE = 32;
 
     /** the input slots of the work blocks */
-    public const UI_ANVIL_INPUT = 1;
-    public const UI_ANVIL_MATERIAL = 2;
-    public const UI_STONECUTTER_INPUT = 3;
-    public const UI_LOOM_INPUT = 9;
-    public const UI_LOOM_DYE = 10;
-    public const UI_LOOM_PATTERN = 11;
-    public const UI_CARTOGRAPHY_INPUT = 12;
-    public const UI_CARTOGRAPHY_ADDITIONAL = 13;
-    public const UI_ENCHANTING_INPUT = 14;
-    public const UI_ENCHANTING_LAPIS = 15;
-    public const UI_GRINDSTONE_INPUT = 16;
-    public const UI_GRINDSTONE_ADDITIONAL = 17;
-    public const UI_BEACON_PAYMENT = 27;
-    public const UI_SMITHING_INPUT = 51;
-    public const UI_SMITHING_MATERIAL = 52;
-    public const UI_SMITHING_TEMPLATE = 53;
+    public const int UI_ANVIL_INPUT = 1;
+    public const int UI_ANVIL_MATERIAL = 2;
+    public const int UI_STONECUTTER_INPUT = 3;
+    public const int UI_LOOM_INPUT = 9;
+    public const int UI_LOOM_DYE = 10;
+    public const int UI_LOOM_PATTERN = 11;
+    public const int UI_CARTOGRAPHY_INPUT = 12;
+    public const int UI_CARTOGRAPHY_ADDITIONAL = 13;
+    public const int UI_ENCHANTING_INPUT = 14;
+    public const int UI_ENCHANTING_LAPIS = 15;
+    public const int UI_GRINDSTONE_INPUT = 16;
+    public const int UI_GRINDSTONE_ADDITIONAL = 17;
+    public const int UI_BEACON_PAYMENT = 27;
+    public const int UI_SMITHING_INPUT = 51;
+    public const int UI_SMITHING_MATERIAL = 52;
+    public const int UI_SMITHING_TEMPLATE = 53;
 
     private NetworkSession $session;
 
@@ -187,6 +210,9 @@ class Player extends Human implements CommandSender{
     /** blocks fallen since the player last stood on something */
     private float $fallDistance = 0.0;
 
+    /** whether the player walked since the surrounding blocks were last checked, sweet berry bushes only prick moving players */
+    private bool $movedSinceContact = false;
+
     private bool $onGround = true;
 
     private int $lastVoidDamageTick = 0;
@@ -208,6 +234,15 @@ class Player extends Human implements CommandSender{
     private ?Vector3 $spawnPosition = null;
 
     private ?string $spawnWorldName = null;
+
+    /** whether the spawn point is a bed, which has to still be there when the player respawns */
+    private bool $spawnAtBed = false;
+
+    /** the head of the bed the player is asleep in, null while they are up */
+    private ?Vector3 $sleepingAt = null;
+
+    /** how long the player has been asleep, the night goes by after Sleeping::SKIP_TICKS */
+    private int $sleepTicks = 0;
 
     /** when the player first joined */
     private int $firstPlayed;
@@ -309,6 +344,7 @@ class Player extends Human implements CommandSender{
         if($spawnWorld !== null){
             $this->spawnWorldName = $spawnWorld;
             $this->spawnPosition = new Vector3($data->getInt("SpawnX", 0) + 0.5, (float) $data->getInt("SpawnY", 0), $data->getInt("SpawnZ", 0) + 0.5);
+            $this->spawnAtBed = $data->getByte("SpawnBed", 0) === 1;
         }
 
         $this->firstPlayed = $data->getLong("FirstPlayed", $this->firstPlayed);
@@ -370,7 +406,8 @@ class Player extends Human implements CommandSender{
             $data->setString("SpawnWorld", $this->spawnWorldName)
                 ->setInt("SpawnX", $this->spawnPosition->getFloorX())
                 ->setInt("SpawnY", $this->spawnPosition->getFloorY())
-                ->setInt("SpawnZ", $this->spawnPosition->getFloorZ());
+                ->setInt("SpawnZ", $this->spawnPosition->getFloorZ())
+                ->setByte("SpawnBed", $this->spawnAtBed ? 1 : 0);
         }
 
         return $data;
@@ -743,6 +780,8 @@ class Player extends Human implements CommandSender{
             }
         }
 
+        $this->wake();
+
         parent::doTeleport($position, $yaw, $pitch, $world);
         $this->fallDistance = 0.0;
         $this->movementCheck?->reset();
@@ -782,18 +821,90 @@ class Player extends Human implements CommandSender{
         return [$world, $world->getSpawnPosition()];
     }
 
-    public function setSpawnPosition(?Vector3 $position, ?World $world = null) : void{
+    public function isSpawnAtBed() : bool{
+        return $this->spawnAtBed;
+    }
+
+    /**
+     * @param bool $bed
+     */
+    public function setSpawnPosition(?Vector3 $position, ?World $world = null, bool $bed = false) : void{
         if($position === null){
             $this->spawnPosition = null;
             $this->spawnWorldName = null;
+            $this->spawnAtBed = false;
         }else{
             $this->spawnPosition = new Vector3($position->getFloorX() + 0.5, (float) $position->getFloorY(), $position->getFloorZ() + 0.5);
             $this->spawnWorldName = ($world ?? $this->world)->getName();
+            $this->spawnAtBed = $bed;
         }
 
         if($this->spawned){
             $this->session->sendSpawnPositions();
         }
+    }
+
+    public function isSleeping() : bool{
+        return $this->sleepingAt !== null;
+    }
+
+    public function getSleepingPosition() : ?Vector3{
+        return $this->sleepingAt;
+    }
+
+    public function getSleepTicks() : int{
+        return $this->sleepTicks;
+    }
+
+    public function sleep(Vector3 $bed) : bool{
+        $this->wake();
+
+        $bed = new Vector3($bed->getFloorX(), $bed->getFloorY(), $bed->getFloorZ());
+        $event = new PlayerBedEnterEvent($this, $bed);
+        $event->call();
+
+        if($event->isCancelled() || $this->closed || $this->dead){
+            return false;
+        }
+
+        $this->sleepingAt = $bed;
+        $this->sleepTicks = 0;
+        $this->sprinting = false;
+
+        Beds::setOccupied($this->world, $bed->getFloorX(), $bed->getFloorY(), $bed->getFloorZ(), true);
+
+        $this->move($bed->add(0.5, 0.5625, 0.5), $this->yaw, $this->pitch);
+        $this->movementCheck?->reset();
+        $this->broadcastEffectVisuals();
+
+        $this->world->getSleeping()->onSleep($this);
+
+        return true;
+    }
+
+    public function wake() : void{
+        $bed = $this->sleepingAt;
+
+        if($bed === null){
+            return;
+        }
+
+        $this->sleepingAt = null;
+        $this->sleepTicks = 0;
+
+        Beds::setOccupied($this->world, $bed->getFloorX(), $bed->getFloorY(), $bed->getFloorZ(), false);
+
+        $packet = AnimatePacket::create(AnimatePacket::ACTION_STOP_SLEEP, $this->getId());
+        $this->session->sendDataPacket($packet);
+
+        foreach($this->viewers as $viewer){
+            $viewer->getNetworkSession()->sendDataPacket($packet);
+        }
+
+        $this->broadcastEffectVisuals();
+        $this->movementCheck?->reset();
+
+        (new PlayerBedLeaveEvent($this, $bed))->call();
     }
 
     public function isDead() : bool{
@@ -809,6 +920,27 @@ class Player extends Human implements CommandSender{
 
     protected function canBeDamagedBy(DamageSource $source) : bool{
         return !$this->dead && (!$this->gameMode->isInvulnerable() || $source->bypassesGameMode()) && parent::canBeDamagedBy($source);
+    }
+
+    /**
+     * Mobs hit harder in harder worlds: half and one more on easy, half again on hard, not at
+     * all in peaceful.
+     */
+    protected function reduceDamage(DamageSource $source) : float{
+        $attacker = $source->getAttacker();
+
+        if($attacker instanceof Living && !$attacker instanceof self){
+            $amount = $source->getAmount();
+
+            $source->setAmount(match($this->session->getServer()->getDifficulty()){
+                Difficulty::PEACEFUL => 0.0,
+                Difficulty::EASY => min($amount / 2 + 1, $amount),
+                Difficulty::NORMAL => $amount,
+                Difficulty::HARD => $amount * 1.5
+            });
+        }
+
+        return parent::reduceDamage($source);
     }
 
     public function onEffectAdded(EffectInstance $effect, ?EffectInstance $old) : void{
@@ -841,6 +973,7 @@ class Player extends Human implements CommandSender{
     }
 
     protected function onDamaged(DamageSource $source) : void{
+        $this->wake();
         $this->session->sendActorEvent($this, ActorEventPacket::HURT);
 
         foreach($this->viewers as $viewer){
@@ -883,6 +1016,7 @@ class Player extends Human implements CommandSender{
             $parameters[] = $attacker;
         }
 
+        $this->wake();
         $this->deathCause = null;
         $this->dead = true;
         $this->effects->clear();
@@ -952,6 +1086,10 @@ class Player extends Human implements CommandSender{
 
         $this->recipeBook->tick($currentTick);
 
+        if($this->sleepingAt !== null){
+            ++$this->sleepTicks;
+        }
+
         if($this->position->y < Chunk::MIN_Y - self::VOID_DEPTH && $currentTick - $this->lastVoidDamageTick >= self::VOID_DAMAGE_TICKS){
             $this->lastVoidDamageTick = $currentTick;
             $this->damage(new DamageSource(DamageSource::CAUSE_VOID, self::VOID_DAMAGE));
@@ -983,6 +1121,9 @@ class Player extends Human implements CommandSender{
     }
 
     private function tickBlockContact() : void{
+        $moved = $this->movedSinceContact;
+        $this->movedSinceContact = false;
+
         if(!$this->gameMode->hasCollision() || $this->gameMode->isInvulnerable()){
             return;
         }
@@ -1016,6 +1157,7 @@ class Player extends Human implements CommandSender{
                         $block->getName() === BlockIds::SOUL_CAMPFIRE && $block->getProperty(BlockProperties::EXTINGUISHED) === false => [DamageSource::CAUSE_FIRE, 2.0, 0],
                         $block->getName() === BlockIds::CAULDRON && $block->getProperty(BlockProperties::FILL_LEVEL) > 0 => $block->getProperty(BlockProperties::CAULDRON_LIQUID) === "lava" ? [DamageSource::CAUSE_LAVA, 4.0, self::LAVA_SECONDS] : [null, -1.0, 0],
                         $block->getName() === BlockIds::POWDER_SNOW => [null, -1.0, 0],
+                        $block->getName() === BlockIds::SWEET_BERRY_BUSH && $moved && $block->getProperty(BlockProperties::GROWTH) !== 0 => [DamageSource::CAUSE_SWEET_BERRY, 1.0, 0],
                         default => [null, 0.0, 0]
                     };
 
@@ -1116,8 +1258,16 @@ class Player extends Human implements CommandSender{
             (new PlayerJumpEvent($this))->call();
         }
 
+        if(abs($dx) >= 0.003 || abs($dz) >= 0.003){
+            $this->movedSinceContact = true;
+        }
+
         $this->onGround = $onGround;
         $this->updateFallDistance($this->position->y - $from->y, $onGround);
+
+        if($onGround && $this->gameMode->hasCollision()){
+            BigDripleaf::onStandingAt($this->world, $this->position);
+        }
     }
 
     public function isOnGround() : bool{
@@ -1385,19 +1535,71 @@ class Player extends Human implements CommandSender{
             return;
         }
 
+        if($this->isCaughtByBlock()){
+            $this->fallDistance = 0.0;
+            return;
+        }
+
         if($onGround){
             $this->fallDistance -= min($dy, 0.0);
-            $damage = $this->fallDistance - self::SAFE_FALL_DISTANCE - $this->effects->getLevel(Effect::JUMP_BOOST);
+            $fall = $this->fallDistance;
             $this->fallDistance = 0.0;
 
+            $below = $this->position->add(0, -0.2, 0);
+            $landedOn = $below->getFloorY() >= Chunk::MIN_Y && $this->world->isChunkLoaded($below->getFloorX() >> 4, $below->getFloorZ() >> 4) ? $this->world->getBlock($below->getFloorX(), $below->getFloorY(), $below->getFloorZ())->getName() : BlockIds::AIR;
+            $bounces = $landedOn === BlockIds::SLIME && !$this->sneaking;
+
+            if($landedOn === BlockIds::FARMLAND){
+                Farmland::trample($this->world, $below->getFloorX(), $below->getFloorY(), $below->getFloorZ(), $this, $fall);
+            }
+
+            if($bounces){
+                $this->movementCheck?->onBounce($fall);
+            }elseif($landedOn === BlockIds::BED){
+                $this->movementCheck?->onBounce($fall * 0.5);
+            }
+
+            $tip = $landedOn === BlockIds::POINTED_DRIPSTONE ? $this->world->getBlock($below->getFloorX(), $below->getFloorY(), $below->getFloorZ()) : null;
+            $stalagmite = $tip !== null && !PointedDripstone::isHanging($tip) && $tip->getProperty(BlockProperties::DRIPSTONE_THICKNESS) === PointedDripstone::TIP;
+
+            $multiplier = match(true){
+                $bounces => 0.0,
+                $stalagmite => 2.0,
+                $landedOn === BlockIds::HONEY_BLOCK, $landedOn === BlockIds::HAY_BLOCK => 0.2,
+                $landedOn === BlockIds::BED => 0.5,
+                default => 1.0
+            };
+
+            $damage = ($fall + ($stalagmite ? 2.5 : 0.0) - self::SAFE_FALL_DISTANCE - $this->effects->getLevel(Effect::JUMP_BOOST)) * $multiplier;
+
             if($damage >= 0.5){
-                $this->damage(new DamageSource(DamageSource::CAUSE_FALL, ceil($damage)));
+                $this->damage(new DamageSource($stalagmite ? DamageSource::CAUSE_STALAGMITE : DamageSource::CAUSE_FALL, ceil($damage)));
             }
         }elseif($dy < 0){
             $this->fallDistance -= $dy;
         }else{
             $this->fallDistance = 0.0;
         }
+    }
+
+    /**
+     * Whether the player climbs something or is stuck in a cobweb, a sweet berry bush or powder snow.
+     */
+    public function isCaughtByBlock() : bool{
+        $x = $this->position->getFloorX();
+        $z = $this->position->getFloorZ();
+
+        if(!$this->world->isChunkLoaded($x >> 4, $z >> 4)){
+            return false;
+        }
+
+        foreach([$this->position->getFloorY(), (int) floor($this->position->y + 1.0)] as $y){
+            if($y >= Chunk::MIN_Y && $y <= Chunk::MAX_Y && isset(self::BREAKS_FALL[$this->world->getBlock($x, $y, $z)->getName()])){
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -1508,6 +1710,18 @@ class Player extends Human implements CommandSender{
         $this->lastDamageSource = null;
 
         [$world, $position] = $this->getSpawnLocation();
+
+        if($this->spawnAtBed && $this->spawnPosition !== null){
+            $standUp = Beds::findStandUpSpot($world, $this->spawnPosition->getFloorX(), $this->spawnPosition->getFloorY(), $this->spawnPosition->getFloorZ());
+
+            if($standUp === null){
+                $this->setSpawnPosition(null);
+                $this->sendTranslation("%tile.bed.notValid");
+                [$world, $position] = $this->getSpawnLocation();
+            }else{
+                $position = $standUp;
+            }
+        }
 
         $event = new PlayerRespawnEvent($this, $world, $position);
         $event->call();
@@ -1762,6 +1976,8 @@ class Player extends Human implements CommandSender{
         if($this->closed){
             return;
         }
+
+        $this->wake();
 
         foreach($this->world->getEntities() as $entity){
             $entity->despawnFrom($this, false);

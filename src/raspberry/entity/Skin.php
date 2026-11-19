@@ -11,8 +11,8 @@ use function strlen;
 
 class Skin{
 
-    public const ARM_SIZE_SLIM = "slim";
-    public const ARM_SIZE_WIDE = "wide";
+    public const string ARM_SIZE_SLIM = "slim";
+    public const string ARM_SIZE_WIDE = "wide";
 
     public string $skinId;
     public string $playFabId;

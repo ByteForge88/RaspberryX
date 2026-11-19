@@ -13,10 +13,10 @@ use function intdiv;
 class Potion{
 
     /** water bottles and the like: the color the client gives potions without effects */
-    public const WATER_COLOR = 0x385dc6;
+    public const int WATER_COLOR = 0x385dc6;
 
     /** potion meta => effect, duration in ticks, amplifier */
-    private const EFFECTS = [
+    private const array EFFECTS = [
         0 => [], //water
         1 => [], //mundane
         2 => [], //long_mundane

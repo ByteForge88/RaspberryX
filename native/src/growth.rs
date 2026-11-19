@@ -152,6 +152,9 @@ pub const DARK_OAK: i32 = 9;
 pub const CHERRY: i32 = 10;
 pub const MANGROVE: i32 = 11;
 pub const PALE_OAK: i32 = 12;
+pub const AZALEA: i32 = 13;
+pub const CRIMSON_FUNGUS: i32 = 14;
+pub const WARPED_FUNGUS: i32 = 15;
 
 pub fn grow_tree(canvas: &mut WorldCanvas, kind: i32, x: i32, y: i32, z: i32, seed: i64) -> bool {
     let mut random = JavaRandom::new(seed);
@@ -171,6 +174,9 @@ pub fn grow_tree(canvas: &mut WorldCanvas, kind: i32, x: i32, y: i32, z: i32, se
         CHERRY => features::tree(canvas, &mut random, Tree::Cherry, x, y, z),
         MANGROVE => features::tree(canvas, &mut random, Tree::Mangrove, x, y, z),
         PALE_OAK => pale_oak(canvas, &mut random, x, y, z),
+        AZALEA => azalea(canvas, &mut random, x, y, z),
+        CRIMSON_FUNGUS => huge_fungus(canvas, &mut random, x, y, z, true),
+        WARPED_FUNGUS => huge_fungus(canvas, &mut random, x, y, z, false),
         _ => false,
     }
 }
@@ -614,6 +620,201 @@ fn pale_oak(canvas: &mut impl Canvas, random: &mut JavaRandom, x: i32, y: i32, z
     }
 
     true
+}
+
+fn azalea(canvas: &mut impl Canvas, random: &mut JavaRandom, x: i32, y: i32, z: i32) -> bool {
+    let height = 4 + random.next_int_bounded(3) + random.next_int_bounded(1);
+
+    if y < 1 || y + height + 1 >= canvas.height() || !is_ground(canvas.get(x, y - 1, z)) {
+        return false;
+    }
+
+    for dy in 0..=height + 1 {
+        let radius = if dy < 1 { 0 } else { 1 };
+
+        for dx in -radius..=radius {
+            for dz in -radius..=radius {
+                let block = canvas.get(x + dx, y + dy, z + dz);
+
+                if !blocks::is_replaceable(block) && !blocks::is_log(block) {
+                    return false;
+                }
+            }
+        }
+    }
+
+    let (sx, sz) = [(0, -1), (0, 1), (-1, 0), (1, 0)][random.next_int_bounded(4) as usize];
+    let top = height - 1;
+    let (mut bx, mut by, mut bz) = (x, y, z);
+    let mut attachments = Vec::new();
+
+    canvas.set(x, y - 1, z, blocks::ROOTED_DIRT);
+
+    for j in 0..=top {
+        if j + 1 >= top + random.next_int_bounded(2) {
+            bx += sx;
+            bz += sz;
+        }
+
+        if blocks::is_replaceable(canvas.get(bx, by, bz)) {
+            canvas.set(bx, by, bz, blocks::OAK_LOG);
+        }
+
+        if j >= 3 {
+            attachments.push((bx, by, bz));
+        }
+
+        by += 1;
+    }
+
+    let bend = 1 + random.next_int_bounded(2);
+
+    for _ in 0..=bend {
+        if blocks::is_replaceable(canvas.get(bx, by, bz)) {
+            canvas.set(bx, by, bz, blocks::OAK_LOG);
+        }
+
+        attachments.push((bx, by, bz));
+        bx += sx;
+        bz += sz;
+    }
+
+    for (ax, ay, az) in attachments {
+        for _ in 0..50 {
+            let lx = ax + random.next_int_bounded(3) - random.next_int_bounded(3);
+            let ly = ay + random.next_int_bounded(2) - random.next_int_bounded(2);
+            let lz = az + random.next_int_bounded(3) - random.next_int_bounded(3);
+            let leaves = if random.next_int_bounded(4) == 0 { blocks::AZALEA_LEAVES_FLOWERED } else { blocks::AZALEA_LEAVES };
+
+            leaves_at(canvas, lx, ly, lz, leaves);
+        }
+    }
+
+    true
+}
+
+fn between(random: &mut JavaRandom, min: i32, max: i32) -> i32 {
+    min + random.next_int_bounded(max - min + 1)
+}
+
+fn huge_fungus(canvas: &mut impl Canvas, random: &mut JavaRandom, x: i32, y: i32, z: i32, crimson: bool) -> bool {
+    let nylium = if crimson { blocks::CRIMSON_NYLIUM } else { blocks::WARPED_NYLIUM };
+
+    if y < 1 || canvas.get(x, y - 1, z) != nylium {
+        return false;
+    }
+
+    let mut height = between(random, 4, 13);
+
+    if random.next_int_bounded(12) == 0 {
+        height *= 2;
+    }
+
+    if y + height + 1 >= canvas.height() {
+        return false;
+    }
+
+    let stem = if crimson { blocks::CRIMSON_STEM } else { blocks::WARPED_STEM };
+    let hat = if crimson { blocks::NETHER_WART_BLOCK } else { blocks::WARPED_WART_BLOCK };
+
+    for dy in 0..height {
+        if blocks::is_replaceable(canvas.get(x, y + dy, z)) {
+            canvas.set(x, y + dy, z, stem);
+        }
+    }
+
+    let size = (random.next_int_bounded(1 + height / 3) + 5).min(height);
+    let bottom = height - size;
+
+    for k in bottom..=height {
+        let mut radius = if k < height - random.next_int_bounded(3) { 2 } else { 1 };
+
+        if size > 8 && k < bottom + 4 {
+            radius = 3;
+        }
+
+        for m in -radius..=radius {
+            for n in -radius..=radius {
+                let edge_x = m == -radius || m == radius;
+                let edge_z = n == -radius || n == radius;
+                let inside = !edge_x && !edge_z && k != height;
+                let corner = edge_x && edge_z;
+                let (hx, hy, hz) = (x + m, y + k, z + n);
+
+                if !blocks::is_replaceable(canvas.get(hx, hy, hz)) {
+                    continue;
+                }
+
+                if k < bottom + 3 {
+                    if !inside {
+                        hat_drop(canvas, random, hx, hy, hz, hat, crimson);
+                    }
+                } else if inside {
+                    hat_block(canvas, random, hx, hy, hz, hat, 0.1, 0.2, if crimson { 0.1 } else { 0.0 });
+                } else if corner {
+                    hat_block(canvas, random, hx, hy, hz, hat, 0.01, 0.7, if crimson { 0.083 } else { 0.0 });
+                } else {
+                    hat_block(canvas, random, hx, hy, hz, hat, 0.0005, 0.98, if crimson { 0.07 } else { 0.0 });
+                }
+            }
+        }
+    }
+
+    true
+}
+
+#[allow(clippy::too_many_arguments)]
+fn hat_block(canvas: &mut impl Canvas, random: &mut JavaRandom, x: i32, y: i32, z: i32, hat: Block, decor: f32, chance: f32, vines: f32) {
+    if random.next_float() < decor {
+        canvas.set(x, y, z, blocks::SHROOMLIGHT);
+    } else if random.next_float() < chance {
+        canvas.set(x, y, z, hat);
+
+        if random.next_float() < vines {
+            weeping_vines(canvas, random, x, y - 1, z);
+        }
+    }
+}
+
+fn hat_drop(canvas: &mut impl Canvas, random: &mut JavaRandom, x: i32, y: i32, z: i32, hat: Block, crimson: bool) {
+    if canvas.get(x, y - 1, z) == hat {
+        canvas.set(x, y, z, hat);
+    } else if random.next_float() < 0.15 {
+        canvas.set(x, y, z, hat);
+
+        if crimson && random.next_int_bounded(11) == 0 {
+            weeping_vines(canvas, random, x, y - 1, z);
+        }
+    }
+}
+
+fn weeping_vines(canvas: &mut impl Canvas, random: &mut JavaRandom, x: i32, y: i32, z: i32) {
+    if canvas.get(x, y, z) != blocks::AIR {
+        return;
+    }
+
+    let mut length = between(random, 1, 5);
+
+    if random.next_int_bounded(7) == 0 {
+        length *= 2;
+    }
+
+    for i in 0..=length {
+        let vy = y - i;
+
+        if vy < 0 {
+            break;
+        }
+
+        if canvas.get(x, vy, z) == blocks::AIR {
+            if i == length || canvas.get(x, vy - 1, z) != blocks::AIR {
+                canvas.set(x, vy, z, blocks::WEEPING_VINES_23 + between(random, 0, 2) as Block);
+                break;
+            }
+
+            canvas.set(x, vy, z, blocks::WEEPING_VINES_25);
+        }
+    }
 }
 
 #[cfg(test)]

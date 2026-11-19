@@ -22,9 +22,9 @@ use function mt_rand;
 
 class Spreading implements RandomTickBehavior{
 
-    private const NYLIUM = ["minecraft:crimson_nylium", "minecraft:warped_nylium"];
+    private const array NYLIUM = ["minecraft:crimson_nylium", "minecraft:warped_nylium"];
 
-    private const TRIES = 4;
+    private const int TRIES = 4;
 
     public function getBlockNames() : array{
         return [BlockIds::GRASS_BLOCK, BlockIds::MYCELIUM, ...self::NYLIUM];

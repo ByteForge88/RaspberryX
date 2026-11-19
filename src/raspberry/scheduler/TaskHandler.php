@@ -11,7 +11,15 @@ class TaskHandler{
 
     private Task $task;
 
-    private int $nextRun;
+    public int $nextRun{
+        get{
+            return $this->nextRun;
+        }
+
+        set{
+            $this->nextRun = $value;
+        }
+    }
 
     /** ticks between runs, 0 for a task that runs once */
     private int $period;
@@ -26,17 +34,6 @@ class TaskHandler{
 
     public function getTask() : Task{
         return $this->task;
-    }
-
-    public function getNextRun() : int{
-        return $this->nextRun;
-    }
-
-    /**
-     * @internal
-     */
-    public function setNextRun(int $tick) : void{
-        $this->nextRun = $tick;
     }
 
     public function getPeriod() : int{
@@ -58,7 +55,7 @@ class TaskHandler{
 
         $this->cancelled = true;
         $this->task->onCancel();
-        $this->task->setHandler(null);
+        $this->task->handler = null;
     }
 
     /**
@@ -66,6 +63,6 @@ class TaskHandler{
      */
     public function finish() : void{
         $this->cancelled = true;
-        $this->task->setHandler(null);
+        $this->task->handler = null;
     }
 }

@@ -4,16 +4,16 @@ declare(strict_types=1);
 
 namespace raspberry\world\biome;
 
-use function array_fill_keys;
 use function max;
+use function array_fill_keys;
 
 class Biome{
 
     /** below this it snows instead of rains */
-    public const SNOW_TEMPERATURE = 0.15;
+    public const float SNOW_TEMPERATURE = 0.15;
 
     /** the land gets colder from here up */
-    public const SEA_LEVEL = 64;
+    public const int SEA_LEVEL = 64;
 
     private string $name;
 

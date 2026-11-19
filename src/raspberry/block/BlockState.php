@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace raspberry\block;
 
+use JsonException;
 use InvalidArgumentException;
 use OutOfBoundsException;
 
@@ -33,6 +34,7 @@ class BlockState{
 
     /**
      * @param array<string, string|int|bool> $properties
+     * @throws JsonException
      */
     public function __construct(string $name, array $properties = []){
         if(preg_match('/^[a-z0-9_.-]+:[a-z0-9_.\/-]+$/D', $name) !== 1){
@@ -78,6 +80,7 @@ class BlockState{
     /**
      * Returns a copy with one property changed. The property must already exist
      * and keep its type, because Bedrock blocks have a fixed set of properties.
+     * @throws JsonException
      */
     public function withProperty(string $property, string|int|bool $value) : self{
         $current = $this->getProperty($property);
@@ -114,6 +117,7 @@ class BlockState{
 
     /**
      * @param array<string, string|int|bool> $properties
+     * @throws JsonException
      */
     private static function buildKey(string $name, array $properties) : string{
         if($properties === []){

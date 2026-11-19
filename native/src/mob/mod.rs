@@ -11,7 +11,7 @@ pub mod goals;
 pub mod path;
 pub mod physics;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::random::JavaRandom;
 
@@ -34,11 +34,17 @@ pub const HAZARD: u32 = 16;
 pub const IN_FIRE: u32 = 32;
 
 pub const PLAYER_SPECTATOR: u32 = 1;
+pub const PLAYER_NO_TARGET: u32 = 2;
+pub const PLAYER_SNEAKING: u32 = 4;
+pub const PLAYER_INVISIBLE: u32 = 8;
 
 pub const EVENT_FALL: u32 = 1;
 pub const EVENT_EAT_START: u32 = 2;
 pub const EVENT_EAT_BLOCK: u32 = 3;
 pub const EVENT_BRED: u32 = 4;
+pub const EVENT_LAND: u32 = 5;
+pub const EVENT_ATTACK: u32 = 6;
+pub const EVENT_TARGET: u32 = 7;
 
 const HURT_MEMORY: i32 = 100;
 
@@ -91,6 +97,9 @@ pub struct Mob {
     pub fall: f64,
     pub hurt: i32,
     pub jump_delay: i32,
+    pub target: u64,
+    pub hurt_by: u64,
+    pub hurt_count: u32,
     pub goals: Vec<Goal>,
     pub nav: Nav,
     pub look: Option<[f64; 3]>,
@@ -243,9 +252,17 @@ impl Mob {
         }
     }
 
-    fn travel(&mut self, view: &View, forward: f32, events: &mut Vec<Event>) {
-        let on_ground = self.is(ON_GROUND);
-        let in_liquid = self.is(IN_WATER | IN_LAVA);
+        fn stuck_in(&self, view: &View) -> Option<[f64; 3]> {
+            let (bx, bz) = (self.x.floor() as i32, self.z.floor() as i32);
+
+            (self.y.floor() as i32..=(self.y + self.height - 0.01).floor() as i32).find_map(|y| blocks::stuck(view.block(bx, y, bz)))
+        }
+
+        fn travel(&mut self, view: &View, forward: f32, events: &mut Vec<Event>) {
+            let on_ground = self.is(ON_GROUND);
+            let in_liquid = self.is(IN_WATER | IN_LAVA);
+            let surface = view.block(self.x.floor() as i32, (self.y - 0.5000001).floor() as i32, self.z.floor() as i32);
+            let stuck = self.stuck_in(view);
 
         if self.jump_delay > 0 {
             self.jump_delay -= 1;
@@ -255,7 +272,7 @@ impl Mob {
             if in_liquid {
                 self.my += 0.04;
             } else if on_ground && self.jump_delay == 0 {
-                self.my = physics::JUMP;
+                self.my = if blocks::kind(surface) == blocks::HONEY { physics::JUMP * 0.5 } else { physics::JUMP };
                 self.jump_delay = 10;
             }
         }
@@ -272,20 +289,37 @@ impl Mob {
             self.my *= 0.6;
         }
 
-        let moved = physics::move_box(view, self.x, self.y, self.z, self.width, self.height, self.mx, self.my, self.mz, on_ground);
+        let [sx, sy, sz] = stuck.unwrap_or([1.0; 3]);
+        let falling = self.my;
+        let moved = physics::move_box(view, self.x, self.y, self.z, self.width, self.height, self.mx * sx, self.my * sy, self.mz * sz, on_ground);
 
         if moved.y < self.y && !in_liquid {
             self.fall += self.y - moved.y;
         }
 
-        if in_liquid {
-            self.fall = 0.0;
-        }
+                if in_liquid || stuck.is_some() {
+                    self.fall = 0.0;
+                }
 
-        if moved.on_ground {
-            if self.fall > 3.0 {
-                events.push(Event { id: self.id, kind: EVENT_FALL, value: self.fall as f32, block: [0; 3], other: 0 });
-            }
+                if stuck.is_some() {
+                    self.mx = 0.0;
+                    self.my = 0.0;
+                    self.mz = 0.0;
+                }
+
+                let landed_on = view.block(moved.x.floor() as i32, (moved.y - 0.2).floor() as i32, moved.z.floor() as i32);
+
+                if moved.on_ground {
+                    let damage = (self.fall - 3.0) * blocks::fall_multiplier(landed_on);
+
+                    if damage > 0.0 {
+                        events.push(Event { id: self.id, kind: EVENT_FALL, value: (3.0 + damage) as f32, block: [0; 3], other: 0 });
+                    }
+
+                    if self.fall > 0.5 && landed_on & (blocks::HEIGHT | blocks::KIND) == 15 {
+                        let block = [moved.x.floor() as i32, (moved.y - 0.2).floor() as i32, moved.z.floor() as i32];
+                        events.push(Event { id: self.id, kind: EVENT_LAND, value: self.fall as f32, block, other: 0 });
+                    }
 
             self.fall = 0.0;
         }
@@ -301,6 +335,27 @@ impl Mob {
 
         if moved.hit_y {
             self.my = 0.0;
+        }
+
+        if moved.on_ground && falling < 0.0 && stuck.is_none() {
+            if blocks::kind(landed_on) == blocks::SLIME {
+                self.my = -falling;
+            } else if landed_on & blocks::BED != 0 {
+                self.my = -falling * 0.66;
+            }
+        }
+
+        match blocks::kind(surface) {
+            blocks::SOUL_SAND | blocks::HONEY => {
+                self.mx *= 0.4;
+                self.mz *= 0.4;
+            }
+            blocks::SLIME if on_ground && falling.abs() < 0.1 => {
+                let slow = 0.4 + falling.abs() * 0.2;
+                self.mx *= slow;
+                self.mz *= slow;
+            }
+            _ => {}
         }
 
         if moved.hit_z {
@@ -420,6 +475,7 @@ pub struct World {
     players: Vec<Player>,
     random: JavaRandom,
     tick: u64,
+    ticking: Option<HashSet<(i32, i32)>>,
 }
 
 struct Reader<'a> {
@@ -462,10 +518,15 @@ const COMMAND_TELEPORT: u8 = 4;
 const COMMAND_MOTION: u8 = 5;
 const COMMAND_HURT: u8 = 6;
 const COMMAND_PLAYERS: u8 = 7;
+const COMMAND_TICKING: u8 = 8;
 
 impl World {
     pub fn new(seed: i64) -> Self {
-        World { mobs: Vec::new(), index: HashMap::new(), players: Vec::new(), random: JavaRandom::new(seed), tick: 0 }
+        World { mobs: Vec::new(), index: HashMap::new(), players: Vec::new(), random: JavaRandom::new(seed), tick: 0, ticking: None }
+    }
+
+    fn is_ticking(&self, mob: &Mob) -> bool {
+        self.ticking.as_ref().map_or(true, |ticking| ticking.contains(&((mob.x.floor() as i32) >> 4, (mob.z.floor() as i32) >> 4)))
     }
 
     fn mob(&mut self, id: u64) -> Option<&mut Mob> {
@@ -526,6 +587,9 @@ impl World {
                         fall: 0.0,
                         hurt: 0,
                         jump_delay: 0,
+                        target: 0,
+                        hurt_by: 0,
+                        hurt_count: 0,
                         goals,
                         nav: Nav::default(),
                         look: None,
@@ -590,6 +654,15 @@ impl World {
                         });
                     }
                 }
+                COMMAND_TICKING => {
+                    let mut ticking = HashSet::new();
+
+                    for _ in 0..reader.u32()? {
+                        ticking.insert((reader.u32()? as i32, reader.u32()? as i32));
+                    }
+
+                    self.ticking = Some(ticking);
+                }
                 _ => return None,
             }
         }
@@ -600,7 +673,7 @@ impl World {
     pub fn chunks_needed(&self) -> Vec<(i32, i32)> {
         let mut needed: Vec<(i32, i32)> = Vec::new();
 
-        for mob in &self.mobs {
+        for mob in self.mobs.iter().filter(|mob| self.is_ticking(mob)) {
             let (cx, cz) = ((mob.x.floor() as i32) >> 4, (mob.z.floor() as i32) >> 4);
 
             for x in cx - 1..=cx + 1 {
@@ -623,9 +696,14 @@ impl World {
         let mut events = Vec::new();
         let mut out_of_love = Vec::new();
         let mut moves = Vec::new();
+        let ticking = &self.ticking;
 
         for mob in &mut self.mobs {
             if !view.is_loaded(mob.x.floor() as i32, mob.z.floor() as i32) {
+                continue;
+            }
+
+            if ticking.as_ref().is_some_and(|ticking| !ticking.contains(&((mob.x.floor() as i32) >> 4, (mob.z.floor() as i32) >> 4))) {
                 continue;
             }
 

@@ -99,6 +99,8 @@ enum Enchantment : int{
 
     /**
      * The highest level found in survival (enchanting table, anvil, loot). Commands can go higher.
+     *
+     * @throws EnchantmentException
      */
     public function getMaxLevel() : int{
         return match($this){
@@ -111,7 +113,8 @@ enum Enchantment : int{
             self::PROTECTION, self::FIRE_PROTECTION, self::FEATHER_FALLING, self::BLAST_PROTECTION,
             self::PROJECTILE_PROTECTION, self::PIERCING, self::BREACH => 4,
             self::SHARPNESS, self::SMITE, self::BANE_OF_ARTHROPODS, self::EFFICIENCY, self::POWER,
-            self::IMPALING, self::DENSITY => 5
+            self::IMPALING, self::DENSITY => 5,
+            self::CUSTOM => throw new EnchantmentException("To be implemented")
         };
     }
 

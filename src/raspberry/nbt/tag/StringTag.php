@@ -11,7 +11,7 @@ use function strlen;
 class StringTag extends Tag{
 
     /** strings are prefixed with an unsigned 16-bit length */
-    public const MAX_LENGTH = 65535;
+    public const int MAX_LENGTH = 65535;
 
     private string $value;
 

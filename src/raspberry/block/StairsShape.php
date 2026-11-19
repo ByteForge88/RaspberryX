@@ -8,6 +8,8 @@ use raspberry\math\Facing;
 
 use raspberry\world\World;
 
+use JsonException;
+
 class StairsShape{
 
     private function __construct(){
@@ -15,6 +17,8 @@ class StairsShape{
 
     /**
      * Updates the corners of the stairs at a position and of the stairs beside it.
+     *
+     * @throws JsonException
      */
     public static function updateAround(World $world, int $x, int $y, int $z) : void{
         self::update($world, $x, $y, $z);
@@ -25,6 +29,9 @@ class StairsShape{
         }
     }
 
+    /**
+     * @throws JsonException
+     */
     private static function update(World $world, int $x, int $y, int $z) : void{
         if(!$world->isChunkLoaded($x >> 4, $z >> 4)){
             return;

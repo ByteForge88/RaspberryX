@@ -38,19 +38,19 @@ use function mt_rand;
 class BlockBreaker{
 
     /** how far from the eyes blocks can be broken */
-    public const REACH = 8.0;
-    public const CREATIVE_REACH = 14.0;
+    public const float REACH = 8.0;
+    public const float CREATIVE_REACH = 14.0;
 
     /** finishing this share of the break time is accepted (the client's ticks can bunch up) */
-    public const TIME_TOLERANCE = 0.8;
+    public const float TIME_TOLERANCE = 0.8;
 
     /** exhaustion per block broken */
-    public const EXHAUSTION = 0.005;
+    public const float EXHAUSTION = 0.005;
 
-    private const HIT_SOUND_TICKS = 4;
+    private const int HIT_SOUND_TICKS = 4;
 
     /** how often other players see the arm swing while breaking */
-    private const SWING_TICKS = 5;
+    private const int SWING_TICKS = 5;
 
     private Player $player;
 
@@ -223,7 +223,7 @@ class BlockBreaker{
         $this->abort();
 
         if($reason !== null){
-            $this->player->getNetworkSession()->getServer()->getLogger()->debug("{$this->player->getName()} could not break the block at {$x} {$y} {$z}: {$reason}");
+            $this->player->getNetworkSession()->getServer()->getLogger()->debug("{$this->player->getName()} could not break the block at $x $y $z: $reason");
             $this->player->getNetworkSession()->sendBlock($x, $y, $z, $world->getBlock($x, $y, $z));
             return;
         }

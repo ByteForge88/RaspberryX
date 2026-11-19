@@ -21,12 +21,12 @@ use function mt_rand;
 abstract class Animal extends Mob{
 
     /** a baby takes 20 minutes to grow up */
-    public const BABY_AGE = -24000;
+    public const int BABY_AGE = -24000;
 
     /** five minutes until a parent can have the next baby */
-    public const BREED_COOLDOWN = 6000;
+    public const int BREED_COOLDOWN = 6000;
 
-    public const LOVE_TICKS = 600;
+    public const int LOVE_TICKS = 600;
 
     /** below zero: ticks until a baby is grown. Above: ticks until an adult can breed again. */
     protected int $age = 0;

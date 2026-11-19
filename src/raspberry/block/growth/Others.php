@@ -18,23 +18,23 @@ use function mt_rand;
 
 class Others implements RandomTickBehavior{
 
-    private const BUDDING_AMETHYST = "minecraft:budding_amethyst";
+    private const string BUDDING_AMETHYST = "minecraft:budding_amethyst";
 
-    private const BUDS = [
+    private const array BUDS = [
         "minecraft:small_amethyst_bud" => "minecraft:medium_amethyst_bud",
         "minecraft:medium_amethyst_bud" => "minecraft:large_amethyst_bud",
         "minecraft:large_amethyst_bud" => "minecraft:amethyst_cluster"
     ];
 
-    private const FACES = ["down" => [0, -1, 0], "up" => [0, 1, 0], "north" => [0, 0, -1], "south" => [0, 0, 1], "west" => [-1, 0, 0], "east" => [1, 0, 0]];
+    private const array FACES = ["down" => [0, -1, 0], "up" => [0, 1, 0], "north" => [0, 0, -1], "south" => [0, 0, 1], "west" => [-1, 0, 0], "east" => [1, 0, 0]];
 
-    private const UNLIT = [
+    private const array UNLIT = [
         "minecraft:lit_redstone_ore" => "minecraft:redstone_ore",
         "minecraft:lit_deepslate_redstone_ore" => "minecraft:deepslate_redstone_ore"
     ];
 
-    private const OPEN_EYEBLOSSOM = "minecraft:open_eyeblossom";
-    private const CLOSED_EYEBLOSSOM = "minecraft:closed_eyeblossom";
+    private const string OPEN_EYEBLOSSOM = "minecraft:open_eyeblossom";
+    private const string CLOSED_EYEBLOSSOM = "minecraft:closed_eyeblossom";
 
     public function getBlockNames() : array{
         return [self::BUDDING_AMETHYST, self::OPEN_EYEBLOSSOM, self::CLOSED_EYEBLOSSOM, ...array_keys(self::UNLIT)];

@@ -12,6 +12,7 @@ class ActorEventPacket implements Packet{
     public const JUMP = 1;
     public const HURT = 2;
     public const DEATH = 3;
+    public const ARM_SWING = 4;
     public const EAT_GRASS = 10;
     public const RESPAWN = 18;
     public const LOVE_PARTICLES = 21;

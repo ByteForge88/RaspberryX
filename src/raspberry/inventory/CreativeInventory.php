@@ -28,12 +28,12 @@ use const JSON_THROW_ON_ERROR;
 
 class CreativeInventory{
 
-    public const CATEGORY_CONSTRUCTION = 1;
-    public const CATEGORY_NATURE = 2;
-    public const CATEGORY_EQUIPMENT = 3;
-    public const CATEGORY_ITEMS = 4;
+    public const int CATEGORY_CONSTRUCTION = 1;
+    public const int CATEGORY_NATURE = 2;
+    public const int CATEGORY_EQUIPMENT = 3;
+    public const int CATEGORY_ITEMS = 4;
 
-    private const CATEGORIES = [
+    private const array CATEGORIES = [
         "construction" => self::CATEGORY_CONSTRUCTION,
         "nature" => self::CATEGORY_NATURE,
         "equipment" => self::CATEGORY_EQUIPMENT,

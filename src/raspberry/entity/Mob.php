@@ -4,7 +4,11 @@ declare(strict_types=1);
 
 namespace raspberry\entity;
 
+use raspberry\block\BlockIds;
+use raspberry\block\BigDripleaf;
 use raspberry\block\BlockCollision;
+use raspberry\block\BlockProperties;
+use raspberry\block\growth\Farmland;
 
 use raspberry\entity\ai\Behavior;
 use raspberry\entity\damage\DamageSource;
@@ -32,46 +36,50 @@ use raspberry\event\entity\EntityDeathEvent;
 
 use function ceil;
 use function crc32;
+use function floor;
 use function max;
 use function mt_rand;
 
 abstract class Mob extends Living{
 
     /** how far away a player can still feed, shear or milk a mob */
-    public const INTERACT_REACH = 6.0;
+    public const float INTERACT_REACH = 6.0;
 
     /** what the native side reports about where a mob is */
-    public const STATE_ON_GROUND = 1;
-    public const STATE_IN_WATER = 2;
-    public const STATE_HEAD_IN_WATER = 4;
-    public const STATE_IN_LAVA = 8;
-    public const STATE_HAZARD = 16;
-    public const STATE_IN_FIRE = 32;
+    public const int STATE_ON_GROUND = 1;
+    public const int STATE_IN_WATER = 2;
+    public const int STATE_HEAD_IN_WATER = 4;
+    public const int STATE_IN_LAVA = 8;
+    public const int STATE_HAZARD = 16;
+    public const int STATE_IN_FIRE = 32;
 
     /** flags the native side takes */
-    public const AI_BABY = 1;
-    public const AI_IN_LOVE = 2;
-    public const AI_SLOW_FALL = 4;
-    public const AI_DISABLED = 8;
-    public const AI_ON_FIRE = 16;
-    public const AI_AVOID_WATER = 32;
+    public const int AI_BABY = 1;
+    public const int AI_IN_LOVE = 2;
+    public const int AI_SLOW_FALL = 4;
+    public const int AI_DISABLED = 8;
+    public const int AI_ON_FIRE = 16;
+    public const int AI_AVOID_WATER = 32;
 
-    public const EVENT_FALL = 1;
-    public const EVENT_EAT_START = 2;
-    public const EVENT_EAT_BLOCK = 3;
-    public const EVENT_BRED = 4;
+    public const int EVENT_FALL = 1;
+    public const int EVENT_EAT_START = 2;
+    public const int EVENT_EAT_BLOCK = 3;
+    public const int EVENT_BRED = 4;
+    public const int EVENT_LAND = 5;
+    public const int EVENT_ATTACK = 6;
+    public const int EVENT_TARGET = 7;
 
-    public const BABY_SCALE = 0.5;
+    public const float BABY_SCALE = 0.5;
 
-    private const VIEWER_UPDATE_TICKS = 20;
+    private const int VIEWER_UPDATE_TICKS = 20;
 
     /** how long a dead mob lies there before it goes up in smoke */
-    private const DEATH_TICKS = 20;
+    private const int DEATH_TICKS = 20;
 
     /** a kill counts as a player's for this long after their last hit */
-    private const PLAYER_KILL_TICKS = 100;
+    private const int PLAYER_KILL_TICKS = 100;
 
-    private const SAFE_FALL = 3.0;
+    private const float SAFE_FALL = 3.0;
 
     protected float $headYaw;
 
@@ -87,7 +95,12 @@ abstract class Mob extends Living{
 
     protected int $lastPlayerHit = 0;
 
+    /** what the mob goes after, chosen by its target behaviors */
+    protected ?Living $target = null;
+
     private int $ambientDelay;
+
+    private ?Vector3 $lastSurroundingsPosition = null;
 
     public function __construct(World $world, Vector3 $position, float $yaw = 0.0){
         parent::__construct($world, $position);
@@ -180,6 +193,10 @@ abstract class Mob extends Living{
 
     public function isOnGround() : bool{
         return ($this->state & self::STATE_ON_GROUND) !== 0;
+    }
+
+    public function getTarget() : ?Living{
+        return $this->target !== null && $this->target->isAlive() && !$this->target->isClosed() ? $this->target : null;
     }
 
     public function isInWater() : bool{
@@ -293,8 +310,19 @@ abstract class Mob extends Living{
             $this->damage(new DamageSource(DamageSource::CAUSE_FIRE, 1.0));
         }
 
+        if($this->isOnGround()){
+            BigDripleaf::onStandingAt($this->world, $this->position);
+        }
+
+        $moved = $this->lastSurroundingsPosition === null || $this->lastSurroundingsPosition->x !== $this->position->x || $this->lastSurroundingsPosition->z !== $this->position->z;
+        $this->lastSurroundingsPosition = $this->position;
+
         if(($this->state & self::STATE_HAZARD) !== 0){
-            $this->damage(new DamageSource(DamageSource::CAUSE_CONTACT, 1.0));
+            $hazard = $this->getHazardDamage($moved);
+
+            if($hazard !== null){
+                $this->damage($hazard);
+            }
         }
 
         if($this->position->y < Chunk::MIN_Y - 64){
@@ -308,6 +336,30 @@ abstract class Mob extends Living{
                 $this->damage(new DamageSource(DamageSource::CAUSE_SUFFOCATION, 1.0));
             }
         }
+    }
+
+    private function getHazardDamage(bool $moved) : ?DamageSource{
+        $x = $this->position->getFloorX();
+        $y = (int) floor($this->position->y + 0.05);
+        $z = $this->position->getFloorZ();
+
+        if($y < Chunk::MIN_Y || $y > Chunk::MAX_Y || !$this->world->isChunkLoaded($x >> 4, $z >> 4)){
+            return null;
+        }
+
+        $block = $this->world->getBlock($x, $y, $z);
+
+        if($block->getName() !== BlockIds::SWEET_BERRY_BUSH){
+            return new DamageSource(DamageSource::CAUSE_CONTACT, 1.0);
+        }
+
+        $type = $this->getNetworkTypeId();
+
+        if(!$moved || $block->getProperty(BlockProperties::GROWTH) === 0 || $type === EntityIds::FOX || $type === EntityIds::BEE){
+            return null;
+        }
+
+        return new DamageSource(DamageSource::CAUSE_SWEET_BERRY, 1.0);
     }
 
     /**
@@ -333,6 +385,28 @@ abstract class Mob extends Living{
      * @internal
      */
     public function onEngineEvent(int $kind, float $value, int $x, int $y, int $z, int $other) : void{
+        if($kind === self::EVENT_TARGET){
+            $target = $other === 0 ? null : $this->world->getEntity($other);
+            $this->target = $target instanceof Living ? $target : null;
+            return;
+        }
+
+        if($kind === self::EVENT_ATTACK){
+            $target = $this->world->getEntity($other);
+
+            if($target instanceof Living && $target->isAlive()){
+                $this->broadcastEvent(ActorEventPacket::ARM_SWING);
+                $this->onAttack($target);
+            }
+
+            return;
+        }
+
+        if($kind === self::EVENT_LAND){
+            Farmland::trample($this->world, $x, $y, $z, $this, $value);
+            return;
+        }
+
         if($kind === self::EVENT_FALL && $this->takesFallDamage()){
             $damage = ceil($value - self::SAFE_FALL);
 
@@ -345,6 +419,10 @@ abstract class Mob extends Living{
 
     protected function takesFallDamage() : bool{
         return true;
+    }
+
+    protected function onAttack(Living $target) : void{
+
     }
 
     public function setMotion(Vector3 $motion) : void{
@@ -401,7 +479,7 @@ abstract class Mob extends Living{
         }
 
         $this->broadcastEvent(ActorEventPacket::HURT);
-        $this->world->getMobEngine()->hurt($this);
+        $this->world->getMobEngine()->hurt($this, $attacker);
     }
 
     /**
@@ -416,7 +494,7 @@ abstract class Mob extends Living{
         $this->broadcastEvent(ActorEventPacket::DEATH);
         $this->world->getMobEngine()->remove($this);
 
-        if($this->baby){
+        if($this->baby && !$this->dropsLootAsBaby()){
             return;
         }
 
@@ -431,6 +509,11 @@ abstract class Mob extends Living{
         }
 
         $killer?->addXp($event->getXp());
+    }
+
+    /** baby animals drop nothing, baby monsters drop like adults */
+    protected function dropsLootAsBaby() : bool{
+        return false;
     }
 
     /**

@@ -9,7 +9,7 @@ use function preg_match;
 class BlockCollision{
 
     //since we aren't using objects for blocks/items, but it still faster than pocketmine
-    private const PASSABLE = '/^minecraft:(' .
+    private const string PASSABLE = '/^minecraft:(' .
     'air|water|flowing_water|lava|flowing_lava|bubble_column|fire|soul_fire|portal|end_portal|trip_wire|structure_void|light_block_\d+|powder_snow|web|' .
     '\w+_sapling|(short|tall)_(dry_)?grass|large_fern|fern|deadbush|bush|firefly_bush|seagrass|kelp|reeds|vine|weeping_vines|twisting_vines|cave_vines\w*|' .
     'glow_lichen|sculk_vein|hanging_roots|spore_blossom|(crimson|warped)_(roots|fungus)|nether_sprouts|(brown|red)_mushroom|' .
@@ -21,7 +21,7 @@ class BlockCollision{
     ')$/D';
 
     /** solid blocks that are not full, see-through cubes: a head inside them does not suffocate, and they do not block a chest lid */
-    private const NOT_FULL = '/^minecraft:(' .
+    private const string NOT_FULL = '/^minecraft:(' .
     '\w*glass(_pane)?|\w*leaves(_flowered)?|\w+_slab|\w*stairs|\w*fence(_gate)?|\w*_wall|\w*door|\w*trapdoor|\w*bars|\w*chain|' .
     '\w*chest|\w*shulker_box|\w*bed|\w*cake|\w*anvil|\w*lantern|cauldron|hopper|brewing_stand|enchanting_table|end_rod|\w*lightning_rod|' .
     'flower_pot|\w+_skull|\w+_head|bell|\w*campfire|daylight_detector(_inverted)?|conduit|beacon|ice|frosted_ice|slime|honey_block|scaffolding|' .

@@ -8,9 +8,9 @@ use Symfony\Component\Yaml\Yaml;
 use Symfony\Component\Filesystem\Path;
 use Symfony\Component\Filesystem\Filesystem;
 
-use InvalidArgumentException;
-use OutOfBoundsException;
 use RuntimeException;
+use OutOfBoundsException;
+use InvalidArgumentException;
 use UnexpectedValueException;
 
 use function array_key_exists;
@@ -48,14 +48,14 @@ use function unserialize;
 
 class Config{
 
-    public const DETECT = -1;
-    public const PROPERTIES = 0;
-    public const CNF = Config::PROPERTIES;
-    public const JSON = 1;
-    public const YAML = 2;
-    public const SERIALIZED = 3;
-    public const ENUM = 4;
-    public const ENUMERATION = Config::ENUM;
+    public const int DETECT = -1;
+    public const int PROPERTIES = 0;
+    public const int CNF = Config::PROPERTIES;
+    public const int JSON = 1;
+    public const int YAML = 2;
+    public const int SERIALIZED = 3;
+    public const int ENUM = 4;
+    public const int ENUMERATION = Config::ENUM;
 
     private string $path;
     private int $type;

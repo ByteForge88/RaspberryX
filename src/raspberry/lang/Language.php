@@ -38,7 +38,7 @@ use function trim;
  */
 final class Language{
 
-    public const FALLBACK = "en_US";
+    public const string FALLBACK = "en_US";
 
     private string $code;
 

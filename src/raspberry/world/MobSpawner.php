@@ -20,13 +20,13 @@ use function mt_rand;
 class MobSpawner{
 
     /** out of 100: how often a new chunk gets a herd, and after that another one */
-    private const HERD_CHANCE = 10;
+    private const int HERD_CHANCE = 10;
 
     /** out of 100: how many of the animals are babies */
-    private const BABY_CHANCE = 5;
+    private const int BABY_CHANCE = 5;
 
     /** the mob, how often it is picked next to the others, and the least and most in a herd */
-    private const HERDS = [
+    private const array HERDS = [
         [EntityIds::SHEEP, 12, 2, 3],
         [EntityIds::PIG, 10, 1, 3],
         [EntityIds::CHICKEN, 10, 2, 4],

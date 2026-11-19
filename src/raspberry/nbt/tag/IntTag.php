@@ -12,7 +12,7 @@ class IntTag extends Tag{
 
     public function __construct(int $value){
         if($value < -2147483648 || $value > 2147483647){
-            throw new NbtException("IntTag value {$value} is out of range");
+            throw new NbtException("IntTag value $value is out of range");
         }
 
         $this->value = $value;

@@ -40,7 +40,7 @@ use const PHP_BINARY;
 class ConsoleReader{
 
     /** code run by the child process; argv[1] is the port to connect to */
-    private const CHILD_CODE = <<<'PHP'
+    private const string CHILD_CODE = <<<'PHP'
         $socket = stream_socket_client('tcp://127.0.0.1:' . (int) $argv[1], $errno, $error, 5);
         if($socket === false){
             exit(1);
@@ -52,7 +52,7 @@ class ConsoleReader{
         }
         PHP;
 
-    private const MAX_LINE_LENGTH = 65536;
+    private const int MAX_LINE_LENGTH = 65536;
 
     private Logger $logger;
 

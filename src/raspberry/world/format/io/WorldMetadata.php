@@ -17,7 +17,7 @@ use function is_string;
 
 class WorldMetadata{
 
-    public const FORMAT_VERSION = 1;
+    public const int FORMAT_VERSION = 1;
 
     public function __construct(
         public string $name,
@@ -53,6 +53,9 @@ class WorldMetadata{
     /** ticks of clear weather a command asked for */
     public int $clearWeatherTime = 0;
 
+    /** @var list<array<string, mixed>> */
+    public array $tickingAreas = [];
+
     /**
      * @return array<string, mixed>
      */
@@ -72,12 +75,14 @@ class WorldMetadata{
             "rainTime" => $this->rainTime,
             "thundering" => $this->thundering,
             "thunderTime" => $this->thunderTime,
-            "clearWeatherTime" => $this->clearWeatherTime
+            "clearWeatherTime" => $this->clearWeatherTime,
+            "tickingAreas" => $this->tickingAreas
         ] + ($this->spawn === null ? [] : ["spawn" => [$this->spawn->x, $this->spawn->y, $this->spawn->z]]);
     }
 
     /**
-     * @param array<mixed> $data
+     * @param array $data
+     * @return WorldMetadata
      */
     public static function fromArray(array $data) : self{
         $version = $data["formatVersion"] ?? null;
@@ -88,7 +93,7 @@ class WorldMetadata{
 
         foreach(["name", "generator", "generatorSettings", "blockDataVersion"] as $key){
             if(!is_string($data[$key] ?? null)){
-                throw new UnexpectedValueException("World metadata is missing '{$key}'");
+                throw new UnexpectedValueException("World metadata is missing '$key'");
             }
         }
 
@@ -109,7 +114,7 @@ class WorldMetadata{
         foreach(["raining", "thundering"] as $key){
             if(isset($data[$key])){
                 if(!is_bool($data[$key])){
-                    throw new UnexpectedValueException("World metadata '{$key}' must be true or false");
+                    throw new UnexpectedValueException("World metadata '$key' must be true or false");
                 }
 
                 $metadata->{$key} = $data[$key];
@@ -119,7 +124,7 @@ class WorldMetadata{
         foreach(["time", "gameTime", "rainTime", "thunderTime", "clearWeatherTime"] as $key){
             if(isset($data[$key])){
                 if(!is_int($data[$key]) || $data[$key] < 0){
-                    throw new UnexpectedValueException("World metadata '{$key}' must be a whole number of 0 or more");
+                    throw new UnexpectedValueException("World metadata '$key' must be a whole number of 0 or more");
                 }
 
                 $metadata->{$key} = $data[$key];
@@ -135,6 +140,20 @@ class WorldMetadata{
                 if(is_string($name) && (is_bool($value) || is_int($value))){
                     $metadata->gameRules[$name] = $value;
                 }
+            }
+        }
+
+        if(isset($data["tickingAreas"])){
+            if(!is_array($data["tickingAreas"])){
+                throw new UnexpectedValueException("World metadata 'tickingAreas' must be a list");
+            }
+
+            foreach($data["tickingAreas"] as $area){
+                if(!is_array($area)){
+                    throw new UnexpectedValueException("World metadata 'tickingAreas' must be a list of objects");
+                }
+
+                $metadata->tickingAreas[] = $area;
             }
         }
 

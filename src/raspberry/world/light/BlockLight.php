@@ -26,13 +26,13 @@ use const JSON_THROW_ON_ERROR;
 class BlockLight{
 
     /** a respawn anchor by its charges */
-    private const ANCHOR_LIGHT = [0, 3, 7, 11, 15];
+    private const array ANCHOR_LIGHT = [0, 3, 7, 11, 15];
 
     /** a lit copper bulb by how far it has aged */
-    private const BULB_LIGHT = ["copper" => 15, "exposed" => 12, "weathered" => 8, "oxidized" => 4];
+    private const array BULB_LIGHT = ["copper" => 15, "exposed" => 12, "weathered" => 8, "oxidized" => 4];
 
     /** blocks with a faint glow the light table leaves out */
-    private const FAINT = [
+    private const array FAINT = [
         "minecraft:brewing_stand" => 1,
         "minecraft:end_portal_frame" => 1,
         "minecraft:sculk_sensor" => 1,

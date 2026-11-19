@@ -21,7 +21,7 @@ pub mod pool;
 pub mod random;
 
 use std::ptr;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -822,6 +822,17 @@ pub extern "C" fn rx_liquid_remove_chunk(world: u64, chunk_x: i32, chunk_z: i32)
     with_liquid(world, (), |entry| {
         entry.chunks.remove(&(chunk_x, chunk_z));
     });
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn rx_liquid_ticking(world: u64, chunks: *const i32, count: usize) {
+    let chunks: HashSet<(i32, i32)> = if chunks.is_null() || count == 0 {
+        HashSet::new()
+    } else {
+        std::slice::from_raw_parts(chunks, count * 2).chunks_exact(2).map(|pair| (pair[0], pair[1])).collect()
+    };
+
+    with_liquid(world, (), |entry| entry.liquid.set_ticking(chunks));
 }
 
 #[no_mangle]

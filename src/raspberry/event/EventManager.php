@@ -13,6 +13,7 @@ use Closure;
 use ReflectionClass;
 use ReflectionMethod;
 use ReflectionNamedType;
+use ReflectionException;
 use Throwable;
 
 use function get_parent_class;
@@ -39,7 +40,7 @@ class EventManager{
      */
     public function register(string $event, Closure $handler, PluginBase $plugin, EventPriority $priority = EventPriority::NORMAL, bool $handleCancelled = false) : RegisteredListener{
         if(!is_subclass_of($event, Event::class)){
-            throw new PluginException("{$event} is not an event");
+            throw new PluginException("$event is not an event");
         }
 
         $listener = new RegisteredListener($event, $handler, $plugin, $priority, $handleCancelled);
@@ -51,6 +52,7 @@ class EventManager{
 
     /**
      * @return list<RegisteredListener>
+     * @throws ReflectionException
      */
     public function registerEvents(Listener $listener, PluginBase $plugin) : array{
         $registered = [];

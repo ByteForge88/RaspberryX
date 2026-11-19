@@ -24,8 +24,8 @@ class Chicken extends Animal{
     use ClimateVariantTrait;
 
     /** a hen lays an egg every 5 to 10 minutes */
-    private const MIN_EGG_TICKS = 6000;
-    private const MAX_EGG_TICKS = 12000;
+    private const int MIN_EGG_TICKS = 6000;
+    private const int MAX_EGG_TICKS = 12000;
 
     private int $eggTicks;
 

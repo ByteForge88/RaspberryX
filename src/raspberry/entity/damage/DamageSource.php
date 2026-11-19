@@ -14,27 +14,30 @@ use function str_replace;
 
 class DamageSource{
 
-    public const CAUSE_CONTACT = 0;
-    public const CAUSE_ENTITY_ATTACK = 1;
-    public const CAUSE_PROJECTILE = 2;
-    public const CAUSE_SUFFOCATION = 3;
-    public const CAUSE_FALL = 4;
-    public const CAUSE_FIRE = 5;
-    public const CAUSE_FIRE_TICK = 6;
-    public const CAUSE_LAVA = 7;
-    public const CAUSE_DROWNING = 8;
-    public const CAUSE_BLOCK_EXPLOSION = 9;
-    public const CAUSE_ENTITY_EXPLOSION = 10;
-    public const CAUSE_VOID = 11;
-    public const CAUSE_SUICIDE = 12;
-    public const CAUSE_MAGIC = 13;
-    public const CAUSE_CUSTOM = 14;
-    public const CAUSE_STARVATION = 15;
-    public const CAUSE_FALLING_BLOCK = 16;
-    public const CAUSE_WITHER = 17;
-    public const CAUSE_THORNS = 18;
-    public const CAUSE_MAGMA = 19;
-    public const CAUSE_LIGHTNING = 20;
+    public const int CAUSE_CONTACT = 0;
+    public const int CAUSE_ENTITY_ATTACK = 1;
+    public const int CAUSE_PROJECTILE = 2;
+    public const int CAUSE_SUFFOCATION = 3;
+    public const int CAUSE_FALL = 4;
+    public const int CAUSE_FIRE = 5;
+    public const int CAUSE_FIRE_TICK = 6;
+    public const int CAUSE_LAVA = 7;
+    public const int CAUSE_DROWNING = 8;
+    public const int CAUSE_BLOCK_EXPLOSION = 9;
+    public const int CAUSE_ENTITY_EXPLOSION = 10;
+    public const int CAUSE_VOID = 11;
+    public const int CAUSE_SUICIDE = 12;
+    public const int CAUSE_MAGIC = 13;
+    public const int CAUSE_CUSTOM = 14;
+    public const int CAUSE_STARVATION = 15;
+    public const int CAUSE_FALLING_BLOCK = 16;
+    public const int CAUSE_WITHER = 17;
+    public const int CAUSE_THORNS = 18;
+    public const int CAUSE_MAGMA = 19;
+    public const int CAUSE_LIGHTNING = 20;
+    public const int CAUSE_SWEET_BERRY = 21;
+    public const int CAUSE_STALACTITE = 22;
+    public const int CAUSE_STALAGMITE = 23;
 
     private int $cause;
 
@@ -43,7 +46,7 @@ class DamageSource{
     private ?Entity $attacker;
 
     public function __construct(int $cause, float $amount, ?Entity $attacker = null){
-        if($cause < self::CAUSE_CONTACT || $cause > self::CAUSE_LIGHTNING){
+        if($cause < self::CAUSE_CONTACT || $cause > self::CAUSE_STALAGMITE){
             throw new InvalidArgumentException("Unknown damage cause {$cause}");
         }
 
@@ -95,7 +98,8 @@ class DamageSource{
             self::CAUSE_ENTITY_EXPLOSION,
             self::CAUSE_THORNS,
             self::CAUSE_MAGMA,
-            self::CAUSE_LIGHTNING => true,
+            self::CAUSE_LIGHTNING,
+            self::CAUSE_SWEET_BERRY => true,
             default => false
         };
     }
@@ -120,6 +124,9 @@ class DamageSource{
             self::CAUSE_THORNS => "death.attack.thorns",
             self::CAUSE_MAGMA => "death.attack.magma",
             self::CAUSE_LIGHTNING => "death.attack.lightningBolt",
+            self::CAUSE_SWEET_BERRY => "death.attack.sweetBerry",
+            self::CAUSE_STALACTITE => "death.attack.stalactite",
+            self::CAUSE_STALAGMITE => "death.attack.stalagmite",
             default => "death.attack.generic"
         };
     }

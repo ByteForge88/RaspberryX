@@ -11,9 +11,9 @@ use InvalidArgumentException;
 
 class PlayerInventory extends Inventory{
 
-    public const SIZE = 36;
+    public const int SIZE = 36;
 
-    public const HOTBAR_SIZE = 9;
+    public const int HOTBAR_SIZE = 9;
 
     private int $heldSlot = 0;
 
@@ -30,7 +30,7 @@ class PlayerInventory extends Inventory{
 
     public function setHeldSlot(int $slot) : void{
         if($slot < 0 || $slot >= self::HOTBAR_SIZE){
-            throw new InvalidArgumentException("Hotbar slot must be between 0 and " . (self::HOTBAR_SIZE - 1) . ", got {$slot}");
+            throw new InvalidArgumentException("Hotbar slot must be between 0 and " . (self::HOTBAR_SIZE - 1) . ", got $slot");
         }
 
         if($slot === $this->heldSlot){

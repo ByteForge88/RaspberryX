@@ -21,7 +21,7 @@ use function usleep;
 
 class PreNormalGenerator implements AsyncGenerator{
 
-    private const WAIT_MICROSECONDS = 200;
+    private const int WAIT_MICROSECONDS = 200;
 
     private int $seed;
 

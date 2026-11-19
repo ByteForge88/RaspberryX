@@ -25,9 +25,9 @@ use function preg_match;
 
 class Leaves implements RandomTickBehavior{
 
-    private const REACH = 4;
+    private const int REACH = 4;
 
-    private const LOG_MARK_RADIUS = 4;
+    private const int LOG_MARK_RADIUS = 4;
 
     public function getBlockNames() : array{
         $names = [];

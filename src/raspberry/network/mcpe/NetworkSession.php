@@ -30,6 +30,7 @@ use raspberry\network\mcpe\protocol\NetworkChunkPublisherUpdatePacket;
 use raspberry\network\mcpe\protocol\NetworkSettingsPacket;
 use raspberry\network\mcpe\protocol\Packet;
 use raspberry\network\mcpe\protocol\PlayerAuthInputPacket;
+use raspberry\network\mcpe\protocol\PlayerActionPacket;
 use raspberry\network\mcpe\protocol\PlayerHotbarPacket;
 use raspberry\network\mcpe\protocol\UpdateBlockPacket;
 use raspberry\network\mcpe\protocol\PlayStatusPacket;
@@ -275,6 +276,13 @@ class NetworkSession{
         return $this->identity;
     }
 
+    /**
+     * @return array<string, true>
+     */
+    public function getWantedChunks() : array{
+        return $this->wantedChunks;
+    }
+
     public function isConnected() : bool{
         return $this->state < self::STATE_DISCONNECTING;
     }
@@ -409,6 +417,12 @@ class NetworkSession{
 
             case ProtocolPacketIds::INTERACT_PACKET:
                 $this->handleInteract($this->decode($buffer, InteractPacket::class));
+                return;
+
+            case ProtocolPacketIds::PLAYER_ACTION_PACKET:
+                if($this->state === self::STATE_IN_GAME){
+                    $this->handlePlayerAction($this->decode($buffer, PlayerActionPacket::class));
+                }
                 return;
 
             case ProtocolPacketIds::ITEM_STACK_REQUEST_PACKET:
@@ -1073,7 +1087,15 @@ class NetworkSession{
         $metadata->setFlag(EntityMetadata::FLAG_BREATHING, $human->isBreathing());
         $metadata->setFlag(EntityMetadata::FLAG_USING_ITEM, $human->isUsingItem());
         $metadata->setLong(EntityMetadata::KEY_FLAGS_TWO, 0);
-        $metadata->setByte(EntityMetadata::KEY_PLAYER_FLAGS, 0);
+        $bed = $human instanceof Player ? $human->getSleepingPosition() : null;
+
+        if($bed !== null){
+            $metadata->setByte(EntityMetadata::KEY_PLAYER_FLAGS, 1 << EntityMetadata::PLAYER_FLAG_SLEEPING);
+            $metadata->setBlockPosition(EntityMetadata::KEY_PLAYER_BED_POSITION, $bed->getFloorX(), $bed->getFloorY(), $bed->getFloorZ());
+        }else{
+            $metadata->setByte(EntityMetadata::KEY_PLAYER_FLAGS, 0);
+        }
+
         $metadata->setString(EntityMetadata::KEY_NAME, $human->getNameTag());
         $metadata->setByte(EntityMetadata::KEY_ALWAYS_SHOW_NAME_TAG, 1);
         $metadata->setFloat(EntityMetadata::KEY_WIDTH, Human::WIDTH);
@@ -1136,6 +1158,12 @@ class NetworkSession{
         }
 
         $player->getInventory()->setHeldSlot($packet->hotbarSlot);
+    }
+
+    private function handlePlayerAction(PlayerActionPacket $packet) : void{
+        if($packet->action === PlayerActionPacket::ACTION_STOP_SLEEPING){
+            $this->player?->wake();
+        }
     }
 
     private function handleInteract(InteractPacket $packet) : void{
@@ -1707,6 +1735,10 @@ class NetworkSession{
             $player->setSwimming(true);
         }elseif($packet->hasFlag(PlayerAuthInputPacket::FLAG_STOP_SWIMMING)){
             $player->setSwimming(false);
+        }
+
+        if($player->isSleeping()){
+            return;
         }
 
         $from = $player->getPosition();

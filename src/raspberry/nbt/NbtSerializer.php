@@ -29,7 +29,7 @@ use function strlen;
 class NbtSerializer{
 
     /** nesting deeper than this is refused, so a broken file cannot exhaust memory */
-    private const MAX_DEPTH = 512;
+    private const int MAX_DEPTH = 512;
 
     private bool $littleEndian;
 

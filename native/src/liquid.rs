@@ -6,7 +6,7 @@
 //! light, the players and redstone hear about it like any other change.
 
 use std::cmp::Reverse;
-use std::collections::{BinaryHeap, HashMap};
+use std::collections::{BinaryHeap, HashMap, HashSet};
 use std::sync::{Arc, RwLock};
 
 use crate::chunk::{Chunk, MAX_Y, MIN_SUBCHUNK, MIN_Y};
@@ -190,11 +190,14 @@ impl<V: View> Batch<'_, V> {
     }
 }
 
+const FROZEN_DELAY: u64 = 20;
+
 #[derive(Default)]
 pub struct LiquidWorld {
     scheduled: HashMap<(i32, i32, i32), u64>,
     queue: BinaryHeap<Reverse<(u64, i32, i32, i32)>>,
     random: u64,
+    ticking: Option<HashSet<(i32, i32)>>,
 }
 
 impl LiquidWorld {
@@ -202,9 +205,13 @@ impl LiquidWorld {
         LiquidWorld { random: 0x2545F4914F6CDD1D, ..Default::default() }
     }
 
-    pub fn pending(&self) -> usize {
-        self.scheduled.len()
-    }
+        pub fn pending(&self) -> usize {
+            self.scheduled.len()
+        }
+
+        pub fn set_ticking(&mut self, chunks: HashSet<(i32, i32)>) {
+            self.ticking = Some(chunks);
+        }
 
     fn chance(&mut self, one_in: u64) -> bool {
         self.random ^= self.random << 13;
@@ -279,6 +286,7 @@ impl LiquidWorld {
         let table = table();
         let mut batch = Batch { view, table: &table, written: HashMap::new(), changes: Vec::new() };
         let mut updates = 0;
+        let mut frozen = Vec::new();
 
         while let Some(Reverse((due, x, y, z))) = self.queue.peek().copied() {
             if due > now || updates >= MAX_UPDATES {
@@ -293,12 +301,21 @@ impl LiquidWorld {
 
             self.scheduled.remove(&(x, y, z));
 
+            if self.ticking.as_ref().is_some_and(|ticking| !ticking.contains(&(x >> 4, z >> 4))) {
+                frozen.push((x, y, z));
+                continue;
+            }
+
             if view.block(x, y, z, 0).is_none() {
                 continue;
             }
 
             updates += 1;
             self.update(&mut batch, x, y, z, now);
+        }
+
+        for (x, y, z) in frozen {
+            self.schedule(x, y, z, now + FROZEN_DELAY);
         }
 
         batch.changes

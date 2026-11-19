@@ -10,10 +10,10 @@ use function preg_match;
 
 class ArmorInventory extends Inventory{
 
-    public const SLOT_HEAD = 0;
-    public const SLOT_CHEST = 1;
-    public const SLOT_LEGS = 2;
-    public const SLOT_FEET = 3;
+    public const int SLOT_HEAD = 0;
+    public const int SLOT_CHEST = 1;
+    public const int SLOT_LEGS = 2;
+    public const int SLOT_FEET = 3;
 
     public function __construct(){
         parent::__construct(4);

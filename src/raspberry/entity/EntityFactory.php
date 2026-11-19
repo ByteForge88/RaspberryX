@@ -8,6 +8,8 @@ use raspberry\entity\animal\Chicken;
 use raspberry\entity\animal\Cow;
 use raspberry\entity\animal\Pig;
 use raspberry\entity\animal\Sheep;
+use raspberry\entity\monster\Zombie;
+use raspberry\entity\object\ItemEntity;
 
 use raspberry\math\Vector3;
 
@@ -24,7 +26,7 @@ use function substr;
 
 class EntityFactory{
 
-    private const SPAWN_EGG = "_spawn_egg";
+    private const string SPAWN_EGG = "_spawn_egg";
 
     /** @var array<string, Closure(World, Vector3, float) : Mob>|null */
     private static ?array $mobs = null;
@@ -40,7 +42,8 @@ class EntityFactory{
             EntityIds::CHICKEN => fn(World $world, Vector3 $position, float $yaw) : Mob => new Chicken($world, $position, $yaw),
             EntityIds::COW => fn(World $world, Vector3 $position, float $yaw) : Mob => new Cow($world, $position, $yaw),
             EntityIds::PIG => fn(World $world, Vector3 $position, float $yaw) : Mob => new Pig($world, $position, $yaw),
-            EntityIds::SHEEP => fn(World $world, Vector3 $position, float $yaw) : Mob => new Sheep($world, $position, $yaw)
+            EntityIds::SHEEP => fn(World $world, Vector3 $position, float $yaw) : Mob => new Sheep($world, $position, $yaw),
+            EntityIds::ZOMBIE => fn(World $world, Vector3 $position, float $yaw) : Mob => new Zombie($world, $position, $yaw)
         ];
     }
 
@@ -69,8 +72,13 @@ class EntityFactory{
         return $create === null ? null : $create($world, $position, $yaw);
     }
 
-    public static function load(World $world, CompoundTag $tag) : ?Mob{
+    public static function load(World $world, CompoundTag $tag) : ?Entity{
         $name = $tag->getString("identifier", "");
+
+        if($name === ItemEntity::NETWORK_ID){
+            return ItemEntity::fromSave($world, $tag);
+        }
+
         [$x, $y, $z] = [$tag->getDouble("X"), $tag->getDouble("Y"), $tag->getDouble("Z")];
 
         if($x === null || $y === null || $z === null || !self::isRegistered($name)){

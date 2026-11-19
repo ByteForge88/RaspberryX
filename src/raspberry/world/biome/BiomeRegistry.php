@@ -6,6 +6,7 @@ namespace raspberry\world\biome;
 
 use raspberry\world\Chunk;
 
+use JsonException;
 use RuntimeException;
 use UnexpectedValueException;
 
@@ -30,31 +31,36 @@ class BiomeRegistry{
 
     /**
      * The biome with this ID, plains for an ID the game does not have.
+     *
+     * @throws JsonException
      */
     public static function get(int $id) : Biome{
         self::load();
-
         return self::$byId[$id] ?? self::$byId[Chunk::DEFAULT_BIOME];
     }
 
     /**
      * By name, "minecraft:" may be left out.
+     *
+     * @throws JsonException
      */
     public static function getByName(string $name) : ?Biome{
         self::load();
-
         return self::$byName[str_contains($name, ":") ? $name : "minecraft:" . $name] ?? null;
     }
 
     /**
      * @return array<int, Biome> keyed by ID
+     * @throws JsonException
      */
     public static function getAll() : array{
         self::load();
-
         return self::$byId;
     }
 
+    /**
+     * @throws JsonException
+     */
     private static function load() : void{
         if(self::$byId !== null){
             return;

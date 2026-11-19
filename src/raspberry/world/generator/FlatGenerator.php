@@ -22,9 +22,9 @@ use function trim;
 
 class FlatGenerator implements Generator{
 
-    public const DEFAULT_PRESET = "minecraft:bedrock,2*minecraft:dirt,minecraft:grass_block";
+    public const string DEFAULT_PRESET = "minecraft:bedrock,2*minecraft:dirt,minecraft:grass_block";
 
-    public const BOTTOM_Y = 0;
+    public const int BOTTOM_Y = 0;
 
     /** @var list<BlockState> one entry per Y level, bottom first */
     private array $column = [];

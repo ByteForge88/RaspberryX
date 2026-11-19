@@ -8,15 +8,18 @@ use function pack;
 
 class Behavior{
 
-    private const FLOAT = 1;
-    private const PANIC = 2;
-    private const BREED = 3;
-    private const TEMPT = 4;
-    private const FOLLOW_PARENT = 5;
-    private const RANDOM_STROLL = 6;
-    private const LOOK_AT_PLAYER = 7;
-    private const RANDOM_LOOK_AROUND = 8;
-    private const EAT_BLOCK = 9;
+    private const int FLOAT = 1;
+    private const int PANIC = 2;
+    private const int BREED = 3;
+    private const int TEMPT = 4;
+    private const int FOLLOW_PARENT = 5;
+    private const int RANDOM_STROLL = 6;
+    private const int LOOK_AT_PLAYER = 7;
+    private const int RANDOM_LOOK_AROUND = 8;
+    private const int EAT_BLOCK = 9;
+    private const int NEAREST_ATTACKABLE_TARGET = 10;
+    private const int HURT_BY_TARGET = 11;
+    private const int MELEE_ATTACK = 12;
 
     private int $type;
 
@@ -74,6 +77,27 @@ class Behavior{
     /** eats the grass it stands on, the chances are per tick */
     public static function eatBlock(int $priority, float $adultChance = 0.001, float $babyChance = 0.02) : self{
         return new self(self::EAT_BLOCK, $priority, $adultChance, $babyChance);
+    }
+
+    /**
+     * Goes after the nearest player within $followRange, seen first when $mustSee. Looks once in
+     * $interval ticks on average.
+     */
+    public static function nearestAttackableTarget(int $priority, float $followRange, bool $mustSee = true, int $interval = 10) : self{
+        return new self(self::NEAREST_ATTACKABLE_TARGET, $priority, $followRange, $mustSee ? 1.0 : 0.0, (float) $interval);
+    }
+
+    /** goes after whoever hurt it */
+    public static function hurtByTarget(int $priority, float $followRange) : self{
+        return new self(self::HURT_BY_TARGET, $priority, $followRange, 1.0);
+    }
+
+    /**
+     * Walks up to its target and hits it once a second. Without $followUnseen it stops chasing
+     * when it loses sight of it.
+     */
+    public static function meleeAttack(int $priority, float $speed, bool $followUnseen = false) : self{
+        return new self(self::MELEE_ATTACK, $priority, $speed, $followUnseen ? 1.0 : 0.0);
     }
 
     public function encode() : string{

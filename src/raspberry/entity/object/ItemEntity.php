@@ -12,8 +12,12 @@ use raspberry\entity\Human;
 use raspberry\event\player\PlayerPickupItemEvent;
 
 use raspberry\item\Item;
+use raspberry\item\ItemSerializer;
 
 use raspberry\math\Vector3;
+
+use raspberry\nbt\NbtException;
+use raspberry\nbt\tag\CompoundTag;
 
 use raspberry\network\mcpe\protocol\TakeItemActorPacket;
 
@@ -30,6 +34,8 @@ use function max;
 use function min;
 
 class ItemEntity extends Entity{
+
+    public const NETWORK_ID = "minecraft:item";
 
     public const SIZE = 0.25;
 
@@ -70,6 +76,53 @@ class ItemEntity extends Entity{
         $this->pickupDelay = $pickupDelay;
 
         parent::__construct($world, $position);
+    }
+
+    /**
+     * An item saved with its chunk, null when the tag is broken.
+     */
+    public static function fromSave(World $world, CompoundTag $tag) : ?self{
+        [$x, $y, $z] = [$tag->getDouble("X"), $tag->getDouble("Y"), $tag->getDouble("Z")];
+        $itemTag = $tag->getCompoundTag("Item");
+
+        if($x === null || $y === null || $z === null || $itemTag === null){
+            return null;
+        }
+
+        try{
+            $item = ItemSerializer::deserialize($itemTag);
+        }catch(NbtException){
+            return null;
+        }
+
+        if($item->isNull()){
+            return null;
+        }
+
+        $entity = new self($world, new Vector3($x, $y, $z), $item, new Vector3($tag->getFloat("MotionX", 0.0) ?? 0.0, $tag->getFloat("MotionY", 0.0) ?? 0.0, $tag->getFloat("MotionZ", 0.0) ?? 0.0), $tag->getShort("PickupDelay", 0) ?? 0);
+        $entity->age = $tag->getShort("Age", 0) ?? 0;
+
+        return $entity;
+    }
+
+    public function save() : ?CompoundTag{
+        if($this->closed || $this->item->isNull()){
+            return null;
+        }
+
+        $tag = new CompoundTag();
+        $tag->setString("identifier", $this->getNetworkTypeId());
+        $tag->setDouble("X", $this->position->x);
+        $tag->setDouble("Y", $this->position->y);
+        $tag->setDouble("Z", $this->position->z);
+        $tag->setFloat("MotionX", $this->motion->x);
+        $tag->setFloat("MotionY", $this->motion->y);
+        $tag->setFloat("MotionZ", $this->motion->z);
+        $tag->setShort("PickupDelay", min($this->pickupDelay, 32767));
+        $tag->setShort("Age", min($this->age, 32767));
+        $tag->setTag("Item", ItemSerializer::serialize($this->item));
+
+        return $tag;
     }
 
     public function getNetworkTypeId() : string{

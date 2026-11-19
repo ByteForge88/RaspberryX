@@ -16,7 +16,7 @@ use function mt_rand;
 
 class Saplings implements RandomTickBehavior{
 
-    public const NAMES = [
+    public const array NAMES = [
         "minecraft:oak_sapling",
         "minecraft:spruce_sapling",
         "minecraft:birch_sapling",
@@ -27,9 +27,9 @@ class Saplings implements RandomTickBehavior{
         "minecraft:pale_oak_sapling"
     ];
 
-    private const PROPAGULE = "minecraft:mangrove_propagule";
+    private const string PROPAGULE = "minecraft:mangrove_propagule";
 
-    private const PROPAGULE_GROWN = 4;
+    private const int PROPAGULE_GROWN = 4;
 
     public function getBlockNames() : array{
         return [...self::NAMES, self::PROPAGULE];

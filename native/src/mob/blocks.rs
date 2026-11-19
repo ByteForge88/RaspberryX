@@ -8,7 +8,8 @@ use std::sync::{Arc, RwLock};
 
 use crate::chunk::{Chunk, MAX_Y, MIN_Y};
 
-pub const HEIGHT: u16 = 0x00ff;
+pub const HEIGHT: u16 = 0x001f;
+pub const KIND: u16 = 0x00e0;
 pub const WATER: u16 = 0x0100;
 pub const LAVA: u16 = 0x0200;
 pub const CLIMB: u16 = 0x0400;
@@ -16,6 +17,16 @@ pub const DAMAGE: u16 = 0x0800;
 pub const GRASS_BLOCK: u16 = 0x1000;
 pub const GRASS_PLANT: u16 = 0x2000;
 pub const FIRE: u16 = 0x4000;
+pub const BED: u16 = 0x8000;
+
+pub const COBWEB: u16 = 0x0020;
+pub const SWEET_BERRY_BUSH: u16 = 0x0040;
+pub const POWDER_SNOW: u16 = 0x0060;
+
+pub const SLIME: u16 = 0x0080;
+pub const HONEY: u16 = 0x00a0;
+pub const SOUL_SAND: u16 = 0x00c0;
+pub const HAY: u16 = 0x00e0;
 
 const FULL: u16 = 16;
 
@@ -107,6 +118,47 @@ impl View {
 #[inline]
 pub fn height(flags: u16) -> f64 {
     (flags & HEIGHT) as f64 / 16.0
+}
+
+#[inline]
+pub fn kind(flags: u16) -> u16 {
+    flags & KIND
+}
+
+pub fn stuck(flags: u16) -> Option<[f64; 3]> {
+    match kind(flags) {
+        COBWEB => Some([0.25, 0.05, 0.25]),
+        SWEET_BERRY_BUSH => Some([0.8, 0.75, 0.8]),
+        POWDER_SNOW => Some([0.9, 1.5, 0.9]),
+        _ => None,
+    }
+}
+
+pub fn fall_multiplier(flags: u16) -> f64 {
+    match kind(flags) {
+        SLIME => 0.0,
+        HONEY | HAY => 0.2,
+        _ if flags & BED != 0 => 0.5,
+        _ => 1.0,
+    }
+}
+
+pub fn can_see(view: &View, from: [f64; 3], to: [f64; 3]) -> bool {
+    let delta = [to[0] - from[0], to[1] - from[1], to[2] - from[2]];
+    let length = (delta[0] * delta[0] + delta[1] * delta[1] + delta[2] * delta[2]).sqrt();
+    let steps = (length / 0.2).ceil() as i32;
+
+    for step in 1..steps {
+        let part = step as f64 / steps as f64;
+        let (x, y, z) = (from[0] + delta[0] * part, from[1] + delta[1] * part, from[2] + delta[2] * part);
+        let flags = view.block(x.floor() as i32, y.floor() as i32, z.floor() as i32);
+
+        if is_solid(flags) && y - y.floor() < height(flags) {
+            return false;
+        }
+    }
+
+    true
 }
 
 #[inline]

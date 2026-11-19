@@ -28,21 +28,21 @@ use function sqrt;
 
 abstract class Living extends Entity{
 
+    public const float DEFAULT_MOVEMENT_SPEED = 0.1;
+
+    public const int INVULNERABLE_TICKS = 10;
+
+    public const float KNOCKBACK = 0.4;
+
+    public const int MAX_AIR = 300;
+
+    private const int AIR_REFILL = 4;
+
+    private const float DROWNING_DAMAGE = 2.0;
+
     protected float $maxHealth = 20.0;
 
     protected float $health = 20.0;
-
-    public const DEFAULT_MOVEMENT_SPEED = 0.1;
-
-    public const INVULNERABLE_TICKS = 10;
-
-    public const KNOCKBACK = 0.4;
-
-    public const MAX_AIR = 300;
-
-    private const AIR_REFILL = 4;
-
-    private const DROWNING_DAMAGE = 2.0;
 
     protected ?DamageSource $lastDamageSource = null;
 
@@ -287,6 +287,7 @@ abstract class Living extends Entity{
     }
 
     /**
+     * @param DamageSource $source
      * @return bool
      */
     public function damage(DamageSource $source) : bool{

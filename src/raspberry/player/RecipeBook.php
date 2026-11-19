@@ -21,9 +21,9 @@ use function count;
 class RecipeBook implements InventoryListener{
 
     /** filled inventory slots that count as "many items" (unlocks the chest) */
-    public const MANY_ITEMS_SLOTS = 10;
+    public const int MANY_ITEMS_SLOTS = 10;
 
-    private const CONTEXT_CHECK_TICKS = 20;
+    private const int CONTEXT_CHECK_TICKS = 20;
 
     private Player $player;
 

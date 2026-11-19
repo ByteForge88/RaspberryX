@@ -19,12 +19,12 @@ use function preg_match;
 
 class FallingBlocks{
 
-    public const DELAY = 2;
+    public const int DELAY = 2;
 
-    private const FALLING = '/^minecraft:(sand|red_sand|gravel|\w+_concrete_powder|anvil|chipped_anvil|damaged_anvil|dragon_egg|suspicious_sand|suspicious_gravel)$/D';
+    private const string FALLING = '/^minecraft:(sand|red_sand|gravel|\w+_concrete_powder|anvil|chipped_anvil|damaged_anvil|dragon_egg|suspicious_sand|suspicious_gravel)$/D';
 
     /** what a falling block falls through and lands in place of */
-    private const FALLS_THROUGH = '/^minecraft:(air|water|flowing_water|lava|flowing_lava|fire|soul_fire|short_grass|tall_grass|fern|large_fern|deadbush|dead_bush|vine|seagrass|' .
+    private const string FALLS_THROUGH = '/^minecraft:(air|water|flowing_water|lava|flowing_lava|fire|soul_fire|short_grass|tall_grass|fern|large_fern|deadbush|dead_bush|vine|seagrass|' .
     'structure_void|light_block_\d+|bubble_column|glow_lichen|hanging_roots|crimson_roots|warped_roots|nether_sprouts|leaf_litter|short_dry_grass|tall_dry_grass)$/D';
 
     private function __construct(){

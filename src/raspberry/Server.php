@@ -84,6 +84,8 @@ use raspberry\network\mcpe\protocol\StopSoundPacket;
 use raspberry\network\mcpe\protocol\LevelEventPacket;
 use raspberry\network\mcpe\protocol\LevelSoundEventPacket;
 use raspberry\network\mcpe\protocol\AnimatePacket;
+use raspberry\network\mcpe\protocol\PlayerActionPacket;
+use raspberry\network\mcpe\protocol\LevelEventGenericPacket;
 use raspberry\network\mcpe\protocol\BlockActorDataPacket;
 use raspberry\network\mcpe\protocol\BlockEventPacket;
 use raspberry\network\mcpe\protocol\OpenSignPacket;
@@ -124,6 +126,7 @@ use raspberry\command\defaults\TimeCommand;
 use raspberry\command\defaults\DaylockCommand;
 use raspberry\command\defaults\ToggleDownfallCommand;
 use raspberry\command\defaults\WeatherCommand;
+use raspberry\command\defaults\TickingareaCommand;
 use raspberry\command\defaults\GameruleCommand;
 
 use raspberry\console\ConsoleReader;
@@ -200,15 +203,15 @@ use function strtolower;
 class Server{
 
     //TODO: create ServerInfo.php and move this
-    public const NAME = "RaspberryX";
-    public const VERSION = "1.0.0-ALPHA1";
-    public const PLUGIN_API = self::VERSION;
+    public const string NAME = "RaspberryX";
+    public const string VERSION = "1.0.0-ALPHA1";
+    public const string PLUGIN_API = self::VERSION;
 
-    public const IS_DEVELOPMENT = true;
+    public const bool IS_DEVELOPMENT = true;
 
-    public const LICENSE = "GNU Lesser General Public License v3.0";
+    public const string LICENSE = "GNU Lesser General Public License v3.0";
 
-    public const DEFAULT_PROPERTIES = [
+    public const array DEFAULT_PROPERTIES = [
         "language" => Language::FALLBACK,
         "server-name" => self::NAME,
         "server-ip" => "0.0.0.0",
@@ -230,7 +233,7 @@ class Server{
         "debug-logging" => false
     ];
 
-    private const TICKS_PER_SECOND = 20;
+    private const int TICKS_PER_SECOND = 20;
 
     private string $dataPath;
 
@@ -917,6 +920,8 @@ class Server{
             LevelEventPacket::class,
             LevelSoundEventPacket::class,
             AnimatePacket::class,
+            PlayerActionPacket::class,
+            LevelEventGenericPacket::class,
             BlockActorDataPacket::class,
             OpenSignPacket::class,
             BlockEventPacket::class,
@@ -962,7 +967,8 @@ class Server{
             "daylock" => "op",
             "gamerule" => "op",
             "weather" => "op",
-            "toggledownfall" => "op"
+            "toggledownfall" => "op",
+            "tickingarea" => "op"
         ] as $command => $default){
             $permissions["raspberry.command.{$command}"] = [
                 "description" => $this->language->translate("permission.command", ["command" => $command]),
@@ -999,7 +1005,8 @@ class Server{
             new DaylockCommand(),
             new WeatherCommand(),
             new ToggleDownfallCommand(),
-            new GameruleCommand()
+            new GameruleCommand(),
+            new TickingareaCommand()
         ]);
     }
 

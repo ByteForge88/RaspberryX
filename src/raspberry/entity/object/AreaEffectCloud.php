@@ -22,24 +22,24 @@ use function abs;
 
 class AreaEffectCloud extends Entity{
 
-    public const DURATION = 600;
+    public const int DURATION = 600;
 
     /** the cloud does nothing for this long after it appears */
-    public const WAIT_TICKS = 10;
+    public const int WAIT_TICKS = 10;
 
-    public const START_RADIUS = 3.0;
+    public const float START_RADIUS = 3.0;
 
     /** each entity it gives effects to makes it smaller */
-    public const RADIUS_ON_USE = -0.5;
+    public const float RADIUS_ON_USE = -0.5;
 
-    public const HEIGHT = 0.5;
+    public const float HEIGHT = 0.5;
 
-    private const APPLY_EVERY = 5;
+    private const int APPLY_EVERY = 5;
 
     /** how long before the same entity is affected again */
-    private const REAPPLY_TICKS = 20;
+    private const int REAPPLY_TICKS = 20;
 
-    private const MIN_RADIUS = 0.5;
+    private const float MIN_RADIUS = 0.5;
 
     private int $potionMeta;
 

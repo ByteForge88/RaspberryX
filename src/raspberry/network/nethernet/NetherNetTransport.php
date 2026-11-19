@@ -134,7 +134,7 @@ class NetherNetTransport{
         );
         $this->http->listen($this->socket);
 
-        $this->logger->debug("NetherNet signaling listening on http://{$address}");
+        $this->logger->debug("NetherNet signaling listening on https://{$address}");
     }
 
     private function handle(ServerRequestInterface $request) : Response|PromiseInterface{

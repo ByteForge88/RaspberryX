@@ -113,7 +113,7 @@ class CompoundTag extends Tag{
         $tag = $this->tags[$name] ?? null;
 
         if($tag !== null && !$tag instanceof $class){
-            throw new NbtException("Tag \"{$name}\" is a " . Tag::getTypeName($tag->getType()) . " tag, not the expected type");
+            throw new NbtException("Tag \"$name\" is a " . Tag::getTypeName($tag->getType()) . " tag, not the expected type");
         }
 
         return $tag;

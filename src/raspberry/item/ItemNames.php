@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace raspberry\item;
 
+use JsonException;
 use RuntimeException;
 use UnexpectedValueException;
 
@@ -23,7 +24,7 @@ use const JSON_THROW_ON_ERROR;
 
 class ItemNames{
 
-    /** @var array<string, string>|null item ID => name */
+    /** @var array<string, string>|null */
     private static ?array $names = null;
 
     private function __construct(){
@@ -31,6 +32,8 @@ class ItemNames{
 
     /**
      * The item's English name. Unknown IDs get a name made from the ID: "minecraft:magic_wand" => "Magic Wand".
+     *
+     * @throws JsonException
      */
     public static function get(string $id) : string{
         self::$names ??= self::load(dirname(__DIR__, 3) . "/resources/vanilla/item_names.json");
@@ -52,6 +55,7 @@ class ItemNames{
 
     /**
      * @return array<string, string>
+     * @throws JsonException
      */
     private static function load(string $path) : array{
         $contents = @file_get_contents($path);

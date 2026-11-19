@@ -32,22 +32,25 @@ use function unpack;
  */
 class Trees{
 
-    private const OAK = 0;
-    private const BIG_OAK = 1;
-    private const BIRCH = 2;
-    private const SPRUCE = 3;
-    private const MEGA_SPRUCE = 4;
-    private const MEGA_PINE = 5;
-    private const JUNGLE = 6;
-    private const MEGA_JUNGLE = 7;
-    private const ACACIA = 8;
-    private const DARK_OAK = 9;
-    private const CHERRY = 10;
-    private const MANGROVE = 11;
-    private const PALE_OAK = 12;
+    private const int OAK = 0;
+    private const int BIG_OAK = 1;
+    private const int BIRCH = 2;
+    private const int SPRUCE = 3;
+    private const int MEGA_SPRUCE = 4;
+    private const int MEGA_PINE = 5;
+    private const int JUNGLE = 6;
+    private const int MEGA_JUNGLE = 7;
+    private const int ACACIA = 8;
+    private const int DARK_OAK = 9;
+    private const int CHERRY = 10;
+    private const int MANGROVE = 11;
+    private const int PALE_OAK = 12;
+    private const int AZALEA = 13;
+    private const int CRIMSON_FUNGUS = 14;
+    private const int WARPED_FUNGUS = 15;
 
     /** ground other than dirt and grass trees grow on */
-    private const SOIL = [
+    private const array SOIL = [
         "minecraft:mud",
         "minecraft:moss_block",
         "minecraft:muddy_mangrove_roots",
@@ -57,7 +60,7 @@ class Trees{
     ];
 
     /** how far around the sapling chunks are handed over, a tree is never wider */
-    private const CHUNK_REACH = 2;
+    private const int CHUNK_REACH = 2;
 
     private function __construct(){
     }
@@ -76,6 +79,9 @@ class Trees{
             "minecraft:pale_oak_sapling" => $square === null ? null : self::PALE_OAK,
             "minecraft:cherry_sapling" => self::CHERRY,
             "minecraft:mangrove_propagule" => self::MANGROVE,
+            "minecraft:azalea", "minecraft:flowering_azalea" => self::AZALEA,
+            "minecraft:crimson_fungus" => self::CRIMSON_FUNGUS,
+            "minecraft:warped_fungus" => self::WARPED_FUNGUS,
             default => null
         };
 

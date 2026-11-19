@@ -28,20 +28,19 @@ use function unpack;
 
 class Chunk{
 
-    public const WIDTH = 16;
+    public const int WIDTH = 16;
 
-    public const MIN_Y = -64;
-    public const MAX_Y = 319;
+    public const int MIN_Y = -64;
+    public const int MAX_Y = 319;
 
-    public const MIN_SUBCHUNK = self::MIN_Y >> 4; //-4
-    public const MAX_SUBCHUNK = self::MAX_Y >> 4; //19
+    public const int MIN_SUBCHUNK = self::MIN_Y >> 4; //-4
+    public const int MAX_SUBCHUNK = self::MAX_Y >> 4; //19
 
-    public const MAX_LAYERS = 2;
+    public const int MAX_LAYERS = 2;
 
-    public const DEFAULT_BIOME = BiomeIds::PLAINS;
+    public const int DEFAULT_BIOME = BiomeIds::PLAINS;
 
-    /** what the native side answers when the chunk is all air */
-    private const NO_SUBCHUNK = -128;
+    private const int NO_SUBCHUNK = -128;
 
     private FFI $ffi;
 

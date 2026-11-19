@@ -9,7 +9,7 @@ use function preg_match;
 class ArmorInfo{
 
     /** @var array<string, array{int, int, int, int}> */
-    private const DEFENSE = [
+    private const array DEFENSE = [
         "leather" => [1, 3, 2, 1],
         "copper" => [2, 4, 3, 1],
         "golden" => [2, 5, 3, 1],
@@ -20,12 +20,12 @@ class ArmorInfo{
     ];
 
     /** @var array<string, float> */
-    private const TOUGHNESS = [
+    private const array TOUGHNESS = [
         "diamond" => 2.0,
         "netherite" => 3.0
     ];
 
-    private const PIECES = ["helmet" => 0, "chestplate" => 1, "leggings" => 2, "boots" => 3];
+    private const array PIECES = ["helmet" => 0, "chestplate" => 1, "leggings" => 2, "boots" => 3];
 
     private function __construct(){
     }

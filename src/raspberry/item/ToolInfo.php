@@ -9,7 +9,7 @@ use function preg_match;
 class ToolInfo{
 
     /** @var array<string, array{int, float}> */
-    private const MATERIALS = [
+    private const array MATERIALS = [
         "wooden" => [1, 2.0],
         "golden" => [1, 12.0],
         "stone" => [2, 4.0],
@@ -20,7 +20,7 @@ class ToolInfo{
     ];
 
     /** @var array<string, float> */
-    private const SWORD_DAMAGE = [
+    private const array SWORD_DAMAGE = [
         "wooden" => 5.0,
         "golden" => 5.0,
         "stone" => 6.0,
@@ -31,7 +31,7 @@ class ToolInfo{
     ];
 
     /** @var array<string, float> */
-    private const TOOL_PENALTY = [
+    private const array TOOL_PENALTY = [
         "sword" => 0.0,
         "axe" => 1.0,
         "pickaxe" => 3.0,
@@ -39,7 +39,7 @@ class ToolInfo{
         "hoe" => 3.0
     ];
 
-    public const HAND_DAMAGE = 1.0;
+    public const float HAND_DAMAGE = 1.0;
 
     private function __construct(){
     }

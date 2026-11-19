@@ -53,7 +53,7 @@ use const JSON_THROW_ON_ERROR;
 
 class Explosion{
 
-    private const DEFAULT_RESISTANCE = 6.0;
+    private const float DEFAULT_RESISTANCE = 6.0;
 
     private static bool $taught = false;
 

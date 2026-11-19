@@ -572,6 +572,10 @@ class RedstoneUpdater{
     private function updateDaylightDetectors() : void{
         foreach($this->daylightDetectors as $chunkKey => $detectors){
             foreach($detectors as $key => [$x, $y, $z]){
+                if(!$this->world->isChunkTicking($x >> 4, $z >> 4)){
+                    break;
+                }
+
                 $block = $this->world->getBlock($x, $y, $z);
                 $name = $block->getName();
 
@@ -792,7 +796,7 @@ class RedstoneUpdater{
             };
 
             $this->run();
-        });
+        }, $x, $z);
     }
 
     /**

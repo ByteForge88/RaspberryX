@@ -19,9 +19,9 @@ use function mt_rand;
 
 class Melting implements RandomTickBehavior{
 
-    private const MELT_LIGHT = 11;
+    private const int MELT_LIGHT = 11;
 
-    private const FROSTED_ICE_MAX_AGE = 3;
+    private const int FROSTED_ICE_MAX_AGE = 3;
 
     public function getBlockNames() : array{
         return [BlockIds::ICE, BlockIds::SNOW_LAYER, BlockIds::FROSTED_ICE];

@@ -12,7 +12,7 @@ class ShortTag extends Tag{
 
     public function __construct(int $value){
         if($value < -32768 || $value > 32767){
-            throw new NbtException("ShortTag value {$value} is out of range");
+            throw new NbtException("ShortTag value $value is out of range");
         }
 
         $this->value = $value;

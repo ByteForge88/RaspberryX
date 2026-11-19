@@ -79,7 +79,7 @@ class EnchantingTable{
      * @return array<int, array{int, list<array{Enchantment, int}>}>
      */
     public static function getOffers(Item $item, int $bookshelves, int $seed) : array{
-        $value = ItemProperties::getEnchantability($item->getId());
+        $value = ItemProperties::getMerchantability($item->getId());
 
         if($value === 0 || $item->getCount() !== 1 || $item->hasEnchantments()){
             return [];

@@ -8,6 +8,7 @@ use raspberry\item\Item;
 use raspberry\item\ToolInfo;
 use raspberry\item\enchantment\Enchantment;
 
+use JsonException;
 use RuntimeException;
 use UnexpectedValueException;
 
@@ -24,7 +25,7 @@ use const PHP_INT_MAX;
 
 class BlockBreakInfo{
 
-    public const TIER_LEVELS = ["wooden" => 1, "stone" => 2, "iron" => 3, "diamond" => 4, "netherite" => 5];
+    public const array TIER_LEVELS = ["wooden" => 1, "stone" => 2, "iron" => 3, "diamond" => 4, "netherite" => 5];
 
     /** @var array<string, self>|null */
     private static ?array $blocks = null;
@@ -49,9 +50,11 @@ class BlockBreakInfo{
         $this->drops = $drops;
     }
 
+    /**
+     * @throws JsonException
+     */
     public static function get(string $name) : self{
         self::$blocks ??= self::load(dirname(__DIR__, 3) . "/resources/vanilla/block_breaking.json");
-
         return self::$blocks[$name] ?? new self(0.0, null, null, []);
     }
 
@@ -146,6 +149,7 @@ class BlockBreakInfo{
 
     /**
      * @return array<string, self>
+     * @throws JsonException
      */
     private static function load(string $path) : array{
         $contents = @file_get_contents($path);

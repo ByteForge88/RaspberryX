@@ -35,25 +35,25 @@ use function sin;
 
 class ItemUser{
 
-    public const RELEASE = 0;
-    public const CONSUME = 1;
+    public const int RELEASE = 0;
+    public const int CONSUME = 1;
 
     /** how long drinking a potion or milk takes */
-    private const DRINK_TICKS = 32;
+    private const int DRINK_TICKS = 32;
 
     /** the client and server clocks drift a little */
-    private const TICK_TOLERANCE = 4;
+    private const int TICK_TOLERANCE = 4;
 
-    private const THROW_SPEED = 0.5;
+    private const float THROW_SPEED = 0.5;
 
     /** an ominous bottle gives bad omen for 100 minutes */
-    private const BAD_OMEN_TICKS = 120000;
+    private const int BAD_OMEN_TICKS = 120000;
 
-    private const CHORUS_RANGE = 8;
-    private const CHORUS_TRIES = 16;
+    private const int CHORUS_RANGE = 8;
+    private const int CHORUS_TRIES = 16;
 
     /** suspicious stew meta => effect, ticks */
-    private const STEW_EFFECTS = [
+    private const array STEW_EFFECTS = [
         0 => [Effect::NIGHT_VISION, 100], //poppy
         1 => [Effect::JUMP_BOOST, 100], //cornflower
         2 => [Effect::WEAKNESS, 140], //tulips
@@ -128,20 +128,19 @@ class ItemUser{
             return;
         }
 
-        $player = $this->player;
-        $held = $player->getInventory()->getItemInHand();
+        $held = $this->player->getInventory()->getItemInHand();
         [$slot, $id, $start, $ticks] = $using;
 
-        if($player->isDead() || $player->getInventory()->getHeldSlot() !== $slot || $held->getId() !== $id || $this->getTick() - $start < $ticks - self::TICK_TOLERANCE){
-            $player->getNetworkSession()->getInventoryManager()?->sendSlot($player->getInventory(), $player->getInventory()->getHeldSlot());
+        if($this->player->isDead() || $this->player->getInventory()->getHeldSlot() !== $slot || $held->getId() !== $id || $this->getTick() - $start < $ticks - self::TICK_TOLERANCE){
+            $this->player->getNetworkSession()->getInventoryManager()?->sendSlot($this->player->getInventory(), $this->player->getInventory()->getHeldSlot());
             return;
         }
 
-        $event = new PlayerItemConsumeEvent($player, $held);
+        $event = new PlayerItemConsumeEvent($this->player, $held);
         $event->call();
 
         if($event->isCancelled()){
-            $player->getNetworkSession()->resendHeldItem();
+            $this->player->getNetworkSession()->resendHeldItem();
             return;
         }
 

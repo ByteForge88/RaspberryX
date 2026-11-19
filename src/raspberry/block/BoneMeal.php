@@ -6,6 +6,7 @@ namespace raspberry\block;
 
 use raspberry\Server;
 
+use raspberry\block\growth\Trees;
 use raspberry\block\growth\Saplings;
 
 use raspberry\network\mcpe\protocol\LevelEventPacket;
@@ -14,20 +15,25 @@ use raspberry\network\mcpe\protocol\types\LevelEvent;
 use raspberry\world\Chunk;
 use raspberry\world\World;
 
+use JsonException;
+
 use function min;
 use function mt_rand;
 use function preg_match;
 
 class BoneMeal{
 
-    private const CROPS = '/^minecraft:(wheat|carrots|potatoes|beetroot|torchflower_crop|melon_stem|pumpkin_stem)$/D';
+    private const string CROPS = '/^minecraft:(wheat|carrots|potatoes|beetroot|torchflower_crop|melon_stem|pumpkin_stem)$/D';
 
     /** how many spots around a grass block bone meal tries to grow plants on */
-    private const GRASS_TRIES = 48;
+    private const int GRASS_TRIES = 48;
 
     private function __construct(){
     }
 
+    /**
+     * @throws JsonException
+     */
     public static function grow(World $world, int $x, int $y, int $z) : bool{
         $block = $world->getBlock($x, $y, $z);
         $name = $block->getName();
@@ -40,6 +46,9 @@ class BoneMeal{
             $name === BlockIds::FERN => self::growTall($world, $x, $y, $z, BlockIds::LARGE_FERN),
             $name === BlockIds::GRASS_BLOCK => self::growOnGrass($world, $x, $y, $z),
             Saplings::isSapling($name) => self::growSapling($world, $x, $y, $z, $block),
+            $name === BlockIds::AZALEA || $name === BlockIds::FLOWERING_AZALEA => self::growTree($world, $x, $y, $z, $block, 45),
+            $name === BlockIds::CRIMSON_FUNGUS || $name === BlockIds::WARPED_FUNGUS => self::growFungus($world, $x, $y, $z, $block),
+            BigDripleaf::is($block) => BigDripleaf::grow($world, $x, $y, $z, $block),
             default => false
         };
 
@@ -50,6 +59,9 @@ class BoneMeal{
         return $grown;
     }
 
+    /**
+     * @throws JsonException
+     */
     private static function addStages(World $world, int $x, int $y, int $z, BlockState $block, string $property, int $stages, int $max) : bool{
         $current = (int) $block->getProperty($property);
 
@@ -70,6 +82,37 @@ class BoneMeal{
         return true;
     }
 
+    /**
+     * Bone meal works $chance percent of the time, the particles show either way.
+     *
+     * @throws JsonException
+     */
+    private static function growTree(World $world, int $x, int $y, int $z, BlockState $plant, int $chance) : bool{
+        if(mt_rand(0, 99) < $chance){
+            Trees::grow($world, $x, $y, $z, $plant);
+        }
+
+        return true;
+    }
+
+    /**
+     * A fungus only grows huge on its own nylium.
+     *
+     * @throws JsonException
+     */
+    private static function growFungus(World $world, int $x, int $y, int $z, BlockState $fungus) : bool{
+        $nylium = $fungus->getName() === BlockIds::CRIMSON_FUNGUS ? BlockIds::CRIMSON_NYLIUM : BlockIds::WARPED_NYLIUM;
+
+        if($y <= Chunk::MIN_Y || $world->getBlock($x, $y - 1, $z)->getName() !== $nylium){
+            return false;
+        }
+
+        return self::growTree($world, $x, $y, $z, $fungus, 40);
+    }
+
+    /**
+     * @throws JsonException
+     */
     private static function growTall(World $world, int $x, int $y, int $z, string $tall) : bool{
         if($y + 1 > Chunk::MAX_Y || $world->getBlock($x, $y + 1, $z)->getName() !== BlockIds::AIR){
             return false;

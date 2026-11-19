@@ -32,7 +32,8 @@ use function time;
  */
 final class RaspberryWorldProvider implements WorldProvider{
 
-    private const METADATA_FILE = "world.json";
+    //TODO: use .dat file type 'world.dat'
+    private const string METADATA_FILE = "world.json";
 
     private string $path;
 

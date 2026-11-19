@@ -13,7 +13,7 @@ use function sort;
 
 class TemptItems{
 
-    public const MAX_GROUPS = 64;
+    public const int MAX_GROUPS = 64;
 
     /** @var array<string, int> */
     private static array $groups = [];

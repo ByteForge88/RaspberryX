@@ -13,6 +13,7 @@ use function is_int;
 use function is_string;
 use function preg_match;
 use function str_starts_with;
+use function str_replace;
 use function strtolower;
 use function strtoupper;
 use function trim;
@@ -66,10 +67,10 @@ class PluginDescription{
             throw new PluginException("The name \"{$this->name}\" may only have letters, digits, spaces, '_', '.' and '-'");
         }
 
-        $this->main = trim(self::requireString($data, "main"), "\\");
+        $this->main = trim(str_replace("/", "\\", self::requireString($data, "main")), "\\");
 
         if(preg_match('/^[A-Za-z_][A-Za-z0-9_]*(\\\\[A-Za-z_][A-Za-z0-9_]*)+$/', $this->main) !== 1){
-            throw new PluginException("main must be a class with a namespace, like myplugin\\Main");
+            throw new PluginException("main must be a class with a namespace, like myplugin\\Main or myplugin/Main");
         }
 
         if(str_starts_with(strtolower($this->main), "raspberry\\")){

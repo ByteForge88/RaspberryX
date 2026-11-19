@@ -19,6 +19,8 @@ use raspberry\block\growth\Plants;
 use raspberry\block\growth\RandomTickBehavior;
 use raspberry\block\growth\Saplings;
 use raspberry\block\growth\Spreading;
+use raspberry\block\growth\Dripstone;
+use raspberry\block\growth\Vines;
 
 use raspberry\native\Native;
 
@@ -66,7 +68,7 @@ class RandomTicker{
 
         self::$taught = true;
 
-        foreach([new Crops(), new Saplings(), new Plants(), new Spreading(), new Leaves(), new Farmland(), new Melting(), new Oxidation(), new Others(), new Fire()] as $behavior){
+        foreach([new Crops(), new Saplings(), new Plants(), new Spreading(), new Leaves(), new Farmland(), new Melting(), new Oxidation(), new Vines(), new Dripstone(), new Others(), new Fire()] as $behavior){
             self::add($behavior);
         }
 
@@ -154,30 +156,7 @@ class RandomTicker{
      * @return list<Chunk>
      */
     public function getTickingChunks() : array{
-        $distance = Server::getInstance()->getTickDistance();
-        $chunks = [];
-
-        foreach($this->world->getPlayers() as $player){
-            $position = $player->getPosition();
-            $centerX = $position->getChunkX();
-            $centerZ = $position->getChunkZ();
-
-            for($dx = -$distance; $dx <= $distance; ++$dx){
-                for($dz = -$distance; $dz <= $distance; ++$dz){
-                    if($dx * $dx + $dz * $dz > $distance * $distance){
-                        continue;
-                    }
-
-                    $chunk = $this->world->getChunk($centerX + $dx, $centerZ + $dz);
-
-                    if($chunk !== null){
-                        $chunks[($centerX + $dx) . ":" . ($centerZ + $dz)] = $chunk;
-                    }
-                }
-            }
-        }
-
-        return array_values($chunks);
+        return array_values($this->world->getTickingChunks());
     }
 
     public function onBlockChanged(int $x, int $y, int $z, BlockState $old, BlockState $new) : void{

@@ -41,10 +41,10 @@ use function preg_match;
 
 class ContainerOpener{
 
-    private const CHESTS = '/^minecraft:(chest|trapped_chest|(waxed_)?((exposed|weathered|oxidized)_)?copper_chest)$/D';
+    private const string CHESTS = '/^minecraft:(chest|trapped_chest|(waxed_)?((exposed|weathered|oxidized)_)?copper_chest)$/D';
 
     /** a screen closes when the player is further than this from its block */
-    public const MAX_DISTANCE = 8.0;
+    public const float MAX_DISTANCE = 8.0;
 
     private Player $player;
 
@@ -308,11 +308,14 @@ class ContainerOpener{
     }
 
     /**
-     * @param list<int>                  $slotContainerIds
-     * @param list<array{int, int, int}> $positions
-     * @param list<BlockEntity>          $entities
-     * @param list<Inventory>            $inventories
+     * @param list<int>                   $slotContainerIds
+     * @param list<array{int, int, int}>  $positions
+     * @param list<BlockEntity>           $entities
+     * @param list<Inventory>             $inventories
+     * @param string|null                 $openSound
+     * @param string|null                 $closeSound
      * @param (Closure(bool) : void)|null $animate
+     * @param int                         $type
      */
     private function openShared(array $slotContainerIds, array $positions, array $entities, array $inventories, ?string $openSound, ?string $closeSound, ?Closure $animate, int $type = ContainerWindow::TYPE_CONTAINER) : void{
         $manager = $this->player->getNetworkSession()->getInventoryManager();
@@ -371,6 +374,11 @@ class ContainerOpener{
 
     /**
      * @param (Closure(bool) : void)|null $animate
+     * @param string|null                 $sound
+     * @param bool                        $open
+     * @param int                         $x
+     * @param int                         $y
+     * @param int                         $z
      */
     private function animate(?Closure $animate, ?string $sound, bool $open, int $x, int $y, int $z) : void{
         if($animate !== null){

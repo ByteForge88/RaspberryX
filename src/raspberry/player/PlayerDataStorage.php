@@ -65,7 +65,7 @@ class PlayerDataStorage{
         $compressed = zlib_encode(NbtSerializer::littleEndian()->write($data), ZLIB_ENCODING_DEFLATE);
 
         if($compressed === false){
-            throw new RuntimeException("Cannot compress the player data of {$xuid}");
+            throw new RuntimeException("Cannot compress the player data of $xuid");
         }
 
         $this->filesystem->dumpFile($this->filePath($xuid), $compressed);
@@ -73,7 +73,7 @@ class PlayerDataStorage{
 
     private function filePath(string $xuid) : string{
         if(preg_match('/^\d{1,20}$/D', $xuid) !== 1){
-            throw new RuntimeException("Invalid XUID \"{$xuid}\"");
+            throw new RuntimeException("Invalid XUID \"$xuid\"");
         }
 
         return Path::join($this->path, $xuid . ".dat");

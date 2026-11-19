@@ -53,7 +53,7 @@ class PermissionManager{
 
             $default = isset($data["default"]) ? PermissionLevel::fromValue($data["default"]) : PermissionLevel::OPERATOR;
 
-            $permission = new Permission((string) $name, $description, $default);
+            $permission = new Permission($name, $description, $default);
             $this->register($permission);
             $registered[] = $permission;
         }

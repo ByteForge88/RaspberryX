@@ -76,7 +76,7 @@ class TaskScheduler{
                 continue;
             }
 
-            if($handler->getNextRun() > $currentTick){
+            if($handler->nextRun > $currentTick){
                 break;
             }
 
@@ -90,8 +90,8 @@ class TaskScheduler{
             }
 
             if($handler->isRepeating() && !$handler->isCancelled()){
-                $handler->setNextRun($currentTick + $handler->getPeriod());
-                $this->queue->insert($handler, [-$handler->getNextRun(), -++$this->order]);
+                $handler->nextRun = $currentTick + $handler->getPeriod();
+                $this->queue->insert($handler, [-$handler->nextRun, -++$this->order]);
             }else{
                 unset($this->handlers[spl_object_id($handler)]);
                 $handler->finish();
@@ -100,7 +100,7 @@ class TaskScheduler{
     }
 
     private function schedule(Task $task, int $delay, int $period) : TaskHandler{
-        if($task->getHandler() !== null){
+        if($task->handler !== null){
             throw new InvalidArgumentException("The task is already scheduled");
         }
 
@@ -109,9 +109,9 @@ class TaskScheduler{
         }
 
         $handler = new TaskHandler($task, $this->currentTick + $delay, $period);
-        $task->setHandler($handler);
+        $task->handler = $handler;
         $this->handlers[spl_object_id($handler)] = $handler;
-        $this->queue->insert($handler, [-$handler->getNextRun(), -++$this->order]);
+        $this->queue->insert($handler, [-$handler->nextRun, -++$this->order]);
         return $handler;
     }
 }

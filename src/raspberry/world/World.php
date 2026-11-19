@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace raspberry\world;
 
+use raspberry\Server;
+
 use raspberry\block\BlockIds;
 use raspberry\block\BlockState;
+use raspberry\block\BlockSupport;
 use raspberry\block\entity\BlockEntity;
 use raspberry\block\entity\BlockEntityFactory;
 use raspberry\block\entity\TickableBlockEntity;
@@ -22,7 +25,6 @@ use raspberry\world\generator\Generator;
 use raspberry\world\light\LightEngine;
 use raspberry\world\liquid\LiquidEngine;
 
-use raspberry\entity\Mob;
 use raspberry\entity\Entity;
 use raspberry\entity\EntityFactory;
 use raspberry\entity\ai\MobEngine;
@@ -69,18 +71,29 @@ use const M_PI;
 class World{
 
     /** ticks in a day */
-    public const DAY_LENGTH = 24000;
+    public const int DAY_LENGTH = 24000;
 
     /** when the clock passes these, it is that time of day */
-    public const TIME_DAY = 1000;
-    public const TIME_NOON = 6000;
-    public const TIME_SUNSET = 12000;
-    public const TIME_NIGHT = 13000;
-    public const TIME_MIDNIGHT = 18000;
-    public const TIME_SUNRISE = 23000;
+    public const int TIME_DAY = 1000;
+    public const int TIME_NOON = 6000;
+    public const int TIME_SUNSET = 12000;
+    public const int TIME_NIGHT = 13000;
+    public const int TIME_MIDNIGHT = 18000;
+    public const int TIME_SUNRISE = 23000;
 
     /** the client moves its own clock on, this keeps the two from drifting apart */
-    private const TIME_SYNC_TICKS = 200;
+    private const int TIME_SYNC_TICKS = 200;
+
+    /** a chunk nothing has needed for this many ticks is saved and unloaded */
+    public const int UNLOAD_DELAY = 600;
+
+    private const int UNLOAD_CHECK_TICKS = 20;
+
+    /** saving is slow, so only this many chunks go per check */
+    private const int UNLOADS_PER_CHECK = 16;
+
+    /** an update waiting in a chunk that does not tick looks again this much later */
+    private const int FROZEN_DELAY = 20;
 
     private WorldMetadata $metadata;
 
@@ -104,8 +117,18 @@ class World{
 
     private int $currentTick = 0;
 
-    /** @var array<int, array{int, Closure() : void}> */
+    /** @var array<int, array{int, Closure() : void, int|null, int|null}> */
     private array $scheduledUpdates = [];
+
+    private TickingAreas $tickingAreas;
+
+    /** @var array<string, Chunk> */
+    private array $tickingChunks = [];
+
+    private string $tickingSignature = "";
+
+    /** @var array<string, int> */
+    private array $chunkLastUsed = [];
 
     private RedstoneUpdater $redstoneUpdater;
 
@@ -120,6 +143,8 @@ class World{
     private Weather $weather;
 
     private BlockTicker $blockTicker;
+
+    private Sleeping $sleeping;
 
     /** @var array<int, Entity> */
     private array $spawning = [];
@@ -137,11 +162,145 @@ class World{
         $this->liquids = new LiquidEngine($this);
         $this->weather = new Weather($this, $metadata);
         $this->blockTicker = new BlockTicker($this);
+        $this->sleeping = new Sleeping($this);
         $this->gameRules = new GameRules($metadata->gameRules);
+        $this->tickingAreas = new TickingAreas($metadata);
+    }
+
+    public function getTickingAreas() : TickingAreas{
+        return $this->tickingAreas;
+    }
+
+    public function preloadTickingAreas() : void{
+        foreach($this->tickingAreas->getAll() as $area){
+            if($area->isPreload()){
+                foreach($area->getChunks() as [$chunkX, $chunkZ]){
+                    $this->loadChunk($chunkX, $chunkZ);
+                }
+            }
+        }
+    }
+
+    /**
+     * Whether blocks, liquids, block entities and entities in the chunk run this tick: it is
+     * within tick-distance of a player, or in a ticking area while a player is in the world.
+     */
+    public function isChunkTicking(int $chunkX, int $chunkZ) : bool{
+        return isset($this->tickingChunks[self::chunkKey($chunkX, $chunkZ)]);
+    }
+
+    /**
+     * @return array<string, Chunk>
+     */
+    public function getTickingChunks() : array{
+        return $this->tickingChunks;
+    }
+
+    private function updateTickingChunks() : void{
+        $distance = Server::getInstance()->getTickDistance();
+        $signature = $distance . "/" . $this->tickingAreas->getRevision() . "/" . count($this->chunks);
+        $centers = [];
+
+        foreach($this->players as $player){
+            $position = $player->getPosition();
+            $centers[] = [$position->getChunkX(), $position->getChunkZ()];
+            $signature .= "/" . $position->getChunkX() . ":" . $position->getChunkZ();
+        }
+
+        if($signature === $this->tickingSignature){
+            return;
+        }
+
+        $this->tickingSignature = $signature;
+        $ticking = [];
+
+        foreach($centers as [$centerX, $centerZ]){
+            for($dx = -$distance; $dx <= $distance; ++$dx){
+                for($dz = -$distance; $dz <= $distance; ++$dz){
+                    $key = self::chunkKey($centerX + $dx, $centerZ + $dz);
+
+                    if($dx * $dx + $dz * $dz <= $distance * $distance && isset($this->chunks[$key])){
+                        $ticking[$key] = $this->chunks[$key];
+                    }
+                }
+            }
+        }
+
+        //like vanilla, ticking areas only run while someone is in the world
+        if($centers !== []){
+            foreach($this->tickingAreas->getAll() as $area){
+                foreach($area->getChunks() as [$chunkX, $chunkZ]){
+                    $key = self::chunkKey($chunkX, $chunkZ);
+
+                    if(isset($this->chunks[$key])){
+                        $ticking[$key] = $this->chunks[$key];
+                    }elseif(!isset($this->generating[$key])){
+                        $this->requestChunk($chunkX, $chunkZ, static function(Chunk $chunk) : void{});
+                    }
+                }
+            }
+        }
+
+        $this->tickingChunks = $ticking;
+
+        $coords = [];
+
+        foreach($ticking as $chunk){
+            $coords[] = [$chunk->getX(), $chunk->getZ()];
+        }
+
+        $this->liquids->setTickingChunks($coords);
+        $this->mobEngine->setTickingChunks($coords);
+    }
+
+    /**
+     * Saves and unloads the chunks no player can see and no ticking area holds, once they have
+     * not been needed for UNLOAD_DELAY ticks.
+     */
+    private function unloadUnusedChunks() : void{
+        $held = $this->tickingAreas->getChunkKeys();
+        $wanted = [];
+
+        foreach($this->players as $player){
+            $wanted[] = $player->getNetworkSession()->getWantedChunks();
+        }
+
+        $unloaded = 0;
+
+        foreach($this->chunks as $key => $chunk){
+            $used = isset($this->tickingChunks[$key]) || isset($held[$key]) || isset($this->generating[$key]);
+
+            foreach($wanted as $chunks){
+                if($used){
+                    break;
+                }
+
+                $used = isset($chunks[$key]);
+            }
+
+            if($used){
+                $this->chunkLastUsed[$key] = $this->currentTick;
+                continue;
+            }
+
+            if($this->currentTick - ($this->chunkLastUsed[$key] ??= $this->currentTick) < self::UNLOAD_DELAY){
+                continue;
+            }
+
+            $this->unloadChunk($chunk->getX(), $chunk->getZ());
+
+            if(++$unloaded >= self::UNLOADS_PER_CHECK){
+                break;
+            }
+        }
     }
 
     public function getGameRules() : GameRules{
         return $this->gameRules;
+    }
+
+    public function getSleeping() : Sleeping{
+        return $this->sleeping;
     }
 
     /**
@@ -353,6 +512,7 @@ class World{
      * new chunk gets its animals.
      */
     private function onChunkLoaded(Chunk $chunk, bool $generated) : void{
+        $this->chunkLastUsed[self::chunkKey($chunk->getX(), $chunk->getZ())] = $this->currentTick;
         $this->light->addChunk($chunk);
         $this->liquids->addChunk($chunk);
         $this->mobEngine->setChunk($chunk->getX(), $chunk->getZ(), $chunk);
@@ -518,18 +678,27 @@ class World{
 
         (new ChunkUnloadEvent($this, $chunk))->call();
 
-        $saved = $this->saveEntities()[$key] ?? [];
+        $saved = [];
+
+        foreach($this->entities as $entity){
+            $position = $entity->getPosition();
+
+            if($entity instanceof Player || $entity->isClosed() || $position->getChunkX() !== $chunkX || $position->getChunkZ() !== $chunkZ){
+                continue;
+            }
+
+            $tag = $entity->save();
+
+            if($tag !== null){
+                $saved[] = $tag;
+            }
+
+            $entity->close();
+        }
 
         if($saved !== [] || $chunk->getSavedEntities() !== []){
             $chunk->setSavedEntities($saved);
             $chunk->setChanged();
-        }
-
-        //the mobs leave with their chunk, they come back when it is loaded again
-        foreach($this->entities as $entity){
-            if($entity instanceof Mob && $entity->getPosition()->getChunkX() === $chunkX && $entity->getPosition()->getChunkZ() === $chunkZ){
-                $entity->close();
-            }
         }
 
         if($chunk->hasChanged()){
@@ -540,7 +709,7 @@ class World{
         $this->redstoneUpdater->forgetChunk($chunkX, $chunkZ);
         $this->light->removeChunk($chunkX, $chunkZ);
         $this->liquids->removeChunk($chunkX, $chunkZ);
-        unset($this->chunks[$key]);
+        unset($this->chunks[$key], $this->chunkLastUsed[$key], $this->tickingChunks[$key]);
     }
 
     /**
@@ -573,7 +742,7 @@ class World{
     }
 
     /**
-     * Saves everything and releases the provider. The world must not be used afterwards.
+     * Saves everything and releases the provider. The world must not be used afterward.
      *
      * @return int number of chunks written
      */
@@ -625,6 +794,7 @@ class World{
             $this->randomTicker->onBlockChanged($x, $y, $z, $oldState, $block);
             $this->liquids->onBlockChanged($x, $y, $z);
             $this->blockTicker->onBlockChanged($x, $y, $z, $oldState, $block);
+            BlockSupport::onBlockChanged($this, $x, $y, $z, $oldState, $block);
         }
     }
 
@@ -694,8 +864,8 @@ class World{
     /**
      * @param Closure() : void $update
      */
-    public function scheduleUpdate(int $delay, Closure $update) : void{
-        $this->scheduledUpdates[] = [$this->currentTick + $delay, $update];
+    public function scheduleUpdate(int $delay, Closure $update, ?int $x = null, ?int $z = null) : void{
+        $this->scheduledUpdates[] = [$this->currentTick + $delay, $update, $x, $z];
     }
 
     public function getSpawnPosition() : Vector3{
@@ -774,6 +944,7 @@ class World{
     public function tick(int $currentTick) : void{
         $this->currentTick = $currentTick;
         ++$this->metadata->gameTime;
+        $this->updateTickingChunks();
 
         if($this->gameRules->getBool(GameRules::DO_DAYLIGHT_CYCLE)){
             ++$this->metadata->time;
@@ -783,13 +954,12 @@ class World{
             }
         }
 
-        foreach($this->chunks as $chunk){
+        foreach($this->tickingChunks as $chunk){
             foreach($chunk->getBlockEntities() as $entity){
                 if($entity instanceof TickableBlockEntity){
                     $entity->tick($this, $currentTick);
                 }
 
-                //comparators reading a container see its new contents
                 if($entity instanceof ContainerBlockEntity && $entity->takeContentsChanged()){
                     $this->redstoneUpdater->update($entity->getX(), $entity->getY(), $entity->getZ());
                 }
@@ -801,12 +971,20 @@ class World{
         $this->liquids->tick($currentTick);
         $this->blockTicker->tick($currentTick);
         $this->weather->tick($this->randomTicker->getTickingChunks());
+        $this->sleeping->tick();
 
-        foreach($this->scheduledUpdates as $key => [$tick, $update]){
-            if($tick <= $currentTick){
-                unset($this->scheduledUpdates[$key]);
-                $update();
+        foreach($this->scheduledUpdates as $key => [$tick, $update, $x, $z]){
+            if($tick > $currentTick){
+                continue;
             }
+
+            if($x !== null && $z !== null && !$this->isChunkTicking($x >> 4, $z >> 4)){
+                $this->scheduledUpdates[$key][0] = $currentTick + self::FROZEN_DELAY;
+                continue;
+            }
+
+            unset($this->scheduledUpdates[$key]);
+            $update();
         }
 
         if($this->spawning !== []){
@@ -821,12 +999,22 @@ class World{
         }
 
         foreach($this->entities as $entity){
-            if(!$entity instanceof Player && !$entity->isClosed()){
+            if($entity instanceof Player || $entity->isClosed()){
+                continue;
+            }
+
+            $position = $entity->getPosition();
+
+            if(isset($this->tickingChunks[self::chunkKey($position->getChunkX(), $position->getChunkZ())])){
                 $entity->tick($currentTick);
             }
         }
 
         $this->mobEngine->tick();
+
+        if($currentTick % self::UNLOAD_CHECK_TICKS === 0){
+            $this->unloadUnusedChunks();
+        }
     }
 
     /**

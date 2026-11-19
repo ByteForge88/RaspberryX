@@ -33,6 +33,8 @@ use raspberry\player\Player;
 use raspberry\world\Chunk;
 use raspberry\world\World;
 
+use JsonException;
+
 use function mt_getrandmax;
 use function mt_rand;
 use function preg_match;
@@ -40,9 +42,9 @@ use function preg_match;
 class Dispensing{
 
     /** blocks a liquid or a shulker box can be put in */
-    private const REPLACEABLE = '/^minecraft:(air|flowing_water|flowing_lava|fire|soul_fire|short_grass|short_dry_grass|fern|deadbush|bush|vine|glow_lichen|seagrass|snow_layer|structure_void|crimson_roots|warped_roots|nether_sprouts|leaf_litter)$/D';
+    private const string REPLACEABLE = '/^minecraft:(air|flowing_water|flowing_lava|fire|soul_fire|short_grass|short_dry_grass|fern|deadbush|bush|vine|glow_lichen|seagrass|snow_layer|structure_void|crimson_roots|warped_roots|nether_sprouts|leaf_litter)$/D';
 
-    private const FILLED_BUCKETS = [
+    private const array FILLED_BUCKETS = [
         ItemIds::WATER_BUCKET => [BlockIds::WATER, LevelSoundEvent::BUCKET_EMPTY_WATER],
         ItemIds::LAVA_BUCKET => [BlockIds::LAVA, LevelSoundEvent::BUCKET_EMPTY_LAVA],
         ItemIds::POWDER_SNOW_BUCKET => [BlockIds::POWDER_SNOW, LevelSoundEvent::BUCKET_EMPTY_POWDER_SNOW]
@@ -54,6 +56,8 @@ class Dispensing{
     /**
      * Fires one of $item out of a dispenser. Returns what is left of the stack, null when
      * nothing happened.
+     *
+     * @throws JsonException
      */
     public static function dispense(World $world, Dispenser $dispenser, Item $item, int $facing) : ?Item{
         [$dx, $dy, $dz] = Facing::offset($facing);
@@ -244,6 +248,8 @@ class Dispensing{
 
     /**
      * Lights a candle, candle cake or campfire in front. Fire comes with fire spreading.
+     *
+     * @throws JsonException
      */
     private static function ignite(World $world, Item $item, int $x, int $y, int $z) : ?Item{
         $block = $world->getBlock($x, $y, $z);

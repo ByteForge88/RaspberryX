@@ -13,9 +13,9 @@ use raspberry\world\Chunk;
 
 class VoidGenerator implements Generator{
 
-    public const PLATFORM_X = 0;
-    public const PLATFORM_Y = 64;
-    public const PLATFORM_Z = 0;
+    public const int PLATFORM_X = 0;
+    public const int PLATFORM_Y = 64;
+    public const int PLATFORM_Z = 0;
 
     private BlockState $platform;
 

@@ -20,13 +20,13 @@ use function strlen;
 
 class Item{
 
-    public const MAX_COUNT = 255;
+    public const int MAX_COUNT = 255;
 
-    public const MAX_TEXT_LENGTH = 512;
+    public const int MAX_TEXT_LENGTH = 512;
 
-    public const MAX_LORE_LINES = 32;
+    public const int MAX_LORE_LINES = 32;
 
-    public const MAX_ENCHANTMENT_LEVEL = 32767;
+    public const int MAX_ENCHANTMENT_LEVEL = 32767;
 
     private string $id;
 

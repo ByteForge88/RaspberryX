@@ -13,6 +13,8 @@ use raspberry\utils\Uuid;
 use raspberry\world\World;
 use raspberry\world\Difficulty;
 
+use Random\RandomException;
+
 use function max;
 use function min;
 
@@ -21,28 +23,28 @@ use function min;
  */
 class Human extends Living{
 
-    public const EYE_HEIGHT = 1.62;
+    public const float EYE_HEIGHT = 1.62;
 
-    public const WIDTH = 0.6;
-    public const HEIGHT = 1.8;
+    public const float WIDTH = 0.6;
+    public const float HEIGHT = 1.8;
+
+    public const int MAX_FOOD = 20;
+
+    /** saturation can never be higher than the food level */
+    public const float DEFAULT_SATURATION = 5.0;
+
+    /** exhaustion builds up from actions; every 4 uses up one saturation point, or a food point when saturation is empty */
+    public const float MAX_EXHAUSTION = 4.0;
+
+    /** food 18 or more heals slowly */
+    public const int REGENERATION_FOOD = 18;
+
+    /** the hunger cycle: slow healing and starvation happen once every 80 ticks (4 seconds) */
+    private const int FOOD_TICKS = 80;
 
     protected Uuid $uuid;
 
     protected Skin $skin;
-
-    public const MAX_FOOD = 20;
-
-    /** saturation can never be higher than the food level */
-    public const DEFAULT_SATURATION = 5.0;
-
-    /** exhaustion builds up from actions; every 4 uses up one saturation point, or a food point when saturation is empty */
-    public const MAX_EXHAUSTION = 4.0;
-
-    /** food 18 or more heals slowly */
-    public const REGENERATION_FOOD = 18;
-
-    /** the hunger cycle: slow healing and starvation happen once every 80 ticks (4 seconds) */
-    private const FOOD_TICKS = 80;
 
     protected int $food = self::MAX_FOOD;
 
@@ -53,6 +55,9 @@ class Human extends Living{
     /** position in the 80-tick hunger cycle, 1 to 80 */
     protected int $foodTickTimer = 1;
 
+    /**
+     * @throws RandomException
+     */
     public function __construct(World $world, Vector3 $position, Skin $skin, ?Uuid $uuid = null){
         $this->skin = $skin;
         $this->uuid = $uuid ?? Uuid::random();

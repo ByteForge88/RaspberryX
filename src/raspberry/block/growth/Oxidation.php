@@ -19,13 +19,13 @@ use function mt_rand;
 
 class Oxidation implements RandomTickBehavior{
 
-    private const CHANCE = 0.05688889;
+    private const float CHANCE = 0.05688889;
 
-    private const UNAFFECTED_MODIFIER = 0.75;
+    private const float UNAFFECTED_MODIFIER = 0.75;
 
-    private const REACH = 4;
+    private const int REACH = 4;
 
-    private const BLOCKS = [
+    private const array BLOCKS = [
         "copper_block",
         "chiseled_copper",
         "cut_copper",
@@ -44,7 +44,7 @@ class Oxidation implements RandomTickBehavior{
         "lightning_rod"
     ];
 
-    private const STAGES = ["", "exposed_", "weathered_", "oxidized_"];
+    private const array STAGES = ["", "exposed_", "weathered_", "oxidized_"];
 
     /** @var array<string, array{string, int}>|null */
     private static ?array $stages = null;
@@ -127,6 +127,22 @@ class Oxidation implements RandomTickBehavior{
     public static function unweathered(BlockState $state) : ?BlockState{
         $stage = self::stages()[$state->getName()] ?? null;
         return $stage === null || $stage[1] === 0 ? null : self::rename($state, $stage[0]);
+    }
+
+    /**
+     * Whether it is unwaxed copper that weathers, at any stage.
+     */
+    public static function isCopper(string $name) : bool{
+        return isset(self::stages()[$name]);
+    }
+
+    /**
+     * The copper one weathering stage back, what scraping it with an axe does. Null when it has
+     * not weathered.
+     */
+    public static function scraped(BlockState $state) : ?BlockState{
+        $stage = self::stages()[$state->getName()] ?? null;
+        return $stage === null || $stage[1] === 0 ? null : self::rename($state, self::$chains[$stage[0]][$stage[1] - 1]);
     }
 
     private static function rename(BlockState $state, string $name) : BlockState{

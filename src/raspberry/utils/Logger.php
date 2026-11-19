@@ -15,15 +15,15 @@ use function str_replace;
 
 final class Logger{
 
-    public const DEBUG = "DEBUG";
-    public const INFO = "INFO";
-    public const NOTICE = "NOTICE";
-    public const WARNING = "WARNING";
-    public const ERROR = "ERROR";
-    public const CRITICAL = "CRITICAL";
-    public const INGAME = "IN-GAME";
+    public const string DEBUG = "DEBUG";
+    public const string INFO = "INFO";
+    public const string NOTICE = "NOTICE";
+    public const string WARNING = "WARNING";
+    public const string ERROR = "ERROR";
+    public const string CRITICAL = "CRITICAL";
+    public const string INGAME = "IN-GAME";
 
-    private const COLORS = [
+    private const array COLORS = [
         self::DEBUG => "\e[90m",
         self::INFO => "",
         self::NOTICE => "\e[96m",
@@ -33,7 +33,7 @@ final class Logger{
         self::INGAME => "\e[0;36m"
     ];
 
-    private const RESET = "\e[0m";
+    private const string RESET = "\e[0m";
 
     private bool $debug = false;
 

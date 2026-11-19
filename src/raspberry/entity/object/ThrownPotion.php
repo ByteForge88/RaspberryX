@@ -37,19 +37,19 @@ use function sqrt;
 
 class ThrownPotion extends Entity{
 
-    public const GRAVITY = 0.05;
-    public const DRAG = 0.01;
+    public const float GRAVITY = 0.05;
+    public const float DRAG = 0.01;
 
     /** how far a splash reaches */
-    public const SPLASH_RADIUS = 4.0;
+    public const float SPLASH_RADIUS = 4.0;
 
-    private const MAX_AGE = 1200;
-    private const VOID_DEPTH = 64;
+    private const int MAX_AGE = 1200;
+    private const int VOID_DEPTH = 64;
 
     /** the thrower is not hit by its own potion right as it leaves the hand */
-    private const OWNER_SAFE_TICKS = 5;
+    private const int OWNER_SAFE_TICKS = 5;
 
-    private const STEP = 0.25;
+    private const float STEP = 0.25;
 
     private Item $potion;
 

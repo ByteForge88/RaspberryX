@@ -6,19 +6,19 @@ namespace raspberry\nbt\tag;
 
 abstract class Tag{
 
-    public const TAG_END = 0;
-    public const TAG_BYTE = 1;
-    public const TAG_SHORT = 2;
-    public const TAG_INT = 3;
-    public const TAG_LONG = 4;
-    public const TAG_FLOAT = 5;
-    public const TAG_DOUBLE = 6;
-    public const TAG_BYTE_ARRAY = 7;
-    public const TAG_STRING = 8;
-    public const TAG_LIST = 9;
-    public const TAG_COMPOUND = 10;
-    public const TAG_INT_ARRAY = 11;
-    public const TAG_LONG_ARRAY = 12;
+    public const int TAG_END = 0;
+    public const int TAG_BYTE = 1;
+    public const int TAG_SHORT = 2;
+    public const int TAG_INT = 3;
+    public const int TAG_LONG = 4;
+    public const int TAG_FLOAT = 5;
+    public const int TAG_DOUBLE = 6;
+    public const int TAG_BYTE_ARRAY = 7;
+    public const int TAG_STRING = 8;
+    public const int TAG_LIST = 9;
+    public const int TAG_COMPOUND = 10;
+    public const int TAG_INT_ARRAY = 11;
+    public const int TAG_LONG_ARRAY = 12;
 
     abstract public function getType() : int;
 
@@ -39,7 +39,7 @@ abstract class Tag{
             self::TAG_COMPOUND => "Compound",
             self::TAG_INT_ARRAY => "IntArray",
             self::TAG_LONG_ARRAY => "LongArray",
-            default => "Unknown({$type})"
+            default => "Unknown($type)"
         };
     }
 }

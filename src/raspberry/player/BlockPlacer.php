@@ -5,13 +5,19 @@ declare(strict_types=1);
 namespace raspberry\player;
 
 use raspberry\block\BlockCollision;
+use raspberry\block\Beds;
+use raspberry\block\BigDripleaf;
 use raspberry\block\BoneMeal;
+use raspberry\block\PointedDripstone;
+use raspberry\block\Scaffolding;
+use raspberry\block\ToolUse;
 use raspberry\block\Fire;
 use raspberry\block\Buckets;
 use raspberry\block\BlockIds;
 use raspberry\block\BlockOrientation;
 use raspberry\block\BlockProperties;
 use raspberry\block\BlockState;
+use raspberry\block\BlockSupport;
 use raspberry\block\Cauldrons;
 use raspberry\block\ItemBlocks;
 use raspberry\block\StairsShape;
@@ -65,30 +71,16 @@ use function strlen;
 class BlockPlacer{
 
     /** blocks a click replaces instead of placing next to */
-    private const REPLACEABLE = '/^minecraft:(air|water|flowing_water|lava|flowing_lava|fire|soul_fire|short_grass|short_dry_grass|fern|deadbush|bush|vine|glow_lichen|sculk_vein|seagrass|snow_layer|structure_void|light_block_\d+|crimson_roots|warped_roots|nether_sprouts|hanging_roots|leaf_litter)$/D';
+    private const string REPLACEABLE = '/^minecraft:(air|water|flowing_water|lava|flowing_lava|fire|soul_fire|short_grass|short_dry_grass|fern|deadbush|bush|vine|glow_lichen|sculk_vein|seagrass|snow_layer|structure_void|light_block_\d+|crimson_roots|warped_roots|nether_sprouts|hanging_roots|leaf_litter)$/D';
 
     /** clicking these without sneaking uses them instead of placing (their screens come later) */
-    private const USABLE = '/^minecraft:(crafting_table|chest|trapped_chest|ender_chest|barrel|(\w+_)?shulker_box|(lit_)?(furnace|blast_furnace|smoker)|(chipped_|damaged_)?anvil|enchanting_table|brewing_stand|hopper|dispenser|dropper|crafter|beacon|loom|stonecutter_block|grindstone|cartography_table|smithing_table|lectern|bed|cake|\w*candle_cake|noteblock|jukebox|(powered|unpowered)_(repeater|comparator)|daylight_detector(_inverted)?|flower_pot|cauldron|chiseled_bookshelf|respawn_anchor|decorated_pot|vault|composter|\w*_sign|(\w+_)?copper_chest)$/D';
-
-    /** crops grow on farmland */
-    private const CROPS = '/^minecraft:(wheat|carrots|potatoes|beetroot|melon_stem|pumpkin_stem|torchflower_crop|pitcher_crop)$/D';
-
-    /** plants that need soil under them */
-    private const PLANTS = '/^minecraft:(\w+_sapling|short_grass|fern|tall_grass|large_fern|sunflower|lilac|rose_bush|peony|(golden_)?dandelion|poppy|blue_orchid|allium|azure_bluet|\w+_tulip|oxeye_daisy|cornflower|lily_of_the_valley|wither_rose|torchflower|pitcher_plant|(open|closed)_eyeblossom|pink_petals|wildflowers|sweet_berry_bush|bush|firefly_bush|azalea|flowering_azalea)$/D';
-
-    private const SOIL = '/^minecraft:(grass_block|dirt|coarse_dirt|podzol|dirt_with_roots|farmland|mycelium|moss_block|pale_moss_block|mud|muddy_mangrove_roots)$/D';
-
-    /** blocks that stand on a solid block */
-    private const ON_FLOOR = '/^minecraft:(\w*_door|bed|straw_bed|\w*standing_sign|standing_banner|\w*carpet|\w*rail|redstone_wire|(powered|unpowered)_(repeater|comparator)|\w*pressure_plate|cake|\w*candle|snow_layer|sea_pickle|deadbush|(short|tall)_dry_grass|(brown|red)_mushroom|(crimson|warped)_(fungus|roots)|nether_sprouts|cactus_flower|turtle_egg|leaf_litter)$/D';
-
-    /** blocks that hang on the block they were placed against */
-    private const ATTACHED = '/^minecraft:(\w*torch(_\w+)?|\w+_button|lever|ladder|\w*wall_sign|wall_banner|tripwire_hook|\w+_coral_wall_fan|(\w+_)?amethyst_(bud|cluster)|(glow_)?frame)$/D';
+    private const string USABLE = '/^minecraft:(crafting_table|chest|trapped_chest|ender_chest|barrel|(\w+_)?shulker_box|(lit_)?(furnace|blast_furnace|smoker)|(chipped_|damaged_)?anvil|enchanting_table|brewing_stand|hopper|dispenser|dropper|crafter|beacon|loom|stonecutter_block|grindstone|cartography_table|smithing_table|lectern|bed|cake|\w*candle_cake|noteblock|jukebox|(powered|unpowered)_(repeater|comparator)|daylight_detector(_inverted)?|flower_pot|cauldron|chiseled_bookshelf|respawn_anchor|decorated_pot|vault|composter|\w*_sign|(\w+_)?copper_chest)$/D';
 
     /** two blocks tall plants (doors are found by their hinge) */
-    private const TALL = '/^minecraft:(tall_grass|large_fern|sunflower|lilac|rose_bush|peony|pitcher_plant|small_dripleaf_block)$/D';
+    private const string TALL = '/^minecraft:(tall_grass|large_fern|sunflower|lilac|rose_bush|peony|pitcher_plant|small_dripleaf_block)$/D';
 
     /** sign text colors of the dyes, as RGB (black text is pure black) */
-    private const DYE_COLORS = [
+    private const array DYE_COLORS = [
         "white" => 0xf0f0f0, "orange" => 0xf9801d, "magenta" => 0xc74ebd, "light_blue" => 0x3ab3da,
         "yellow" => 0xfed83d, "lime" => 0x80c71f, "pink" => 0xf38baa, "gray" => 0x474f52,
         "light_gray" => 0x9d9d97, "cyan" => 0x169c9c, "purple" => 0x8932b8, "blue" => 0x3c44aa,
@@ -134,6 +126,16 @@ class BlockPlacer{
         if(($held->getId() === ItemIds::FLINT_AND_STEEL || $held->getId() === ItemIds::FIRE_CHARGE) && $this->light($x, $y, $z, $clicked, $held)){
             $player->swingArm(AnimatePacket::SWING_INTERACT);
             return;
+        }
+
+        if(ToolUse::isTool($held)){
+            $result = $player->getGameMode()->allowsBuilding() ? ToolUse::use($player, $x, $y, $z, $face, $clicked, $held) : ToolUse::NOTHING;
+
+            if($result !== ToolUse::NOTHING){
+                $player->swingArm(AnimatePacket::SWING_INTERACT);
+                $result === ToolUse::USE_UP ? $this->useUpHeld($held) : $this->wearHeld();
+                return;
+            }
         }
 
         if(!$player->isSneaking() || $held->isNull()){
@@ -259,6 +261,14 @@ class BlockPlacer{
             return Cauldrons::use($this->player, $x, $y, $z, $block);
         }
 
+        if($name === BlockIds::BED){
+            return Beds::use($this->player, $x, $y, $z, $block);
+        }
+
+        if($name === BlockIds::SWEET_BERRY_BUSH){
+            return $this->pickBerries($x, $y, $z, $block);
+        }
+
         if($this->player->getContainerOpener()->open($x, $y, $z, $block)){
             return true;
         }
@@ -371,6 +381,10 @@ class BlockPlacer{
             return true;
         }
 
+        if($blockName === BlockIds::SCAFFOLDING){
+            return $this->placeScaffolding($x, $y, $z, $face, $clicked, $held);
+        }
+
         if($this->isReplaceable($clicked) && $clicked->getName() !== $blockName){
             $face = Facing::UP;
         }else{
@@ -396,7 +410,13 @@ class BlockPlacer{
         [$ax, $ay, $az] = Facing::offset(Facing::opposite($face));
         $state = BlockOrientation::orient($registry->getDefaultState($blockName), $face, $facing, Facing::rotationFromYaw($this->player->getYaw()), $clickY, $this->getFaceTowardPlayer($x, $y, $z, $facing), $this->getBlockOrAir($x + $ax, $y + $ay, $z + $az));
 
-        if($state === null || !$registry->isValid($state) || !$this->hasSupport($state, $x, $y, $z, $face)){
+        if($blockName === BlockIds::POINTED_DRIPSTONE){
+            $state = PointedDripstone::getPlacedState($world, $x, $y, $z, $face, !$this->player->isSneaking());
+        }elseif($blockName === BlockIds::BIG_DRIPLEAF && $state !== null){
+            $state = BigDripleaf::getPlacedState($world, $x, $y, $z, $state);
+        }
+
+        if($state === null || !$registry->isValid($state) || !$this->hasSupport($state, $x, $y, $z)){
             return false;
         }
 
@@ -424,7 +444,7 @@ class BlockPlacer{
         }
 
         foreach($blocks as $i => [$bx, $by, $bz, $block]){
-            if($i > 0 && (!$this->isLoaded($bx, $by, $bz) || !$this->isReplaceable($world->getBlock($bx, $by, $bz)) || !$this->hasSupport($block, $bx, $by, $bz, Facing::UP))){
+            if($i > 0 && (!$this->isLoaded($bx, $by, $bz) || !$this->isReplaceable($world->getBlock($bx, $by, $bz)) || !$this->hasSupport($block, $bx, $by, $bz))){
                 return false;
             }
 
@@ -469,6 +489,69 @@ class BlockPlacer{
             $this->openSign($entity, true);
         }
 
+        return true;
+    }
+
+    /**
+     * Clicking the bottom of scaffolding, or where scaffolding already is, builds the column up.
+     */
+    private function placeScaffolding(int $x, int $y, int $z, int $face, BlockState $clicked, Item $held) : bool{
+        $world = $this->player->getWorld();
+        $target = Scaffolding::getPlacement($world, $x, $y, $z, $face, $this->isReplaceable($clicked));
+
+        if($target === null){
+            return false;
+        }
+
+        [$clickedX, $clickedY, $clickedZ] = [$x, $y, $z];
+        [$x, $y, $z] = $target;
+        $replaced = $world->getBlock($x, $y, $z);
+
+        if(!$this->isReplaceable($replaced) || $replaced->getName() === BlockIds::LAVA || $replaced->getName() === BlockIds::FLOWING_LAVA){
+            return false;
+        }
+
+        $state = Scaffolding::getPlacedState($world, $x, $y, $z);
+
+        if($state === null){
+            return false;
+        }
+
+        $event = new BlockPlaceEvent($this->player, $state, new Vector3($x, $y, $z), $held);
+        $event->call();
+
+        if($event->isCancelled()){
+            return false;
+        }
+
+        $world->setBlock($x, $y, $z, $state);
+        $this->playSound(LevelSoundEvent::PLACE, $x, $y, $z, $state);
+
+        //the client may have put its piece where the click was, not on top of the column
+        $this->resend($clickedX, $clickedY, $clickedZ, $face);
+
+        return true;
+    }
+
+    /**
+     * Picks the berries off a bush that has some, it is left as a bush without berries. Bone
+     * meal on a bush that is not full grows it instead.
+     */
+    private function pickBerries(int $x, int $y, int $z, BlockState $bush) : bool{
+        $growth = (int) $bush->getProperty(BlockProperties::GROWTH);
+
+        if($growth < 2 || !$this->player->getGameMode()->allowsBuilding()){
+            return false;
+        }
+
+        if($growth < 3 && $this->player->getInventory()->getItemInHand()->getId() === ItemIds::BONE_MEAL){
+            return false;
+        }
+
+        $world = $this->player->getWorld();
+        $world->setBlock($x, $y, $z, $bush->withProperty(BlockProperties::GROWTH, 1));
+        $world->dropItem(new Vector3($x + 0.5, $y + 0.5, $z + 0.5), new Item(ItemIds::SWEET_BERRIES, mt_rand(1, 2) + ($growth >= 3 ? 1 : 0)));
+        $this->playSound(LevelSoundEvent::BLOCK_SWEET_BERRY_BUSH_PICK, $x, $y, $z, null);
         return true;
     }
 
@@ -837,60 +920,10 @@ class BlockPlacer{
 
     /**
      * Whether the block has what it needs to stay: soil, farmland, or a solid block to stand
-     * on or hang from. $face is the face it was placed against.
+     * on or hang from.
      */
-    private function hasSupport(BlockState $state, int $x, int $y, int $z, int $face) : bool{
-        $name = $state->getName();
-        $below = $this->getBlockOrAir($x, $y - 1, $z);
-
-        if(preg_match(self::CROPS, $name) === 1){
-            return $below->getName() === BlockIds::FARMLAND;
-        }
-
-        if($name === BlockIds::NETHER_WART){
-            return $below->getName() === BlockIds::SOUL_SAND;
-        }
-
-        if($name === BlockIds::CACTUS){
-            return preg_match('/^minecraft:(sand|red_sand|cactus)$/D', $below->getName()) === 1;
-        }
-
-        if($name === BlockIds::REEDS){
-            return $below->getName() === BlockIds::REEDS || preg_match(self::SOIL, $below->getName()) === 1 || preg_match('/^minecraft:(red_)?sand$/D', $below->getName()) === 1;
-        }
-
-        if(preg_match(self::PLANTS, $name) === 1){
-            return preg_match(self::SOIL, $below->getName()) === 1 || $this->isUpperHalf($state);
-        }
-
-        if($name === BlockIds::COCOA){
-            [$dx, , $dz] = Facing::offset(Facing::opposite($face));
-
-            return preg_match('/^minecraft:(stripped_)?jungle_(log|wood)$/D', $this->getBlockOrAir($x + $dx, $y, $z + $dz)->getName()) === 1;
-        }
-
-        if($state->hasProperty(BlockProperties::HANGING) && preg_match('/lantern$/', $name) === 1){
-            return BlockCollision::isSolid($this->getBlockOrAir($x, $y + ($state->getProperty(BlockProperties::HANGING) === true ? 1 : -1), $z));
-        }
-
-        if(preg_match(self::ATTACHED, $name) === 1){
-            [$dx, $dy, $dz] = Facing::offset(Facing::opposite($face));
-
-            return BlockCollision::isSolid($this->getBlockOrAir($x + $dx, $y + $dy, $z + $dz));
-        }
-
-        if(preg_match(self::ON_FLOOR, $name) === 1){
-            return $this->isUpperHalf($state) || BlockCollision::isSolid($below);
-        }
-
-        return true;
-    }
-
-    /**
-     * The top of a door or tall plant stands on its bottom half.
-     */
-    private function isUpperHalf(BlockState $state) : bool{
-        return $state->hasProperty(BlockProperties::UPPER_BLOCK_BIT) && $state->getProperty(BlockProperties::UPPER_BLOCK_BIT) === true;
+    private function hasSupport(BlockState $state, int $x, int $y, int $z) : bool{
+        return BlockSupport::canStay($this->player->getWorld(), $x, $y, $z, $state, true);
     }
 
     /**

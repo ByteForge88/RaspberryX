@@ -15,7 +15,7 @@ use function max;
 class Nearby{
 
     /** x, y, z of the four sides */
-    public const HORIZONTAL = [[0, 0, -1], [0, 0, 1], [-1, 0, 0], [1, 0, 0]];
+    public const array HORIZONTAL = [[0, 0, -1], [0, 0, 1], [-1, 0, 0], [1, 0, 0]];
 
     private function __construct(){
     }
