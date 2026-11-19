@@ -9,6 +9,9 @@ use raspberry\entity\animal\Cow;
 use raspberry\entity\animal\Pig;
 use raspberry\entity\animal\Sheep;
 use raspberry\entity\monster\Zombie;
+use raspberry\entity\monster\Creeper;
+use raspberry\entity\monster\Spider;
+use raspberry\entity\monster\CaveSpider;
 use raspberry\entity\object\ItemEntity;
 
 use raspberry\math\Vector3;
@@ -43,7 +46,10 @@ class EntityFactory{
             EntityIds::COW => fn(World $world, Vector3 $position, float $yaw) : Mob => new Cow($world, $position, $yaw),
             EntityIds::PIG => fn(World $world, Vector3 $position, float $yaw) : Mob => new Pig($world, $position, $yaw),
             EntityIds::SHEEP => fn(World $world, Vector3 $position, float $yaw) : Mob => new Sheep($world, $position, $yaw),
-            EntityIds::ZOMBIE => fn(World $world, Vector3 $position, float $yaw) : Mob => new Zombie($world, $position, $yaw)
+            EntityIds::ZOMBIE => fn(World $world, Vector3 $position, float $yaw) : Mob => new Zombie($world, $position, $yaw),
+            EntityIds::SPIDER => fn(World $world, Vector3 $position, float $yaw) : Mob => new Spider($world, $position, $yaw),
+            EntityIds::CAVE_SPIDER => fn(World $world, Vector3 $position, float $yaw) : Mob => new CaveSpider($world, $position, $yaw),
+            EntityIds::CREEPER => fn(World $world, Vector3 $position, float $yaw) : Mob => new Creeper($world, $position, $yaw)
         ];
     }
 

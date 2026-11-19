@@ -20,6 +20,8 @@ class Behavior{
     private const int NEAREST_ATTACKABLE_TARGET = 10;
     private const int HURT_BY_TARGET = 11;
     private const int MELEE_ATTACK = 12;
+    private const int LEAP_AT_TARGET = 13;
+    private const int SWELL = 14;
 
     private int $type;
 
@@ -83,8 +85,8 @@ class Behavior{
      * Goes after the nearest player within $followRange, seen first when $mustSee. Looks once in
      * $interval ticks on average.
      */
-    public static function nearestAttackableTarget(int $priority, float $followRange, bool $mustSee = true, int $interval = 10) : self{
-        return new self(self::NEAREST_ATTACKABLE_TARGET, $priority, $followRange, $mustSee ? 1.0 : 0.0, (float) $interval);
+    public static function nearestAttackableTarget(int $priority, float $followRange, bool $mustSee = true, int $interval = 10, bool $onlyInDark = false) : self{
+        return new self(self::NEAREST_ATTACKABLE_TARGET, $priority, $followRange, $mustSee ? 1.0 : 0.0, (float) $interval, $onlyInDark ? 1.0 : 0.0);
     }
 
     /** goes after whoever hurt it */
@@ -96,8 +98,16 @@ class Behavior{
      * Walks up to its target and hits it once a second. Without $followUnseen it stops chasing
      * when it loses sight of it.
      */
-    public static function meleeAttack(int $priority, float $speed, bool $followUnseen = false) : self{
-        return new self(self::MELEE_ATTACK, $priority, $speed, $followUnseen ? 1.0 : 0.0);
+    public static function meleeAttack(int $priority, float $speed, bool $followUnseen = false, bool $givesUpInLight = false) : self{
+        return new self(self::MELEE_ATTACK, $priority, $speed, $followUnseen ? 1.0 : 0.0, $givesUpInLight ? 1.0 : 0.0);
+    }
+
+    public static function leapAtTarget(int $priority, float $height) : self{
+        return new self(self::LEAP_AT_TARGET, $priority, $height);
+    }
+
+    public static function swell(int $priority) : self{
+        return new self(self::SWELL, $priority);
     }
 
     public function encode() : string{

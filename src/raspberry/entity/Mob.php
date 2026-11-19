@@ -52,6 +52,7 @@ abstract class Mob extends Living{
     public const int STATE_IN_LAVA = 8;
     public const int STATE_HAZARD = 16;
     public const int STATE_IN_FIRE = 32;
+    public const int STATE_CLIMBING = 64;
 
     /** flags the native side takes */
     public const int AI_BABY = 1;
@@ -60,6 +61,8 @@ abstract class Mob extends Living{
     public const int AI_DISABLED = 8;
     public const int AI_ON_FIRE = 16;
     public const int AI_AVOID_WATER = 32;
+    public const int AI_BRIGHT = 64;
+    public const int AI_CLIMBER = 128;
 
     public const int EVENT_FALL = 1;
     public const int EVENT_EAT_START = 2;
@@ -68,6 +71,7 @@ abstract class Mob extends Living{
     public const int EVENT_LAND = 5;
     public const int EVENT_ATTACK = 6;
     public const int EVENT_TARGET = 7;
+    public const int EVENT_SWELL = 8;
 
     public const float BABY_SCALE = 0.5;
 

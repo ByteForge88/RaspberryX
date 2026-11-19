@@ -8,7 +8,7 @@ use crate::random::JavaRandom;
 
 use super::blocks::{self, View};
 use super::path::Node;
-use super::{Event, Grid, Info, Mob, Player, BABY, EVENT_ATTACK, EVENT_BRED, EVENT_EAT_BLOCK, EVENT_EAT_START, EVENT_TARGET, IN_LAVA, IN_LOVE, IN_WATER, ON_FIRE, PLAYER_INVISIBLE, PLAYER_NO_TARGET, PLAYER_SNEAKING, PLAYER_SPECTATOR};
+use super::{Event, Grid, Info, Mob, Player, BABY, BRIGHT, EVENT_ATTACK, EVENT_SWELL, ON_GROUND, EVENT_BRED, EVENT_EAT_BLOCK, EVENT_EAT_START, EVENT_TARGET, IN_LAVA, IN_LOVE, IN_WATER, ON_FIRE, PLAYER_INVISIBLE, PLAYER_NO_TARGET, PLAYER_SNEAKING, PLAYER_SPECTATOR};
 
 pub const FLOAT: u8 = 1;
 pub const PANIC: u8 = 2;
@@ -22,6 +22,8 @@ pub const EAT_BLOCK: u8 = 9;
 pub const NEAREST_ATTACKABLE_TARGET: u8 = 10;
 pub const HURT_BY_TARGET: u8 = 11;
 pub const MELEE_ATTACK: u8 = 12;
+pub const LEAP_AT_TARGET: u8 = 13;
+pub const SWELL: u8 = 14;
 
 const MOVE: u8 = 1;
 const LOOK: u8 = 2;
@@ -220,6 +222,8 @@ impl Goal {
             LOOK_AT_PLAYER => LOOK,
             EAT_BLOCK => MOVE | LOOK | JUMP,
             MELEE_ATTACK => MOVE | LOOK,
+            LEAP_AT_TARGET => MOVE | JUMP,
+            SWELL => MOVE,
             NEAREST_ATTACKABLE_TARGET | HURT_BY_TARGET => TARGET,
             _ => 0,
         }
@@ -279,6 +283,10 @@ impl Goal {
             NEAREST_ATTACKABLE_TARGET => {
                 let interval = self.params[2] as i32;
 
+                if self.params[3] > 0.0 && mob.has(BRIGHT) {
+                    return false;
+                }
+
                 if interval > 0 && context.random.next_int_bounded(interval) != 0 {
                     return false;
                 }
@@ -298,6 +306,15 @@ impl Goal {
 
                 self.target = mob.hurt_by;
                 true
+            }
+            LEAP_AT_TARGET => {
+                let Some(target) = context.target(mob.target) else { return false };
+                let distance = mob.distance_sq(target.x, target.y, target.z);
+
+                mob.is(ON_GROUND) && (4.0..=16.0).contains(&distance) && context.random.next_int_bounded(5) == 0
+            }
+            SWELL => {
+                self.count > 0 || context.target(mob.target).is_some_and(|target| mob.distance_sq(target.x, target.y, target.z) < 9.0)
             }
             MELEE_ATTACK => {
                 if self.delay > 0 {
@@ -423,6 +440,20 @@ impl Goal {
                 self.count = 0;
                 self.spot = [0.0; 3];
             }
+            LEAP_AT_TARGET => {
+                if let Some(target) = context.target(mob.target) {
+                    let (dx, dz) = (target.x - mob.x, target.z - mob.z);
+                    let length = (dx * dx + dz * dz).sqrt();
+
+                    if length > 1.0e-7 {
+                        mob.mx = dx / length * 0.4 + mob.mx * 0.2;
+                        mob.mz = dz / length * 0.4 + mob.mz * 0.2;
+                    }
+
+                    mob.my = self.params[0] as f64;
+                }
+            }
+            SWELL => mob.nav.stop(),
             PANIC | RANDOM_STROLL => {
                 let [x, y, z] = self.spot;
                 mob.move_to(context.view, x, y, z, self.params[0]);
@@ -439,7 +470,16 @@ impl Goal {
     fn can_continue(&mut self, mob: &mut Mob, context: &mut Context) -> bool {
         match self.kind {
             NEAREST_ATTACKABLE_TARGET | HURT_BY_TARGET => self.keeps_target(mob, context),
-            MELEE_ATTACK => context.target(mob.target).is_some() && (self.params[1] > 0.0 || !mob.nav.is_done()),
+            MELEE_ATTACK => {
+                if self.params[2] > 0.0 && mob.has(BRIGHT) && context.random.next_int_bounded(100) == 0 {
+                    context.set_target(mob, 0);
+                    return false;
+                }
+
+                context.target(mob.target).is_some() && (self.params[1] > 0.0 || !mob.nav.is_done())
+            }
+            LEAP_AT_TARGET => !mob.is(ON_GROUND),
+            SWELL => self.count > 0 || context.target(mob.target).is_some_and(|target| mob.distance_sq(target.x, target.y, target.z) < 9.0),
             FLOAT => mob.is(IN_WATER | IN_LAVA),
             PANIC | RANDOM_STROLL => !mob.nav.is_done(),
             BREED => mob.has(IN_LOVE) && self.count < 60 && context.info(self.target).is_some_and(|partner| partner.flags & IN_LOVE != 0),
@@ -479,6 +519,17 @@ impl Goal {
 
     fn run(&mut self, mob: &mut Mob, context: &mut Context) {
         match self.kind {
+            SWELL => {
+                let direction = match context.target(mob.target) {
+                    Some(target) if mob.distance_sq(target.x, target.y, target.z) <= 49.0 && context.can_see(mob, &target) => 1,
+                    _ => -1,
+                };
+
+                if direction != self.count {
+                    self.count = direction;
+                    context.events.push(Event { id: mob.id, kind: EVENT_SWELL, value: direction as f32, block: [0; 3], other: 0 });
+                }
+            }
             MELEE_ATTACK => {
                 let Some(target) = context.target(mob.target) else { return };
                 let seen = context.can_see(mob, &target);

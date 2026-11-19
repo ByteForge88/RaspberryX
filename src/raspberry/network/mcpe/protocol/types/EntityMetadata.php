@@ -58,10 +58,12 @@ class EntityMetadata{
     public const FLAG_USING_ITEM = 4;
     public const FLAG_INVISIBLE = 5;
     public const FLAG_IN_LOVE = 7;
+    public const FLAG_POWERED = 9;
     public const FLAG_IGNITED = 10;
     public const FLAG_BABY = 11;
     public const FLAG_SHOW_NAME = 14;
     public const FLAG_ALWAYS_SHOW_NAME = 15;
+    public const FLAG_WALL_CLIMBING = 18;
     public const FLAG_CAN_CLIMB = 19;
     public const FLAG_SHEARED = 31;
     public const FLAG_BREATHING = 35;

@@ -54,6 +54,10 @@ class EffectManager{
     public function add(EffectInstance $effect, bool $force = false, float $potency = 1.0) : bool{
         $type = $effect->getEffect();
 
+        if(!$this->entity->canBeAffected($type)){
+            return false;
+        }
+
         if($type->isInstant()){
             $this->applyInstant($type, $effect->getAmplifier(), $potency);
             return true;

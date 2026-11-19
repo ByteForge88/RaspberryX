@@ -135,10 +135,26 @@ abstract class Monster extends Mob{
             return false;
         }
 
-        $light = $this->world->getLight($x, $y, $z) / 15;
-        $brightness = $light / (4.0 - 3.0 * $light);
+        $brightness = $this->getBrightness();
 
         return $brightness > 0.5 && mt_rand() / mt_getrandmax() * 30.0 < ($brightness - 0.4) * 2.0 && $this->world->canSeeSky($x, $y, $z);
+    }
+
+    /**
+     * How bright it is at the monster's eyes, 0 to 1: 0.5 and up is light level 12 and up.
+     */
+    protected function getBrightness() : float{
+        $x = $this->position->getFloorX();
+        $y = (int) floor($this->position->y + $this->getEyeHeight());
+        $z = $this->position->getFloorZ();
+
+        if(!$this->world->isChunkLoaded($x >> 4, $z >> 4)){
+            return 0.0;
+        }
+
+        $light = $this->world->getLight($x, $y, $z) / 15;
+
+        return $light / (4.0 - 3.0 * $light);
     }
 
     protected function onDamaged(DamageSource $source) : void{

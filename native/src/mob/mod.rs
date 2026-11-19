@@ -25,6 +25,8 @@ pub const SLOW_FALL: u32 = 4;
 pub const NO_AI: u32 = 8;
 pub const ON_FIRE: u32 = 16;
 pub const AVOID_WATER: u32 = 32;
+pub const BRIGHT: u32 = 64;
+pub const CLIMBER: u32 = 128;
 
 pub const ON_GROUND: u32 = 1;
 pub const IN_WATER: u32 = 2;
@@ -32,6 +34,7 @@ pub const HEAD_IN_WATER: u32 = 4;
 pub const IN_LAVA: u32 = 8;
 pub const HAZARD: u32 = 16;
 pub const IN_FIRE: u32 = 32;
+pub const CLIMBING: u32 = 64;
 
 pub const PLAYER_SPECTATOR: u32 = 1;
 pub const PLAYER_NO_TARGET: u32 = 2;
@@ -45,6 +48,7 @@ pub const EVENT_BRED: u32 = 4;
 pub const EVENT_LAND: u32 = 5;
 pub const EVENT_ATTACK: u32 = 6;
 pub const EVENT_TARGET: u32 = 7;
+pub const EVENT_SWELL: u32 = 8;
 
 const HURT_MEMORY: i32 = 100;
 
@@ -134,6 +138,11 @@ impl Mob {
         let goal = [x.floor() as i32, (y + 0.5).floor() as i32, z.floor() as i32];
 
         self.nav.path = path::find(view, walker, start, goal, PATH_RANGE, PATH_BUDGET);
+
+        if self.has(CLIMBER) && self.nav.path.last() != Some(&goal) {
+            self.nav.path.push(goal);
+        }
+
         self.nav.index = 0;
         self.nav.speed = speed;
         self.nav.stuck = 0;
@@ -148,7 +157,7 @@ impl Mob {
         let body = view.block(bx, (self.y + 0.4).floor() as i32, bz);
         let below = view.block(bx, (self.y - 0.1).floor() as i32, bz);
         let head = view.block(bx, (self.y + self.eye_height()).floor() as i32, bz);
-        let mut state = self.state & ON_GROUND;
+        let mut state = self.state & (ON_GROUND | CLIMBING);
 
         if (feet | body) & blocks::WATER != 0 {
             state |= IN_WATER;
@@ -254,8 +263,15 @@ impl Mob {
 
         fn stuck_in(&self, view: &View) -> Option<[f64; 3]> {
             let (bx, bz) = (self.x.floor() as i32, self.z.floor() as i32);
+            (self.y.floor() as i32..=(self.y + self.height - 0.01).floor() as i32).find_map(|y| {
+                let flags = view.block(bx, y, bz);
 
-            (self.y.floor() as i32..=(self.y + self.height - 0.01).floor() as i32).find_map(|y| blocks::stuck(view.block(bx, y, bz)))
+                if self.has(CLIMBER) && blocks::kind(flags) == blocks::COBWEB {
+                    None
+                } else {
+                    blocks::stuck(flags)
+                }
+            })
         }
 
         fn travel(&mut self, view: &View, forward: f32, events: &mut Vec<Event>) {
@@ -289,6 +305,15 @@ impl Mob {
             self.my *= 0.6;
         }
 
+        let climbing = self.is(CLIMBING);
+
+        if climbing {
+            self.mx = self.mx.clamp(-0.15, 0.15);
+            self.mz = self.mz.clamp(-0.15, 0.15);
+            self.my = self.my.max(-0.15);
+            self.fall = 0.0;
+        }
+
         let [sx, sy, sz] = stuck.unwrap_or([1.0; 3]);
         let falling = self.my;
         let moved = physics::move_box(view, self.x, self.y, self.z, self.width, self.height, self.mx * sx, self.my * sy, self.mz * sz, on_ground);
@@ -297,7 +322,7 @@ impl Mob {
             self.fall += self.y - moved.y;
         }
 
-                if in_liquid || stuck.is_some() {
+                if in_liquid || stuck.is_some() || climbing {
                     self.fall = 0.0;
                 }
 
@@ -362,7 +387,12 @@ impl Mob {
             self.mz = 0.0;
         }
 
-        self.state = (self.state & !ON_GROUND) | if moved.on_ground { ON_GROUND } else { 0 };
+        self.state = (self.state & !(ON_GROUND | CLIMBING)) | if moved.on_ground { ON_GROUND } else { 0 };
+
+        if self.has(CLIMBER) && self.hit_wall {
+            self.state |= CLIMBING;
+            self.my = 0.2;
+        }
 
         if in_liquid {
             let drag = if self.is(IN_WATER) { WATER_DRAG } else { LAVA_DRAG };
@@ -633,10 +663,15 @@ impl World {
                     }
                 }
                 COMMAND_HURT => {
-                    let id = reader.u64()?;
+                    let (id, attacker) = (reader.u64()?, reader.u64()?);
 
                     if let Some(mob) = self.mob(id) {
                         mob.hurt = HURT_MEMORY;
+
+                        if attacker != 0 {
+                            mob.hurt_by = attacker;
+                            mob.hurt_count = mob.hurt_count.wrapping_add(1);
+                        }
                     }
                 }
                 COMMAND_PLAYERS => {

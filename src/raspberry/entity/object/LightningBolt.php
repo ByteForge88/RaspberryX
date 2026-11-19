@@ -15,6 +15,7 @@ use raspberry\entity\Living;
 use raspberry\entity\Entity;
 use raspberry\entity\EntityIds;
 use raspberry\entity\damage\DamageSource;
+use raspberry\entity\monster\Creeper;
 
 use raspberry\event\block\BlockIgniteEvent;
 
@@ -115,6 +116,11 @@ class LightningBolt extends Entity{
             }
 
             $this->hit[$entity->getId()] = true;
+
+            if($entity instanceof Creeper){
+                $entity->setPowered(true);
+            }
+
             $entity->setOnFire(self::FIRE_SECONDS);
             $entity->damage(new DamageSource(DamageSource::CAUSE_LIGHTNING, self::DAMAGE));
         }

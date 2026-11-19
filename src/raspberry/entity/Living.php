@@ -227,6 +227,13 @@ abstract class Living extends Entity{
         return false;
     }
 
+    /**
+     * The undead shrug off regeneration and poison.
+     */
+    public function canBeAffected(Effect $effect) : bool{
+        return !$this->isUndead() || ($effect !== Effect::REGENERATION && $effect !== Effect::POISON);
+    }
+
     public function getKnockbackResistance() : float{
         return 0.0;
     }
