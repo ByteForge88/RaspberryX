@@ -19,13 +19,13 @@ use function strlen;
 
 class InventoryTransactionPacket implements Packet{
 
-    public const TYPE_NORMAL = 0;
-    public const TYPE_MISMATCH = 1;
-    public const TYPE_USE_ITEM = 2;
-    public const TYPE_USE_ITEM_ON_ENTITY = 3;
-    public const TYPE_RELEASE_ITEM = 4;
+    public const int TYPE_NORMAL = 0;
+    public const int TYPE_MISMATCH = 1;
+    public const int TYPE_USE_ITEM = 2;
+    public const int TYPE_USE_ITEM_ON_ENTITY = 3;
+    public const int TYPE_RELEASE_ITEM = 4;
 
-    private const MAX_LIST = 64;
+    private const int MAX_LIST = 64;
 
     public int $legacyRequestId = 0;
 

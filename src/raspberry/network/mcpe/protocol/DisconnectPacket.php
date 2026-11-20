@@ -10,7 +10,7 @@ use raspberry\network\encoding\BinaryWriter;
 class DisconnectPacket implements Packet{
 
     /** generic "disconnected" reason, Bedrock has many more codes for telemetry */
-    public const REASON_UNKNOWN = 0;
+    public const int REASON_UNKNOWN = 0;
 
     public int $reason = self::REASON_UNKNOWN;
 

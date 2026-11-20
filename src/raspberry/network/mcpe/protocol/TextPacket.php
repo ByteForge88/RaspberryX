@@ -13,24 +13,24 @@ use function count;
 
 class TextPacket implements Packet{
 
-    public const TYPE_RAW = 0;
-    public const TYPE_CHAT = 1;
-    public const TYPE_TRANSLATION = 2;
-    public const TYPE_POPUP = 3;
-    public const TYPE_JUKEBOX_POPUP = 4;
-    public const TYPE_TIP = 5;
-    public const TYPE_SYSTEM = 6;
-    public const TYPE_WHISPER = 7;
-    public const TYPE_ANNOUNCEMENT = 8;
-    public const TYPE_OBJECT_WHISPER = 9;
-    public const TYPE_OBJECT = 10;
-    public const TYPE_OBJECT_ANNOUNCEMENT = 11;
+    public const int TYPE_RAW = 0;
+    public const int TYPE_CHAT = 1;
+    public const int TYPE_TRANSLATION = 2;
+    public const int TYPE_POPUP = 3;
+    public const int TYPE_JUKEBOX_POPUP = 4;
+    public const int TYPE_TIP = 5;
+    public const int TYPE_SYSTEM = 6;
+    public const int TYPE_WHISPER = 7;
+    public const int TYPE_ANNOUNCEMENT = 8;
+    public const int TYPE_OBJECT_WHISPER = 9;
+    public const int TYPE_OBJECT = 10;
+    public const int TYPE_OBJECT_ANNOUNCEMENT = 11;
 
-    private const CATEGORY_MESSAGE_ONLY = 0;
-    private const CATEGORY_AUTHORED_MESSAGE = 1;
-    private const CATEGORY_MESSAGE_WITH_PARAMETERS = 2;
+    private const int CATEGORY_MESSAGE_ONLY = 0;
+    private const int CATEGORY_AUTHORED_MESSAGE = 1;
+    private const int CATEGORY_MESSAGE_WITH_PARAMETERS = 2;
 
-    private const MAX_PARAMETERS = 4;
+    private const int MAX_PARAMETERS = 4;
 
     public int $type = self::TYPE_RAW;
 

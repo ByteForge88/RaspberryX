@@ -11,8 +11,8 @@ use function round;
 
 class MoveActorAbsolutePacket implements Packet{
 
-    public const FLAG_ON_GROUND = 1;
-    public const FLAG_TELEPORT = 2;
+    public const int FLAG_ON_GROUND = 1;
+    public const int FLAG_TELEPORT = 2;
 
     public int $actorRuntimeId = 0;
 

@@ -28,54 +28,54 @@ class AvailableCommandsPacket implements Packet{
     /**
      * A plain parameter type is sent as ARG_FLAG_VALID | ARG_TYPE_*.
      */
-    public const ARG_FLAG_VALID = 0x100000;
+    public const int ARG_FLAG_VALID = 0x100000;
 
-    public const ARG_TYPE_INT = 1;
-    public const ARG_TYPE_FLOAT = 3;
-    public const ARG_TYPE_VALUE = 4;
-    public const ARG_TYPE_WILDCARD_INT = 5;
-    public const ARG_TYPE_OPERATOR = 6;
-    public const ARG_TYPE_COMPARE_OPERATOR = 7;
-    public const ARG_TYPE_TARGET = 8;
+    public const int ARG_TYPE_INT = 1;
+    public const int ARG_TYPE_FLOAT = 3;
+    public const int ARG_TYPE_VALUE = 4;
+    public const int ARG_TYPE_WILDCARD_INT = 5;
+    public const int ARG_TYPE_OPERATOR = 6;
+    public const int ARG_TYPE_COMPARE_OPERATOR = 7;
+    public const int ARG_TYPE_TARGET = 8;
 
-    public const ARG_TYPE_WILDCARD_TARGET = 10;
+    public const int ARG_TYPE_WILDCARD_TARGET = 10;
 
-    public const ARG_TYPE_FILEPATH = 17;
+    public const int ARG_TYPE_FILEPATH = 17;
 
-    public const ARG_TYPE_FULL_INTEGER_RANGE = 23;
+    public const int ARG_TYPE_FULL_INTEGER_RANGE = 23;
 
-    public const ARG_TYPE_EQUIPMENT_SLOT = 47;
-    public const ARG_TYPE_STRING = 56;
+    public const int ARG_TYPE_EQUIPMENT_SLOT = 47;
+    public const int ARG_TYPE_STRING = 56;
 
-    public const ARG_TYPE_INT_POSITION = 64;
-    public const ARG_TYPE_POSITION = 65;
+    public const int ARG_TYPE_INT_POSITION = 64;
+    public const int ARG_TYPE_POSITION = 65;
 
-    public const ARG_TYPE_MESSAGE = 68;
+    public const int ARG_TYPE_MESSAGE = 68;
 
-    public const ARG_TYPE_RAWTEXT = 70;
+    public const int ARG_TYPE_RAWTEXT = 70;
 
-    public const ARG_TYPE_JSON = 74;
+    public const int ARG_TYPE_JSON = 74;
 
-    public const ARG_TYPE_BLOCK_STATES = 84;
+    public const int ARG_TYPE_BLOCK_STATES = 84;
 
-    public const ARG_TYPE_COMMAND = 90;
+    public const int ARG_TYPE_COMMAND = 90;
 
     /**
      * Enums are composed as ARG_FLAG_ENUM | ARG_FLAG_VALID | (index into $enums).
      */
-    public const ARG_FLAG_ENUM = 0x200000;
+    public const int ARG_FLAG_ENUM = 0x200000;
 
     /**
      * ARG_FLAG_POSTFIX | (index into $postfixes), used for /xp <level: int>L. Only for integer parameters.
      */
-    public const ARG_FLAG_POSTFIX = 0x1000000;
+    public const int ARG_FLAG_POSTFIX = 0x1000000;
 
     /**
      * Soft enums are composed as ARG_FLAG_SOFT_ENUM | ARG_FLAG_VALID | (index into $softEnums).
      */
-    public const ARG_FLAG_SOFT_ENUM = 0x4000000;
+    public const int ARG_FLAG_SOFT_ENUM = 0x4000000;
 
-    private const NO_ALIASES = 0xffffffff;
+    private const int NO_ALIASES = 0xffffffff;
 
     /** @var list<CommandEnumData> enums whose values only change when the commands are sent again */
     public array $enums = [];

@@ -23,10 +23,10 @@ use function substr;
 
 class CommandEnum{
 
-    public const BOOLEAN = "Boolean";
+    public const string BOOLEAN = "Boolean";
 
     /** filled with the names of the commands each player can use when the commands are sent */
-    public const COMMAND_NAME = "CommandName";
+    public const  string COMMAND_NAME = "CommandName";
 
     private string $name;
 

@@ -17,9 +17,9 @@ use RuntimeException;
 
 class WebRtcSession{
 
-    private const MAX_MESSAGE_BYTES = 262144;
-    private const MAX_BUFFERED_BYTES = 4194304;
-    private const MAX_MESSAGES_PER_POLL = 64;
+    private const int MAX_MESSAGE_BYTES = 262144;
+    private const int MAX_BUFFERED_BYTES = 4194304;
+    private const int MAX_MESSAGES_PER_POLL = 64;
 
     private readonly PeerConnection $peer;
     private readonly int $createdAt;

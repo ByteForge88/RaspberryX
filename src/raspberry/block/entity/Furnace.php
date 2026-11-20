@@ -210,7 +210,7 @@ class Furnace extends ContainerBlockEntity implements TickableBlockEntity{
             return;
         }
 
-        $result = $event->getResult();
+        $result = $event->result;
         $inventory = $this->getInventory();
         $current = $inventory->getItem(self::SLOT_OUTPUT);
 

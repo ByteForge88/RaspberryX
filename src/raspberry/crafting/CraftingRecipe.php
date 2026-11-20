@@ -10,7 +10,7 @@ use function array_map;
 
 abstract class CraftingRecipe{
 
-    public const BLOCK_CRAFTING_TABLE = "crafting_table";
+    public const string BLOCK_CRAFTING_TABLE = "crafting_table";
 
     private string $id;
 

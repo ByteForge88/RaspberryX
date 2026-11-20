@@ -16,10 +16,10 @@ use function count;
 
 class InventoryContentPacket implements Packet{
 
-    public const WINDOW_INVENTORY = 0;
-    public const WINDOW_OFFHAND = 119;
-    public const WINDOW_ARMOR = 120;
-    public const WINDOW_UI = 124;
+    public const int WINDOW_INVENTORY = 0;
+    public const int WINDOW_OFFHAND = 119;
+    public const int WINDOW_ARMOR = 120;
+    public const int WINDOW_UI = 124;
 
     public int $windowId = self::WINDOW_INVENTORY;
 

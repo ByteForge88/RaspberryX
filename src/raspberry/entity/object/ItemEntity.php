@@ -141,6 +141,10 @@ class ItemEntity extends Entity{
         return $this->motion;
     }
 
+    public function setMotion(Vector3 $motion) : void{
+        $this->motion = $motion;
+    }
+
     public function getPickupDelay() : int{
         return $this->pickupDelay;
     }

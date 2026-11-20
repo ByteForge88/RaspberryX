@@ -14,11 +14,11 @@ use function count;
 
 class CommandOutputPacket implements Packet{
 
-    public const TYPE_NONE = "none";
-    public const TYPE_LAST = "lastoutput";
-    public const TYPE_SILENT = "silent";
-    public const TYPE_ALL = "alloutput";
-    public const TYPE_DATA_SET = "dataset";
+    public const string TYPE_NONE = "none";
+    public const string TYPE_LAST = "lastoutput";
+    public const string TYPE_SILENT = "silent";
+    public const string TYPE_ALL = "alloutput";
+    public const string TYPE_DATA_SET = "dataset";
 
     public CommandOriginData $origin;
 

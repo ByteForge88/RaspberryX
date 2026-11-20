@@ -37,9 +37,9 @@ use const PREG_SET_ORDER;
 
 class CommandArgumentParser{
 
-    private const OPERATORS = ["=", "+=", "-=", "*=", "/=", "%=", "<", ">", "><"];
+    private const array OPERATORS = ["=", "+=", "-=", "*=", "/=", "%=", "<", ">", "><"];
 
-    private const COMPARE_OPERATORS = ["<", "<=", "=", ">=", ">"];
+    private const array COMPARE_OPERATORS = ["<", "<=", "=", ">=", ">"];
 
     private Server $server;
 

@@ -12,13 +12,13 @@ use raspberry\network\encoding\BinaryWriter;
 
 class PacketTranslator{
 
-    private const PACKET_ID_MASK = 0x3ff;
-    private const SUBCLIENT_MASK = 0x03;
+    private const int PACKET_ID_MASK = 0x3ff;
+    private const int SUBCLIENT_MASK = 0x03;
 
-    private const SENDER_SHIFT = 10;
-    private const TARGET_SHIFT = 12;
+    private const int SENDER_SHIFT = 10;
+    private const int TARGET_SHIFT = 12;
 
-    private const HEADER_MASK = 0x3fff;
+    private const int HEADER_MASK = 0x3fff;
 
     private PacketRegistry $registry;
 

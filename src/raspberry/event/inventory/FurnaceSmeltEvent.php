@@ -27,7 +27,15 @@ class FurnaceSmeltEvent extends Event implements Cancellable{
 
     private Item $input;
 
-    private Item $result;
+    public Item $result{
+        get{
+            return $this->result;
+        }
+
+        set{
+            $this->result = $value;
+        }
+    }
 
     public function __construct(World $world, Furnace $furnace, Item $input, Item $result){
         $this->world = $world;
@@ -48,11 +56,4 @@ class FurnaceSmeltEvent extends Event implements Cancellable{
         return $this->input;
     }
 
-    public function getResult() : Item{
-        return $this->result;
-    }
-
-    public function setResult(Item $result) : void{
-        $this->result = $result;
-    }
 }

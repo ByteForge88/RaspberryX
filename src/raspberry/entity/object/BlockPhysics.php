@@ -8,6 +8,8 @@ use raspberry\block\BlockCollision;
 
 use raspberry\math\Vector3;
 
+use raspberry\network\mcpe\protocol\SetActorMotionPacket;
+
 use raspberry\world\Chunk;
 
 use function abs;
@@ -54,10 +56,17 @@ trait BlockPhysics{
             $motionZ *= $groundFriction;
         }
 
+        $before = $this->motion;
         $this->motion = new Vector3(abs($motionX) < 0.0001 ? 0.0 : $motionX, $motionY, abs($motionZ) < 0.0001 ? 0.0 : $motionZ);
 
         if($dx !== 0.0 || $dy !== 0.0 || $dz !== 0.0){
             $this->move(new Vector3($this->position->x + $dx, $this->position->y + $dy, $this->position->z + $dz), 0.0, 0.0);
+        }
+
+        if(!$before->equals($this->motion)){
+            foreach($this->viewers as $viewer){
+                $viewer->getNetworkSession()->sendDataPacket(SetActorMotionPacket::create($this->id, $this->motion->x, $this->motion->y, $this->motion->z, 0));
+            }
         }
     }
 

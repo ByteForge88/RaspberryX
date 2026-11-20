@@ -16,10 +16,10 @@ use function count;
 
 class CreativeContentPacket implements Packet{
 
-    public const CATEGORY_CONSTRUCTION = 1;
-    public const CATEGORY_NATURE = 2;
-    public const CATEGORY_EQUIPMENT = 3;
-    public const CATEGORY_ITEMS = 4;
+    public const int CATEGORY_CONSTRUCTION = 1;
+    public const int CATEGORY_NATURE = 2;
+    public const int CATEGORY_EQUIPMENT = 3;
+    public const int CATEGORY_ITEMS = 4;
 
     /** @var list<array{int, string, ItemStack}> category, name, icon */
     public array $groups = [];

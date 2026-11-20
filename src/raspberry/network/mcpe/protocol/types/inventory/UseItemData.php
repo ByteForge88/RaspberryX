@@ -11,9 +11,9 @@ use raspberry\network\mcpe\serializer\ItemStackSerializer;
 
 class UseItemData{
 
-    public const ACTION_CLICK_BLOCK = 0;
-    public const ACTION_CLICK_AIR = 1;
-    public const ACTION_BREAK_BLOCK = 2;
+    public const int ACTION_CLICK_BLOCK = 0;
+    public const int ACTION_CLICK_AIR = 1;
+    public const int ACTION_BREAK_BLOCK = 2;
 
     public int $action;
 

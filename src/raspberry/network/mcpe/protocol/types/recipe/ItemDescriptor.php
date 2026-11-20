@@ -8,7 +8,7 @@ use raspberry\network\encoding\BinaryWriter;
 
 class ItemDescriptor{
 
-    public const ANY_META = 32767;
+    public const int ANY_META = 32767;
 
     public ?string $name;
 

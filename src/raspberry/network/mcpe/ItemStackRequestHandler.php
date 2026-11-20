@@ -11,6 +11,8 @@ use raspberry\block\entity\BrewingStand;
 use raspberry\crafting\FurnaceData;
 use raspberry\crafting\CraftingRecipe;
 
+use raspberry\entity\object\ExperienceOrb;
+
 use raspberry\event\inventory\SlotChange;
 use raspberry\event\inventory\CraftItemEvent;
 use raspberry\event\inventory\InventoryTransactionEvent;
@@ -22,6 +24,7 @@ use raspberry\inventory\PlayerInventory;
 
 use raspberry\item\Item;
 use raspberry\item\ItemIds;
+use raspberry\item\enchantment\Enchantment;
 
 use raspberry\network\mcpe\protocol\ItemStackRequestPacket;
 use raspberry\network\mcpe\protocol\ItemStackResponsePacket;
@@ -48,10 +51,10 @@ use function spl_object_id;
 class ItemStackRequestHandler{
 
     /** how many past requests are remembered for the stack IDs the client names after them */
-    private const REMEMBERED_REQUESTS = 32;
+    private const int REMEMBERED_REQUESTS = 32;
 
     /** items allowed in the offhand */
-    private const OFFHAND_ITEMS = [
+    private const array OFFHAND_ITEMS = [
         ItemIds::SHIELD,
         ItemIds::TOTEM_OF_UNDYING,
         ItemIds::ARROW,
@@ -206,7 +209,6 @@ class ItemStackRequestHandler{
             $this->session->getServer()->getLogger()->debug("Rejected inventory request {$request->requestId} of {$this->player->getName()}: " . $exception->getMessage());
             $response = new ItemStackResponse(ItemStackResponse::STATUS_ERROR, $request->requestId);
         }finally{
-            //whatever was made for the request and not taken out of the output slot is gone
             $this->created = null;
             $this->pendingResults = [];
             $this->inventoryManager->setQuiet(false);
@@ -222,7 +224,6 @@ class ItemStackRequestHandler{
 
         $this->changes = [];
         $this->drops = [];
-
         return $response;
     }
 
@@ -242,7 +243,6 @@ class ItemStackRequestHandler{
             StackRequestAction::CRAFT_RECIPE => $this->craftRecipe($action->recipeNetworkId, $action->timesCrafted, false),
             StackRequestAction::CRAFT_RECIPE_AUTO => $this->craftRecipe($action->recipeNetworkId, $action->timesCrafted, true),
             StackRequestAction::CREATE => $this->create($action->resultsSlot),
-            //the server already took the ingredients and knows the results
             StackRequestAction::CONSUME, StackRequestAction::CRAFT_RESULTS_DEPRECATED => null,
             StackRequestAction::MINE_BLOCK => $this->setItem($action->source ?? throw new UnexpectedValueException("Missing slot"), $this->getItem($action->source)),
             StackRequestAction::DROP => $this->drop($this->slot($action->source), $action->count),
@@ -254,6 +254,8 @@ class ItemStackRequestHandler{
         if($to->containerId === ContainerIds::CREATED_OUTPUT){
             throw new UnexpectedValueException("Items cannot be put into the created output slot");
         }
+
+        $this->checkBound($from);
 
         $fromCreated = $from->containerId === ContainerIds::CREATED_OUTPUT;
         $source = $fromCreated ? $this->takeCreated($count) : $this->getItem($from);
@@ -287,6 +289,8 @@ class ItemStackRequestHandler{
             return;
         }
 
+        $this->checkBound($slot);
+
         $item = $this->getItem($slot);
 
         if($count < 1 || $item->getCount() < $count){
@@ -312,6 +316,8 @@ class ItemStackRequestHandler{
             throw new UnexpectedValueException("Items cannot be swapped with the created output slot");
         }
 
+        $this->checkBound($a);
+        $this->checkBound($b);
         $this->checkFits($a, $second);
         $this->checkFits($b, $first);
 
@@ -543,7 +549,7 @@ class ItemStackRequestHandler{
 
         foreach($request->actions as $action){
             if($action->source?->containerId === ContainerIds::FURNACE_RESULT){
-                $this->player->addXp($furnace->collectExperience());
+                ExperienceOrb::award($this->player->getWorld(), $this->player->getPosition(), $furnace->collectExperience());
                 return;
             }
         }
@@ -595,6 +601,12 @@ class ItemStackRequestHandler{
             throw new UnexpectedValueException("A shulker box cannot hold a shulker box");
         }elseif($slot->containerId === ContainerIds::OFFHAND && !in_array($item->getId(), self::OFFHAND_ITEMS, true)){
             throw new UnexpectedValueException($item->getId() . " cannot go in the offhand");
+        }
+    }
+
+    private function checkBound(StackRequestSlot $slot) : void{
+        if($slot->containerId === ContainerIds::ARMOR && $this->player->getGameMode() !== GameMode::CREATIVE && $this->getItem($slot)->getEnchantmentLevel(Enchantment::BINDING) > 0){
+            throw new UnexpectedValueException("Curse of binding keeps " . $this->getItem($slot)->getId() . " on");
         }
     }
 

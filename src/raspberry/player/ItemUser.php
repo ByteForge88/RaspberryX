@@ -9,14 +9,23 @@ use raspberry\block\BlockCollision;
 use raspberry\entity\effect\Effect;
 use raspberry\entity\effect\EffectInstance;
 use raspberry\entity\object\ThrownPotion;
+use raspberry\entity\projectile\Arrow;
+use raspberry\entity\projectile\Egg;
+use raspberry\entity\projectile\FishingHook;
+use raspberry\entity\projectile\Projectile;
+use raspberry\entity\projectile\Snowball;
+use raspberry\entity\projectile\Throwable;
 
 use raspberry\event\player\PlayerItemUseEvent;
 use raspberry\event\player\PlayerItemConsumeEvent;
+
+use raspberry\inventory\Inventory;
 
 use raspberry\item\Food;
 use raspberry\item\Item;
 use raspberry\item\ItemIds;
 use raspberry\item\Potion;
+use raspberry\item\enchantment\Enchantment;
 
 use raspberry\math\Vector3;
 
@@ -45,6 +54,9 @@ class ItemUser{
     private const int TICK_TOLERANCE = 4;
 
     private const float THROW_SPEED = 0.5;
+
+    /** a bow is held drawn for as long as the player likes */
+    private const int BOW_TICKS = 72000;
 
     /** an ominous bottle gives bad omen for 100 minutes */
     private const int BAD_OMEN_TICKS = 120000;
@@ -104,6 +116,25 @@ class ItemUser{
             return;
         }
 
+        if($id === ItemIds::SNOWBALL || $id === ItemIds::EGG){
+            $this->throwItem($held);
+            return;
+        }
+
+        if($id === ItemIds::FISHING_ROD){
+            $this->useFishingRod($held);
+            return;
+        }
+
+        if($id === ItemIds::BOW){
+            if($player->getGameMode()->hasInstantBuild() || $this->findArrow() !== null){
+                $this->using = [$player->getInventory()->getHeldSlot(), $id, $this->getTick(), self::BOW_TICKS];
+                $player->onUsingItemChanged();
+            }
+
+            return;
+        }
+
         $ticks = $this->getUseTicks($held);
 
         if($ticks !== null){
@@ -122,6 +153,11 @@ class ItemUser{
 
         if($using !== null){
             $player->onUsingItemChanged();
+        }
+
+        if($action === self::RELEASE && $using !== null && $using[1] === ItemIds::BOW && $player->getInventory()->getHeldSlot() === $using[0]){
+            $this->shootBow($this->getTick() - $using[2]);
+            return;
         }
 
         if($action !== self::CONSUME || $using === null){
@@ -234,8 +270,6 @@ class ItemUser{
 
     private function throwPotion(Item $held) : void{
         $player = $this->player;
-
-        //thrown a little upward of where the player looks
         $yaw = deg2rad($player->getYaw());
         $pitch = deg2rad($player->getPitch() - 20);
         $motion = new Vector3(-sin($yaw) * cos($pitch) * self::THROW_SPEED, -sin($pitch) * self::THROW_SPEED, cos($yaw) * cos($pitch) * self::THROW_SPEED);
@@ -250,6 +284,134 @@ class ItemUser{
         if(!$player->getGameMode()->hasInstantBuild()){
             $player->getInventory()->setItemInHand($held->getCount() > 1 ? (clone $held)->setCount($held->getCount() - 1) : Item::air());
         }
+    }
+
+    /**
+     * Snowballs and eggs fly straight where the player looks.
+     */
+    private function throwItem(Item $held) : void{
+        $player = $this->player;
+        $eyes = $player->getEyePosition();
+        $motion = Projectile::aimFromRotation($player->getYaw(), $player->getPitch(), Throwable::VELOCITY, 1.0);
+        $position = new Vector3($eyes->x, $eyes->y - 0.1, $eyes->z);
+
+        if($held->getId() === ItemIds::SNOWBALL){
+            new Snowball($player->getWorld(), $position, $motion, $player);
+        }else{
+            new Egg($player->getWorld(), $position, $motion, $player);
+        }
+
+        $packet = LevelSoundEventPacket::create(LevelSoundEvent::THROW, $eyes->x, $eyes->y, $eyes->z);
+        $packet->entityType = "minecraft:player";
+        $player->getWorld()->broadcastPacket($eyes->getFloorX(), $eyes->getFloorZ(), $packet);
+
+        if(!$player->getGameMode()->hasInstantBuild()){
+            $player->getInventory()->setItemInHand($held->getCount() > 1 ? (clone $held)->setCount($held->getCount() - 1) : Item::air());
+        }
+    }
+
+    private function useFishingRod(Item $held) : void{
+        $player = $this->player;
+        $hook = $player->getFishingHook();
+
+        if($hook !== null){
+            $wear = $hook->reel();
+            $player->setFishingHook(null);
+
+            if(!$player->getGameMode()->hasInstantBuild()){
+                for($i = 0; $i < $wear; ++$i){
+                    $player->wearHeld(1);
+                }
+            }
+
+            return;
+        }
+
+        $player->setFishingHook(new FishingHook($player->getWorld(), $player, $held->getEnchantmentLevel(Enchantment::LURE), $held->getEnchantmentLevel(Enchantment::LUCK_OF_THE_SEA)));
+
+        $eyes = $player->getEyePosition();
+        $packet = LevelSoundEventPacket::create(LevelSoundEvent::THROW, $eyes->x, $eyes->y, $eyes->z);
+        $packet->entityType = "minecraft:player";
+        $player->getWorld()->broadcastPacket($eyes->getFloorX(), $eyes->getFloorZ(), $packet);
+    }
+
+    /**
+     * How strong a bow drawn for $ticks shoots, 0 to 1, full after a second.
+     */
+    public static function getBowPower(int $ticks) : float{
+        $charge = $ticks / 20;
+        return min(1.0, ($charge * $charge + $charge * 2) / 3);
+    }
+
+    /**
+     * @return array{Inventory, int}|null
+     */
+    private function findArrow() : ?array{
+        $offHand = $this->player->getOffHandInventory();
+
+        if($offHand->getItem(0)->getId() === ItemIds::ARROW){
+            return [$offHand, 0];
+        }
+
+        $inventory = $this->player->getInventory();
+
+        for($slot = 0; $slot < $inventory->getSize(); ++$slot){
+            if($inventory->getItem($slot)->getId() === ItemIds::ARROW){
+                return [$inventory, $slot];
+            }
+        }
+
+        return null;
+    }
+
+    private function shootBow(int $ticks) : void{
+        $player = $this->player;
+        $bow = $player->getInventory()->getItemInHand();
+        $power = self::getBowPower($ticks);
+        $found = $this->findArrow();
+        $creative = $player->getGameMode()->hasInstantBuild();
+
+        if($bow->getId() !== ItemIds::BOW || $power < 0.1 || ($found === null && !$creative)){
+            return;
+        }
+
+        $arrow = $found !== null ? $found[0]->getItem($found[1]) : new Item(ItemIds::ARROW);
+        $tipped = $arrow->getMeta() > 0;
+        $infinite = $creative || ($bow->getEnchantmentLevel(Enchantment::INFINITY) > 0 && !$tipped);
+
+        $eyes = $player->getEyePosition();
+        $motion = Projectile::aimFromRotation($player->getYaw(), $player->getPitch(), $power * 3.0, 1.0);
+        $shot = new Arrow($player->getWorld(), new Vector3($eyes->x, $eyes->y - 0.1, $eyes->z), $motion, $player, $infinite ? Arrow::PICKUP_CREATIVE : Arrow::PICKUP_ANY);
+
+        $shot->setCritical($power >= 1.0);
+
+        if($tipped){
+            $shot->setPotion($arrow->getMeta() - 1);
+        }
+
+        $powerLevel = $bow->getEnchantmentLevel(Enchantment::POWER);
+
+        if($powerLevel > 0){
+            $shot->setBaseDamage($shot->getBaseDamage() + $powerLevel * 0.5 + 0.5);
+        }
+
+        $shot->setPunch($bow->getEnchantmentLevel(Enchantment::PUNCH));
+        $shot->setBurning($bow->getEnchantmentLevel(Enchantment::FLAME) > 0);
+
+        $packet = LevelSoundEventPacket::create(LevelSoundEvent::BOW, $eyes->x, $eyes->y, $eyes->z);
+        $packet->entityType = "minecraft:player";
+        $player->getWorld()->broadcastPacket($eyes->getFloorX(), $eyes->getFloorZ(), $packet);
+
+        if($creative){
+            return;
+        }
+
+        if(!$infinite && $found !== null){
+            [$inventory, $slot] = $found;
+            $inventory->setItem($slot, $arrow->getCount() > 1 ? (clone $arrow)->setCount($arrow->getCount() - 1) : Item::air());
+        }
+
+        $player->wearHeld(1);
     }
 
     /**

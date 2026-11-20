@@ -13,11 +13,11 @@ use function count;
 
 class UnlockedRecipesPacket implements Packet{
 
-    public const TYPE_EMPTY = 0;
-    public const TYPE_INITIALLY_UNLOCKED = 1;
-    public const TYPE_NEWLY_UNLOCKED = 2;
-    public const TYPE_REMOVE_UNLOCKED = 3;
-    public const TYPE_REMOVE_ALL_UNLOCKED = 4;
+    public const int TYPE_EMPTY = 0;
+    public const int TYPE_INITIALLY_UNLOCKED = 1;
+    public const int TYPE_NEWLY_UNLOCKED = 2;
+    public const int TYPE_REMOVE_UNLOCKED = 3;
+    public const int TYPE_REMOVE_ALL_UNLOCKED = 4;
 
     public int $type = self::TYPE_EMPTY;
 

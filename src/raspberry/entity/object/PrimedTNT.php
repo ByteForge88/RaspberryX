@@ -61,6 +61,10 @@ class PrimedTNT extends Entity{
         return self::SIZE;
     }
 
+    public function getNetworkOffset() : float{
+        return self::SIZE / 2;
+    }
+
     public function getFuse() : int{
         return $this->fuse;
     }

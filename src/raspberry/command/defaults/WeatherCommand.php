@@ -23,7 +23,7 @@ use function mt_rand;
 
 class WeatherCommand extends Command{
 
-    public const MAX_DURATION = 1000000;
+    public const int MAX_DURATION = 1000000;
 
     public function __construct(){
         parent::__construct("weather", "commands.weather.description", "raspberry.command.weather");

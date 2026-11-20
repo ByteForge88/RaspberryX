@@ -9,9 +9,9 @@ use raspberry\network\encoding\BinaryWriter;
 
 class RespawnPacket implements Packet{
 
-    public const STATE_SEARCHING_FOR_SPAWN = 0;
-    public const STATE_READY_TO_SPAWN = 1;
-    public const STATE_CLIENT_READY_TO_SPAWN = 2;
+    public const int STATE_SEARCHING_FOR_SPAWN = 0;
+    public const int STATE_READY_TO_SPAWN = 1;
+    public const int STATE_CLIENT_READY_TO_SPAWN = 2;
 
     /** eye position */
     public float $x = 0.0;

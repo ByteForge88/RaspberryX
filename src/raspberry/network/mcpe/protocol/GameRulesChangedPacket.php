@@ -15,9 +15,9 @@ use function is_int;
 
 class GameRulesChangedPacket implements Packet{
 
-    private const TYPE_BOOL = 1;
-    private const TYPE_INT = 2;
-    private const TYPE_FLOAT = 3;
+    private const int TYPE_BOOL = 1;
+    private const int TYPE_INT = 2;
+    private const int TYPE_FLOAT = 3;
 
     /** @var array<string, bool|int|float> */
     public array $gameRules = [];

@@ -14,20 +14,20 @@ use function is_string;
 
 class ResourcePackClientResponsePacket implements Packet{
 
-    public const CANCEL = 0;
-    public const DOWNLOADING = 1;
-    public const DOWNLOADING_FINISHED = 2;
-    public const STACK_FINISHED = 3;
+    public const int CANCEL = 0;
+    public const int DOWNLOADING = 1;
+    public const int DOWNLOADING_FINISHED = 2;
+    public const int STACK_FINISHED = 3;
 
-    private const NAMES = [
+    private const array NAMES = [
         self::CANCEL => "cancel",
         self::DOWNLOADING => "downloading",
         self::DOWNLOADING_FINISHED => "downloadingfinished",
         self::STACK_FINISHED => "resourcepackstackfinished"
     ];
 
-    private const MAX_PACKS = 128;
-    private const MAX_PACK_ID_BYTES = 256;
+    private const int MAX_PACKS = 128;
+    private const int MAX_PACK_ID_BYTES = 256;
 
     public int $status = self::CANCEL;
 

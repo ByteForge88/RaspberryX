@@ -11,10 +11,10 @@ use UnexpectedValueException;
 
 class InteractPacket implements Packet{
 
-    public const ACTION_LEAVE_VEHICLE = 3;
-    public const ACTION_MOUSE_OVER_ENTITY = 4;
-    public const ACTION_OPEN_NPC = 5;
-    public const ACTION_OPEN_INVENTORY = 6;
+    public const int ACTION_LEAVE_VEHICLE = 3;
+    public const int ACTION_MOUSE_OVER_ENTITY = 4;
+    public const int ACTION_OPEN_NPC = 5;
+    public const int ACTION_OPEN_INVENTORY = 6;
 
     public int $action = 0;
 

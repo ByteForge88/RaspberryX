@@ -79,6 +79,10 @@ class FallingBlock extends Entity{
         return self::SIZE;
     }
 
+    public function getNetworkOffset() : float{
+        return self::SIZE / 2;
+    }
+
     public function getBlock() : BlockState{
         return $this->block;
     }

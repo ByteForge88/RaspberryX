@@ -7,6 +7,7 @@ namespace raspberry\wizard;
 use raspberry\lang\Language;
 
 use raspberry\Server;
+use raspberry\ServerInfo;
 
 use raspberry\utils\Config;
 
@@ -54,7 +55,7 @@ class SetupWizard{
         }
 
         $this->say("");
-        $this->say("\e[1m" . "--== " . "\e[3m" . "\e[38;2;154;92;198m" . Server::NAME . " " . Server::VERSION . "\e[0m"  . "\e[1m" . " =--");
+        $this->say("\e[1m" . "--== " . "\e[3m" . "\e[38;2;154;92;198m" . ServerInfo::NAME . " " . ServerInfo::VERSION . "\e[0m"  . "\e[1m" . " =--");
         $this->say("");
 
         $values["language"] = $this->askLanguage();
@@ -63,7 +64,7 @@ class SetupWizard{
         $this->say("");
         $this->say($this->language->translate("wizard.welcome"));
         $this->say("");
-        $this->say($this->language->translate("wizard.license", ["license" => Server::LICENSE]));
+        $this->say($this->language->translate("wizard.license", ["license" => ServerInfo::LICENSE]));
 
         if(!$this->askYesNo($this->language->translate("wizard.license.prompt"))){
             $this->say($this->language->translate("wizard.license.declined"));

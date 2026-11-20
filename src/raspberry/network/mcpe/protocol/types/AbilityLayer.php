@@ -9,40 +9,40 @@ use raspberry\network\encoding\BinaryWriter;
 
 class AbilityLayer{
 
-    public const TYPE_CUSTOM_CACHE = 0;
-    public const TYPE_BASE = 1;
-    public const TYPE_SPECTATOR = 2;
-    public const TYPE_COMMANDS = 3;
-    public const TYPE_EDITOR = 4;
-    public const TYPE_LOADING_SCREEN = 5;
+    public const int TYPE_CUSTOM_CACHE = 0;
+    public const int TYPE_BASE = 1;
+    public const int TYPE_SPECTATOR = 2;
+    public const int TYPE_COMMANDS = 3;
+    public const int TYPE_EDITOR = 4;
+    public const int TYPE_LOADING_SCREEN = 5;
 
-    public const BUILD = 1 << 0;
-    public const MINE = 1 << 1;
-    public const DOORS_AND_SWITCHES = 1 << 2;
-    public const OPEN_CONTAINERS = 1 << 3;
-    public const ATTACK_PLAYERS = 1 << 4;
-    public const ATTACK_MOBS = 1 << 5;
-    public const OPERATOR_COMMANDS = 1 << 6;
-    public const TELEPORT = 1 << 7;
-    public const INVULNERABLE = 1 << 8;
-    public const FLYING = 1 << 9;
-    public const MAY_FLY = 1 << 10;
-    public const INSTANT_BUILD = 1 << 11;
-    public const LIGHTNING = 1 << 12;
-    public const FLY_SPEED = 1 << 13;
-    public const WALK_SPEED = 1 << 14;
-    public const MUTED = 1 << 15;
-    public const WORLD_BUILDER = 1 << 16;
-    public const NO_CLIP = 1 << 17;
-    public const PRIVILEGED_BUILDER = 1 << 18;
-    public const VERTICAL_FLY_SPEED = 1 << 19;
+    public const int BUILD = 1 << 0;
+    public const int MINE = 1 << 1;
+    public const int DOORS_AND_SWITCHES = 1 << 2;
+    public const int OPEN_CONTAINERS = 1 << 3;
+    public const int ATTACK_PLAYERS = 1 << 4;
+    public const int ATTACK_MOBS = 1 << 5;
+    public const int OPERATOR_COMMANDS = 1 << 6;
+    public const int TELEPORT = 1 << 7;
+    public const int INVULNERABLE = 1 << 8;
+    public const int FLYING = 1 << 9;
+    public const int MAY_FLY = 1 << 10;
+    public const int INSTANT_BUILD = 1 << 11;
+    public const int LIGHTNING = 1 << 12;
+    public const int FLY_SPEED = 1 << 13;
+    public const int WALK_SPEED = 1 << 14;
+    public const int MUTED = 1 << 15;
+    public const int WORLD_BUILDER = 1 << 16;
+    public const int NO_CLIP = 1 << 17;
+    public const int PRIVILEGED_BUILDER = 1 << 18;
+    public const int VERTICAL_FLY_SPEED = 1 << 19;
 
     /** every ability bit */
-    public const ALL = (1 << 20) - 1;
+    public const int ALL = (1 << 20) - 1;
 
-    public const DEFAULT_FLY_SPEED = 0.05;
-    public const DEFAULT_VERTICAL_FLY_SPEED = 1.0;
-    public const DEFAULT_WALK_SPEED = 0.1;
+    public const float DEFAULT_FLY_SPEED = 0.05;
+    public const float DEFAULT_VERTICAL_FLY_SPEED = 1.0;
+    public const float DEFAULT_WALK_SPEED = 0.1;
 
     public int $type;
 

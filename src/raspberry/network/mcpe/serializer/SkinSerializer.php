@@ -12,8 +12,8 @@ use function count;
 
 class SkinSerializer{
 
-    private const ARM_SIZE_SLIM = 0;
-    private const ARM_SIZE_WIDE = 1;
+    private const int ARM_SIZE_SLIM = 0;
+    private const int ARM_SIZE_WIDE = 1;
 
     public static function write(BinaryWriter $writer, Skin $skin) : void{
         $writer->writeString($skin->skinId);

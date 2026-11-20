@@ -52,6 +52,7 @@ class BlockEntityFactory{
             $blockName === "minecraft:campfire" || $blockName === "minecraft:soul_campfire" => "Campfire",
             $blockName === "minecraft:beacon" => "Beacon",
             $blockName === "minecraft:cauldron" => "Cauldron",
+            $blockName === "minecraft:mob_spawner" => Spawner::ID,
             default => null
         };
     }
@@ -98,6 +99,7 @@ class BlockEntityFactory{
             "Campfire" => new Campfire($x, $y, $z),
             "Beacon" => new Beacon($x, $y, $z),
             "Cauldron" => new Cauldron($x, $y, $z),
+            Spawner::ID => new Spawner($x, $y, $z),
             default => null
         };
     }

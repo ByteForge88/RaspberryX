@@ -19,7 +19,7 @@ use const JSON_THROW_ON_ERROR;
 class FurnaceData{
 
     /** experience of smelting an item the table does not list */
-    public const DEFAULT_EXPERIENCE = 0.1;
+    public const float DEFAULT_EXPERIENCE = 0.1;
 
     /** @var array<string, int>|null */
     private static ?array $fuels = null;

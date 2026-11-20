@@ -136,6 +136,13 @@ enum Enchantment : int{
         };
     }
 
+    public function isDiscoverable() : bool{
+        return match($this){
+            self::CUSTOM, self::SOUL_SPEED, self::SWIFT_SNEAK, self::WIND_BURST => false,
+            default => true
+        };
+    }
+
     /**
      * How likely the enchanting table picks it: 10 common, 5 uncommon, 2 rare, 1 very rare.
      */

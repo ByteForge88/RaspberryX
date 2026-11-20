@@ -11,9 +11,9 @@ use function count;
 
 class UpdateSoftEnumPacket implements Packet{
 
-    public const TYPE_ADD = 0;
-    public const TYPE_REMOVE = 1;
-    public const TYPE_SET = 2;
+    public const int TYPE_ADD = 0;
+    public const int TYPE_REMOVE = 1;
+    public const int TYPE_SET = 2;
 
     public string $enumName = "";
 

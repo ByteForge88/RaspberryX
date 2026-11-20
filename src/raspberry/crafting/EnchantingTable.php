@@ -10,12 +10,13 @@ use raspberry\item\Item;
 use raspberry\item\ItemIds;
 use raspberry\item\ItemProperties;
 use raspberry\item\enchantment\Enchantment;
+use raspberry\item\enchantment\EnchantmentException;
 
 use raspberry\world\Chunk;
 use raspberry\world\World;
 
-use Random\Engine\Mt19937;
 use Random\Randomizer;
+use Random\Engine\Mt19937;
 
 use function array_filter;
 use function array_values;
@@ -26,10 +27,10 @@ use function round;
 
 class EnchantingTable{
 
-    public const MAX_BOOKSHELVES = 15;
+    public const int MAX_BOOKSHELVES = 15;
 
     /** shown on the buttons in the enchanting script */
-    private const WORDS = [
+    private const array WORDS = [
         "the", "elder", "scrolls", "klaatu", "berata", "niktu", "xyzzy", "bless", "curse", "light",
         "darkness", "fire", "air", "earth", "water", "hot", "dry", "cold", "wet", "ignite", "snuff",
         "embiggen", "twist", "shorten", "stretch", "fiddle", "destroy", "imbue", "galvanize",
@@ -77,6 +78,7 @@ class EnchantingTable{
 
     /**
      * @return array<int, array{int, list<array{Enchantment, int}>}>
+     * @throws EnchantmentException
      */
     public static function getOffers(Item $item, int $bookshelves, int $seed) : array{
         $value = ItemProperties::getMerchantability($item->getId());
@@ -93,12 +95,33 @@ class EnchantingTable{
         foreach($levels as $button => $level){
             $enchantments = self::pick($random, $item, $value, $level);
 
+            if($item->getId() === ItemIds::BOOK && count($enchantments) > 1){
+                unset($enchantments[$random->getInt(0, count($enchantments) - 1)]);
+                $enchantments = array_values($enchantments);
+            }
+
             if($enchantments !== []){
                 $offers[$button] = [$level, $enchantments];
             }
         }
 
         return $offers;
+    }
+
+    /**
+     * Enchants like a loot table's enchant_with_levels: as the table would at $level, with treasure
+     * enchantments too when $treasure. Books keep every enchantment they roll.
+     *
+     * @throws EnchantmentException
+     */
+    public static function enchantWithLevels(Item $item, int $level, bool $treasure) : Item{
+        $value = ItemProperties::getMerchantability($item->getId());
+
+        if($value === 0){
+            return $item;
+        }
+
+        return self::apply($item, self::pick(new Randomizer(), $item, $value, $level, $treasure));
     }
 
     /**
@@ -130,8 +153,9 @@ class EnchantingTable{
 
     /**
      * @return list<array{Enchantment, int}>
+     * @throws EnchantmentException
      */
-    private static function pick(Randomizer $random, Item $item, int $value, int $level) : array{
+    private static function pick(Randomizer $random, Item $item, int $value, int $level, bool $treasure = false) : array{
         $bonus = ($random->getFloat(0, 1) + $random->getFloat(0, 1) - 1) * 0.15;
         $power = $level + 1 + $random->getInt(0, intdiv($value, 4)) + $random->getInt(0, intdiv($value, 4));
         $power = max(1, (int) round($power + $power * $bonus));
@@ -139,7 +163,7 @@ class EnchantingTable{
         $available = [];
 
         foreach(Enchantment::cases() as $enchantment){
-            if($enchantment->isTreasure() || !$enchantment->canApplyTo($item, false)){
+            if(($enchantment->isTreasure() && (!$treasure || !$enchantment->isDiscoverable())) || !$enchantment->canApplyTo($item, false)){
                 continue;
             }
 
@@ -159,7 +183,7 @@ class EnchantingTable{
             $picked = self::pickWeighted($random, $available);
             $chosen[] = $picked;
 
-            if($random->getInt(0, 50) > $power){
+            if($random->getInt(0, 49) > $power){
                 break;
             }
 

@@ -9,10 +9,12 @@ use raspberry\entity\animal\Cow;
 use raspberry\entity\animal\Pig;
 use raspberry\entity\animal\Sheep;
 use raspberry\entity\monster\Zombie;
+use raspberry\entity\monster\Skeleton;
 use raspberry\entity\monster\Creeper;
 use raspberry\entity\monster\Spider;
 use raspberry\entity\monster\CaveSpider;
 use raspberry\entity\object\ItemEntity;
+use raspberry\entity\object\ExperienceOrb;
 
 use raspberry\math\Vector3;
 
@@ -49,7 +51,8 @@ class EntityFactory{
             EntityIds::ZOMBIE => fn(World $world, Vector3 $position, float $yaw) : Mob => new Zombie($world, $position, $yaw),
             EntityIds::SPIDER => fn(World $world, Vector3 $position, float $yaw) : Mob => new Spider($world, $position, $yaw),
             EntityIds::CAVE_SPIDER => fn(World $world, Vector3 $position, float $yaw) : Mob => new CaveSpider($world, $position, $yaw),
-            EntityIds::CREEPER => fn(World $world, Vector3 $position, float $yaw) : Mob => new Creeper($world, $position, $yaw)
+            EntityIds::CREEPER => fn(World $world, Vector3 $position, float $yaw) : Mob => new Creeper($world, $position, $yaw),
+            EntityIds::SKELETON => fn(World $world, Vector3 $position, float $yaw) : Mob => new Skeleton($world, $position, $yaw)
         ];
     }
 
@@ -83,6 +86,10 @@ class EntityFactory{
 
         if($name === ItemEntity::NETWORK_ID){
             return ItemEntity::fromSave($world, $tag);
+        }
+
+        if($name === EntityIds::XP_ORB){
+            return ExperienceOrb::fromSave($world, $tag);
         }
 
         [$x, $y, $z] = [$tag->getDouble("X"), $tag->getDouble("Y"), $tag->getDouble("Z")];

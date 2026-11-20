@@ -11,13 +11,13 @@ use function count;
 
 class AbilityData{
 
-    public const PLAYER_PERMISSION_VISITOR = 0;
-    public const PLAYER_PERMISSION_MEMBER = 1;
-    public const PLAYER_PERMISSION_OPERATOR = 2;
-    public const PLAYER_PERMISSION_CUSTOM = 3;
+    public const int PLAYER_PERMISSION_VISITOR = 0;
+    public const int PLAYER_PERMISSION_MEMBER = 1;
+    public const int PLAYER_PERMISSION_OPERATOR = 2;
+    public const int PLAYER_PERMISSION_CUSTOM = 3;
 
-    public const COMMAND_PERMISSION_NORMAL = 0;
-    public const COMMAND_PERMISSION_OPERATOR = 1;
+    public const int COMMAND_PERMISSION_NORMAL = 0;
+    public const int COMMAND_PERMISSION_OPERATOR = 1;
 
     public int $actorUniqueId;
 

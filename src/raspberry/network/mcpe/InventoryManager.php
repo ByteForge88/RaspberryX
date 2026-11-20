@@ -31,7 +31,7 @@ use function spl_object_id;
 
 class InventoryManager implements InventoryListener{
 
-    private const MAX_WINDOW_ID = 99;
+    private const int MAX_WINDOW_ID = 99;
 
     private NetworkSession $session;
 

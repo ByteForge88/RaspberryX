@@ -9,10 +9,10 @@ use raspberry\network\encoding\BinaryWriter;
 
 class PlayStatusPacket implements Packet{
 
-    public const LOGIN_SUCCESS = 0;
-    public const LOGIN_FAILED_CLIENT_OLD = 1;
-    public const LOGIN_FAILED_SERVER_OLD = 2;
-    public const PLAYER_SPAWN = 3;
+    public const int LOGIN_SUCCESS = 0;
+    public const int LOGIN_FAILED_CLIENT_OLD = 1;
+    public const int LOGIN_FAILED_SERVER_OLD = 2;
+    public const int PLAYER_SPAWN = 3;
 
     public int $status = self::LOGIN_SUCCESS;
 

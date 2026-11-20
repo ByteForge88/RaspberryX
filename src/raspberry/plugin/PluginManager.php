@@ -15,6 +15,7 @@ use raspberry\event\plugin\PluginEnableEvent;
 use raspberry\command\Command;
 
 use raspberry\Server;
+use raspberry\ServerInfo;
 
 use Symfony\Component\Filesystem\Path;
 use Symfony\Component\Yaml\Exception\ParseException;
@@ -46,7 +47,8 @@ use function substr;
 
 class PluginManager{
 
-    public const API_VERSION = Server::PLUGIN_API;
+    //TODO: Allow multiple API versions
+    public const string API_VERSION = ServerInfo::PLUGIN_API;
 
     private Server $server;
 

@@ -16,10 +16,10 @@ use function in_array;
 
 class Loom{
 
-    public const MAX_PATTERNS = 6;
+    public const int MAX_PATTERNS = 6;
 
     /** patterns that need a banner pattern item */
-    private const PATTERN_ITEMS = [
+    private const array PATTERN_ITEMS = [
         "cre" => ItemIds::CREEPER_BANNER_PATTERN,
         "sku" => ItemIds::SKULL_BANNER_PATTERN,
         "flo" => ItemIds::FLOWER_BANNER_PATTERN,
@@ -32,13 +32,13 @@ class Loom{
         "gus" => ItemIds::GUSTER_BANNER_PATTERN
     ];
 
-    private const PATTERNS = [
+    private const array PATTERNS = [
         "bo", "mc", "cr", "lud", "rd", "ld", "rud", "gra", "gru", "hh", "hhb", "vh", "vhr", "mr", "ss",
         "bl", "br", "tl", "tr", "sc", "bs", "cs", "dls", "drs", "ls", "ms", "rs", "ts", "bt", "tt", "bts", "tts"
     ];
 
     /** banner colors use the old dye numbers */
-    private const DYES = [
+    private const array DYES = [
         ItemIds::BLACK_DYE => 0,
         ItemIds::RED_DYE => 1,
         ItemIds::GREEN_DYE => 2,

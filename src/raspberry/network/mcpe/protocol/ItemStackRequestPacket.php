@@ -16,10 +16,10 @@ use UnexpectedValueException;
 
 class ItemStackRequestPacket implements Packet{
 
-    private const MAX_REQUESTS = 64;
-    private const MAX_ACTIONS = 64;
-    private const MAX_LIST = 64;
-    private const MAX_FILTER_STRING = 1024;
+    private const int MAX_REQUESTS = 64;
+    private const int MAX_ACTIONS = 64;
+    private const int MAX_LIST = 64;
+    private const int MAX_FILTER_STRING = 1024;
 
     /** @var list<ItemStackRequest> */
     public array $requests = [];

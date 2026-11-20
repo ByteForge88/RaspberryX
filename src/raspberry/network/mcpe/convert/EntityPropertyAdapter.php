@@ -17,10 +17,10 @@ use function array_map;
 
 class EntityPropertyAdapter{
 
-    private const TYPE_INT = 0;
-    private const TYPE_FLOAT = 1;
-    private const TYPE_BOOL = 2;
-    private const TYPE_ENUM = 3;
+    private const int TYPE_INT = 0;
+    private const int TYPE_FLOAT = 1;
+    private const int TYPE_BOOL = 2;
+    private const int TYPE_ENUM = 3;
 
     /**
      * @return list<SyncActorPropertyPacket>

@@ -9,8 +9,8 @@ use raspberry\network\encoding\BinaryWriter;
 
 class NetworkSettingsPacket implements Packet{
 
-    public const ALGORITHM_ZLIB = 0;
-    public const ALGORITHM_SNAPPY = 1;
+    public const int ALGORITHM_ZLIB = 0;
+    public const int ALGORITHM_SNAPPY = 1;
 
     public int $compressionThreshold = 256;
     public int $compressionAlgorithm = self::ALGORITHM_ZLIB;

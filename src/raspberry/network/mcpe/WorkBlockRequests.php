@@ -15,6 +15,8 @@ use raspberry\crafting\Grindstone;
 use raspberry\crafting\CraftingRecipe;
 use raspberry\crafting\EnchantingTable;
 
+use raspberry\entity\object\ExperienceOrb;
+
 use raspberry\item\Item;
 use raspberry\item\ItemIds;
 use raspberry\item\enchantment\Enchantment;
@@ -36,7 +38,7 @@ use function mt_getrandmax;
 class WorkBlockRequests{
 
     /** container ID => [screen it belongs to, UI slot] */
-    private const SLOTS = [
+    private const array SLOTS = [
         ContainerIds::ANVIL_INPUT => [ContainerWindow::TYPE_ANVIL, Player::UI_ANVIL_INPUT],
         ContainerIds::ANVIL_MATERIAL => [ContainerWindow::TYPE_ANVIL, Player::UI_ANVIL_MATERIAL],
         ContainerIds::STONECUTTER_INPUT => [ContainerWindow::TYPE_STONECUTTER, Player::UI_STONECUTTER_INPUT],
@@ -182,7 +184,7 @@ class WorkBlockRequests{
             }
 
             if($this->pendingXp > 0){
-                $this->player->addXp($this->pendingXp);
+                ExperienceOrb::award($this->player->getWorld(), $this->player->getPosition(), $this->pendingXp);
             }
 
             if($this->enchanted){

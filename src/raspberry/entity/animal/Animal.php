@@ -6,6 +6,7 @@ namespace raspberry\entity\animal;
 
 use raspberry\entity\Mob;
 use raspberry\entity\EntityFactory;
+use raspberry\entity\object\ExperienceOrb;
 
 use raspberry\nbt\tag\CompoundTag;
 
@@ -175,7 +176,7 @@ abstract class Animal extends Mob{
         }
 
         if($feeder !== null && $feeder->isOnline()){
-            $feeder->addXp(mt_rand(1, 7));
+            ExperienceOrb::award($this->world, $this->position, mt_rand(1, 7));
         }
     }
 

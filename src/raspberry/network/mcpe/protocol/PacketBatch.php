@@ -16,9 +16,9 @@ use function strlen;
 
 class PacketBatch{
 
-    public const MAX_PACKET_BYTES = 2 * 1024 * 1024;
-    public const MAX_BATCH_BYTES = 8 * 1024 * 1024;
-    public const MAX_PACKETS = 512;
+    public const int MAX_PACKET_BYTES = 2 * 1024 * 1024;
+    public const int MAX_BATCH_BYTES = 8 * 1024 * 1024;
+    public const int MAX_PACKETS = 512;
 
     private PacketTranslator $translator;
 

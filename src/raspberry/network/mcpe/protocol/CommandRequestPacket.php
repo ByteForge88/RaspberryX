@@ -12,7 +12,7 @@ use raspberry\network\mcpe\protocol\types\command\CommandOriginData;
 class CommandRequestPacket implements Packet{
 
     /** commands longer than this are refused without reading them */
-    public const MAX_LENGTH = 32768;
+    public const int MAX_LENGTH = 32768;
 
     public string $command = "";
 

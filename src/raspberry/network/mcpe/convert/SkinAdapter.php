@@ -19,7 +19,7 @@ use function str_repeat;
 
 class SkinAdapter{
 
-    public const DEFAULT_RESOURCE_PATCH = '{"geometry":{"default":"geometry.humanoid.custom"}}';
+    public const string DEFAULT_RESOURCE_PATCH = '{"geometry":{"default":"geometry.humanoid.custom"}}';
 
     /**
      * @throws InvalidArgumentException when the skin data is missing or broken
@@ -73,7 +73,7 @@ class SkinAdapter{
     }
 
     /**
-     * A plain grey player, used when a client sends a skin that cannot be used.
+     * A plain gray player, used when a client sends a skin that cannot be used.
      */
     public static function defaultSkin() : Skin{
         $skin = new Skin("raspberryx_default", self::DEFAULT_RESOURCE_PATCH, 64, 64, str_repeat("\x80\x80\x80\xff", 64 * 64));

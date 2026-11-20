@@ -11,8 +11,8 @@ use UnexpectedValueException;
 
 class SetSpawnPositionPacket implements Packet{
 
-    public const TYPE_PLAYER_SPAWN = 0;
-    public const TYPE_WORLD_SPAWN = 1;
+    public const int TYPE_PLAYER_SPAWN = 0;
+    public const int TYPE_WORLD_SPAWN = 1;
 
     public int $type = self::TYPE_WORLD_SPAWN;
 

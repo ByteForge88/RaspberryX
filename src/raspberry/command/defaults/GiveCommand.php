@@ -23,9 +23,9 @@ use function substr;
 
 class GiveCommand extends Command{
 
-    public const MAX_AMOUNT = 32767;
+    public const int MAX_AMOUNT = 32767;
 
-    public const MAX_DATA = 32767;
+    public const int MAX_DATA = 32767;
 
     public function __construct(){
         parent::__construct("give", "commands.give.description", "raspberry.command.give");

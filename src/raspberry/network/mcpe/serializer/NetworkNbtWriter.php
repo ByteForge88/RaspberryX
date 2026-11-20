@@ -18,20 +18,19 @@ use LogicException;
  *   $nbt->endCompound();
  *   $bytes = $nbt->getBuffer();
  *
- * TODO: Rewrite the NBT
  */
 class NetworkNbtWriter{
 
-    public const TAG_END = 0;
-    public const TAG_BYTE = 1;
-    public const TAG_SHORT = 2;
-    public const TAG_INT = 3;
-    public const TAG_LONG = 4;
-    public const TAG_FLOAT = 5;
-    public const TAG_DOUBLE = 6;
-    public const TAG_STRING = 8;
-    public const TAG_LIST = 9;
-    public const TAG_COMPOUND = 10;
+    public const int TAG_END = 0;
+    public const int TAG_BYTE = 1;
+    public const int TAG_SHORT = 2;
+    public const int TAG_INT = 3;
+    public const int TAG_LONG = 4;
+    public const int TAG_FLOAT = 5;
+    public const int TAG_DOUBLE = 6;
+    public const int TAG_STRING = 8;
+    public const int TAG_LIST = 9;
+    public const int TAG_COMPOUND = 10;
 
     private BinaryWriter $writer;
 

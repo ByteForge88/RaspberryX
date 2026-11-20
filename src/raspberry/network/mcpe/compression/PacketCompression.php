@@ -20,8 +20,8 @@ use function substr;
 
 class PacketCompression{
 
-    private const HEADER_DEFLATE = 0x00;
-    private const HEADER_UNCOMPRESSED = 0xff;
+    private const int HEADER_DEFLATE = 0x00;
+    private const int HEADER_UNCOMPRESSED = 0xff;
 
     private bool $enabled = false;
     private int $threshold = 256;

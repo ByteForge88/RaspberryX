@@ -22,6 +22,7 @@ class Behavior{
     private const int MELEE_ATTACK = 12;
     private const int LEAP_AT_TARGET = 13;
     private const int SWELL = 14;
+    private const int RANGED_BOW_ATTACK = 15;
 
     private int $type;
 
@@ -108,6 +109,10 @@ class Behavior{
 
     public static function swell(int $priority) : self{
         return new self(self::SWELL, $priority);
+    }
+
+    public static function rangedBowAttack(int $priority, float $speed, int $interval, float $radius) : self{
+        return new self(self::RANGED_BOW_ATTACK, $priority, $speed, (float) $interval, $radius);
     }
 
     public function encode() : string{

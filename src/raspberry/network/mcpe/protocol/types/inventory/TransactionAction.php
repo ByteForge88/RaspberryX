@@ -8,9 +8,9 @@ use raspberry\network\mcpe\protocol\types\ItemStack;
 
 class TransactionAction{
 
-    public const SOURCE_CONTAINER = 0;
-    public const SOURCE_WORLD = 2;
-    public const SOURCE_CREATIVE = 3;
+    public const int SOURCE_CONTAINER = 0;
+    public const int SOURCE_WORLD = 2;
+    public const int SOURCE_CREATIVE = 3;
 
     public int $sourceType;
 

@@ -8,7 +8,7 @@ use crate::random::JavaRandom;
 
 use super::blocks::{self, View};
 use super::path::Node;
-use super::{Event, Grid, Info, Mob, Player, BABY, BRIGHT, EVENT_ATTACK, EVENT_SWELL, ON_GROUND, EVENT_BRED, EVENT_EAT_BLOCK, EVENT_EAT_START, EVENT_TARGET, IN_LAVA, IN_LOVE, IN_WATER, ON_FIRE, PLAYER_INVISIBLE, PLAYER_NO_TARGET, PLAYER_SNEAKING, PLAYER_SPECTATOR};
+use super::{turn, Event, Grid, Info, Mob, Player, BABY, BRIGHT, EVENT_ATTACK, EVENT_SHOOT, EVENT_SWELL, EVENT_USE_ITEM, ON_GROUND, EVENT_BRED, EVENT_EAT_BLOCK, EVENT_EAT_START, EVENT_TARGET, IN_LAVA, IN_LOVE, IN_WATER, ON_FIRE, PLAYER_INVISIBLE, PLAYER_NO_TARGET, PLAYER_SNEAKING, PLAYER_SPECTATOR};
 
 pub const FLOAT: u8 = 1;
 pub const PANIC: u8 = 2;
@@ -24,6 +24,7 @@ pub const HURT_BY_TARGET: u8 = 11;
 pub const MELEE_ATTACK: u8 = 12;
 pub const LEAP_AT_TARGET: u8 = 13;
 pub const SWELL: u8 = 14;
+pub const RANGED_BOW_ATTACK: u8 = 15;
 
 const MOVE: u8 = 1;
 const LOOK: u8 = 2;
@@ -78,6 +79,8 @@ pub struct Goal {
     timer: i32,
     count: i32,
     delay: i32,
+    charge: i32,
+    strafe: (bool, bool),
     target: u64,
     spot: [f64; 3],
 }
@@ -211,7 +214,7 @@ impl Context<'_> {
 
 impl Goal {
     pub fn new(kind: u8, priority: u8, params: [f32; 4]) -> Self {
-        Goal { kind, priority, params, running: false, timer: 0, count: 0, delay: 0, target: 0, spot: [0.0; 3] }
+        Goal { kind, priority, params, running: false, timer: 0, count: 0, delay: 0, charge: -1, strafe: (false, false), target: 0, spot: [0.0; 3] }
     }
 
     fn uses(&self) -> u8 {
@@ -224,6 +227,7 @@ impl Goal {
             MELEE_ATTACK => MOVE | LOOK,
             LEAP_AT_TARGET => MOVE | JUMP,
             SWELL => MOVE,
+            RANGED_BOW_ATTACK => MOVE | LOOK,
             NEAREST_ATTACKABLE_TARGET | HURT_BY_TARGET => TARGET,
             _ => 0,
         }
@@ -278,6 +282,78 @@ impl Goal {
         true
     }
 
+    fn shoot_bow(&mut self, mob: &mut Mob, context: &mut Context) {
+        let Some(target) = context.target(mob.target) else { return };
+        let distance = mob.distance_sq(target.x, target.y, target.z);
+        let radius = (self.params[2] * self.params[2]) as f64;
+        let seen = context.can_see(mob, &target);
+
+        if seen != (self.count > 0) {
+            self.count = 0;
+        }
+
+        self.count += if seen { 1 } else { -1 };
+
+        if distance <= radius && self.count >= 20 {
+            mob.nav.stop();
+            self.delay += 1;
+        } else {
+            mob.move_to(context.view, target.x, target.y, target.z, self.params[0]);
+            self.delay = -1;
+        }
+
+        if self.delay >= 20 {
+            if context.chance(0.3) {
+                self.strafe.0 = !self.strafe.0;
+            }
+
+            if context.chance(0.3) {
+                self.strafe.1 = !self.strafe.1;
+            }
+
+            self.delay = 0;
+        }
+
+        if self.delay > -1 {
+            if distance > radius * 0.75 {
+                self.strafe.1 = false;
+            } else if distance < radius * 0.25 {
+                self.strafe.1 = true;
+            }
+
+            mob.strafe = Some((if self.strafe.1 { -0.5 } else { 0.5 }, if self.strafe.0 { 0.5 } else { -0.5 }));
+
+            let wanted = ((target.z - mob.z).atan2(target.x - mob.x).to_degrees() - 90.0) as f32;
+            mob.yaw = turn(mob.yaw, wanted, 30.0);
+        }
+
+        mob.look = Some([target.x, target.y + target.eye, target.z]);
+
+        if self.charge >= 0 {
+            self.charge += 1;
+
+            if !seen && self.count < -60 {
+                self.charge = -1;
+                context.events.push(Event { id: mob.id, kind: EVENT_USE_ITEM, value: 0.0, block: [0; 3], other: 0 });
+            } else if seen && self.charge >= 20 {
+                let charge = self.charge as f32 / 20.0;
+                let power = ((charge * charge + charge * 2.0) / 3.0).min(1.0);
+
+                self.charge = -1;
+                self.timer = self.params[1] as i32;
+                context.events.push(Event { id: mob.id, kind: EVENT_USE_ITEM, value: 0.0, block: [0; 3], other: 0 });
+                context.events.push(Event { id: mob.id, kind: EVENT_SHOOT, value: power, block: [0; 3], other: target.id });
+            }
+        } else {
+            self.timer -= 1;
+
+            if self.timer <= 0 && self.count >= -60 {
+                self.charge = 0;
+                context.events.push(Event { id: mob.id, kind: EVENT_USE_ITEM, value: 1.0, block: [0; 3], other: 0 });
+            }
+        }
+    }
+
     fn can_start(&mut self, mob: &mut Mob, context: &mut Context) -> bool {
         match self.kind {
             NEAREST_ATTACKABLE_TARGET => {
@@ -316,6 +392,7 @@ impl Goal {
             SWELL => {
                 self.count > 0 || context.target(mob.target).is_some_and(|target| mob.distance_sq(target.x, target.y, target.z) < 9.0)
             }
+            RANGED_BOW_ATTACK => context.target(mob.target).is_some(),
             MELEE_ATTACK => {
                 if self.delay > 0 {
                     self.delay -= 1;
@@ -454,6 +531,11 @@ impl Goal {
                 }
             }
             SWELL => mob.nav.stop(),
+            RANGED_BOW_ATTACK => {
+                self.timer = -1;
+                self.count = 0;
+                self.delay = -1;
+            }
             PANIC | RANDOM_STROLL => {
                 let [x, y, z] = self.spot;
                 mob.move_to(context.view, x, y, z, self.params[0]);
@@ -479,6 +561,7 @@ impl Goal {
                 context.target(mob.target).is_some() && (self.params[1] > 0.0 || !mob.nav.is_done())
             }
             LEAP_AT_TARGET => !mob.is(ON_GROUND),
+            RANGED_BOW_ATTACK => context.target(mob.target).is_some() || !mob.nav.is_done(),
             SWELL => self.count > 0 || context.target(mob.target).is_some_and(|target| mob.distance_sq(target.x, target.y, target.z) < 9.0),
             FLOAT => mob.is(IN_WATER | IN_LAVA),
             PANIC | RANDOM_STROLL => !mob.nav.is_done(),
@@ -504,6 +587,15 @@ impl Goal {
     fn stop(&mut self, mob: &mut Mob, context: &mut Context) {
         match self.kind {
             PANIC | RANDOM_STROLL | FOLLOW_PARENT | BREED | MELEE_ATTACK => mob.nav.stop(),
+            RANGED_BOW_ATTACK => {
+                self.count = 0;
+                self.timer = -1;
+
+                if self.charge >= 0 {
+                    self.charge = -1;
+                    context.events.push(Event { id: mob.id, kind: EVENT_USE_ITEM, value: 0.0, block: [0; 3], other: 0 });
+                }
+            }
             NEAREST_ATTACKABLE_TARGET | HURT_BY_TARGET => {
                 if mob.target == self.target {
                     context.set_target(mob, 0);
@@ -519,6 +611,7 @@ impl Goal {
 
     fn run(&mut self, mob: &mut Mob, context: &mut Context) {
         match self.kind {
+            RANGED_BOW_ATTACK => self.shoot_bow(mob, context),
             SWELL => {
                 let direction = match context.target(mob.target) {
                     Some(target) if mob.distance_sq(target.x, target.y, target.z) <= 49.0 && context.can_see(mob, &target) => 1,

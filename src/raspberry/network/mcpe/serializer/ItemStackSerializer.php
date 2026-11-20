@@ -20,7 +20,7 @@ use function strlen;
 class ItemStackSerializer{
 
     /** most bytes of extra data accepted from a client */
-    private const MAX_EXTRA_DATA = 0x20000;
+    private const int MAX_EXTRA_DATA = 0x20000;
 
     private static int $shieldRuntimeId = -1;
 
@@ -32,6 +32,8 @@ class ItemStackSerializer{
     }
 
     /**
+     * @param BinaryWriter $writer
+     * @param ItemStack $item
      * @param int $stackNetworkId
      */
     public static function writeInstance(BinaryWriter $writer, ItemStack $item, int $stackNetworkId) : void{

@@ -23,7 +23,7 @@ use function min;
 
 class HelpCommand extends Command{
 
-    private const PAGE_SIZE = 7;
+    private const int PAGE_SIZE = 7;
 
     public function __construct(){
         parent::__construct("help", "commands.help.description", "raspberry.command.help", ["?"]);

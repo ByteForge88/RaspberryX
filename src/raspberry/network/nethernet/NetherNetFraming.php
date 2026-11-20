@@ -9,8 +9,8 @@ use UnexpectedValueException;
 
 class NetherNetFraming{
 
-    private const MAX_PAYLOAD = 8 * 1024 * 1024;
-    private const TIMEOUT_NS = 10_000_000_000;
+    private const int MAX_PAYLOAD = 8 * 1024 * 1024;
+    private const int TIMEOUT_NS = 10_000_000_000;
 
     private string $buffer = "";
     private ?int $expected = null;

@@ -972,6 +972,7 @@ class World{
         $this->blockTicker->tick($currentTick);
         $this->weather->tick($this->randomTicker->getTickingChunks());
         $this->sleeping->tick();
+        NaturalSpawner::tick($this);
 
         foreach($this->scheduledUpdates as $key => [$tick, $update, $x, $z]){
             if($tick > $currentTick){

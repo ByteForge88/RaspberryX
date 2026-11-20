@@ -16,8 +16,8 @@ use function count;
 
 class PlayerListPacket implements Packet{
 
-    private const ACTION_ADD = 0;
-    private const ACTION_REMOVE = 1;
+    private const int ACTION_ADD = 0;
+    private const int ACTION_REMOVE = 1;
 
     /** @var list<PlayerListEntry> */
     public array $entries = [];

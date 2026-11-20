@@ -13,9 +13,9 @@ use function strlen;
 
 class LoginPacket implements Packet{
 
-    public const MAX_AUTH_BYTES = 65536;
-    public const MAX_CLIENT_DATA_BYTES = 2 * 1024 * 1024;
-    public const MAX_CONNECTION_BYTES = 2 * 1024 * 1024;
+    public const int MAX_AUTH_BYTES = 65536;
+    public const int MAX_CLIENT_DATA_BYTES = 2 * 1024 * 1024;
+    public const int MAX_CONNECTION_BYTES = 2 * 1024 * 1024;
 
     public int $protocolVersion = 0;
     public string $authInfoJson = "";

@@ -4,16 +4,24 @@ declare(strict_types=1);
 
 namespace raspberry\entity\monster;
 
+use raspberry\Server;
+
 use raspberry\entity\EntityIds;
 use raspberry\entity\ai\Behavior;
 use raspberry\entity\effect\Effect;
+use raspberry\entity\effect\EffectInstance;
 
 use raspberry\item\Item;
 use raspberry\item\ItemIds;
 
 use raspberry\network\mcpe\protocol\types\EntityMetadata;
 
+use raspberry\world\Difficulty;
+
+use function max;
+use function min;
 use function mt_rand;
+use function mt_getrandmax;
 
 class Spider extends Monster{
 
@@ -53,6 +61,26 @@ class Spider extends Monster{
 
     public function canBeAffected(Effect $effect) : bool{
         return $effect !== Effect::POISON && parent::canBeAffected($effect);
+    }
+
+    /**
+     * On hard a few spiders come with an effect that never wears off.
+     */
+    public function onSpawnedNaturally() : void{
+        $special = max(0.0, min(1.0, (self::getEffectiveDifficulty() - 2.0) / 2.0));
+
+        if(Server::getInstance()->getDifficulty() !== Difficulty::HARD || mt_rand() / mt_getrandmax() >= 0.1 * $special){
+            return;
+        }
+
+        $effect = match(mt_rand(0, 4)){
+            0, 1 => Effect::SPEED,
+            2 => Effect::STRENGTH,
+            3 => Effect::REGENERATION,
+            default => Effect::INVISIBILITY
+        };
+
+        $this->effects->add(new EffectInstance($effect, EffectInstance::INFINITE));
     }
 
     protected function getAiFlags() : int{

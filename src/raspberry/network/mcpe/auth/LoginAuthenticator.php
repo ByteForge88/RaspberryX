@@ -42,16 +42,14 @@ use const OPENSSL_KEYTYPE_EC;
 
 class LoginAuthenticator{
 
-    private const ISSUER = "https://authorization.franchise.minecraft-services.net/";
+    private const string ISSUER = "https://authorization.franchise.minecraft-services.net/";
 
-    private const AUDIENCE = "api://auth-minecraft-services/multiplayer";
+    private const string AUDIENCE = "api://auth-minecraft-services/multiplayer";
 
     /** @var array<string|int, Key> */
     private array $trustedKeys;
 
     /**
-     * Supply only keys fetched from the trusted Minecraft auth service.
-     *
      * @param array<string|int, Key> $trustedKeys
      */
     public function __construct(array $trustedKeys){

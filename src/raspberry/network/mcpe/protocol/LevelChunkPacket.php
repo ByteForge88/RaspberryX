@@ -12,7 +12,7 @@ use UnexpectedValueException;
 class LevelChunkPacket implements Packet{
 
     //TODO: Add DimenionIds.php
-    public const DIMENSION_OVERWORLD = 0;
+    public const int DIMENSION_OVERWORLD = 0;
 
     public int $chunkX = 0;
     public int $chunkZ = 0;

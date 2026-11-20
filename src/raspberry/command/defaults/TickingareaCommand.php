@@ -28,7 +28,7 @@ use function str_replace;
 
 class TickingareaCommand extends Command{
 
-    public const MAX_COORDINATE = 30000000;
+    public const int MAX_COORDINATE = 30000000;
 
     public function __construct(){
         parent::__construct("tickingarea", "commands.tickingarea.description", "raspberry.command.tickingarea");

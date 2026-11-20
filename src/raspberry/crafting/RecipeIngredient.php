@@ -10,7 +10,7 @@ use function array_keys;
 
 class RecipeIngredient{
 
-    public const ANY_META = -1;
+    public const int ANY_META = -1;
 
     private ?string $itemId;
 

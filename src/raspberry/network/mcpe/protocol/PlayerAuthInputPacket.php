@@ -15,26 +15,26 @@ use UnexpectedValueException;
 
 class PlayerAuthInputPacket implements Packet{
 
-    public const FLAG_SNEAKING = 8;
-    public const FLAG_START_SPRINTING = 25;
-    public const FLAG_STOP_SPRINTING = 26;
-    public const FLAG_START_SNEAKING = 27;
-    public const FLAG_STOP_SNEAKING = 28;
-    public const FLAG_START_SWIMMING = 29;
-    public const FLAG_STOP_SWIMMING = 30;
-    public const FLAG_START_JUMPING = 31;
-    public const FLAG_START_GLIDING = 32;
-    public const FLAG_STOP_GLIDING = 33;
-    public const FLAG_PERFORM_ITEM_INTERACTION = 34;
-    public const FLAG_PERFORM_BLOCK_ACTIONS = 35;
-    public const FLAG_PERFORM_ITEM_STACK_REQUEST = 36;
-    public const FLAG_START_FLYING = 42;
-    public const FLAG_STOP_FLYING = 43;
-    public const FLAG_VERTICAL_COLLISION = 50;
+    public const int FLAG_SNEAKING = 8;
+    public const int FLAG_START_SPRINTING = 25;
+    public const int FLAG_STOP_SPRINTING = 26;
+    public const int FLAG_START_SNEAKING = 27;
+    public const int FLAG_STOP_SNEAKING = 28;
+    public const int FLAG_START_SWIMMING = 29;
+    public const int FLAG_STOP_SWIMMING = 30;
+    public const int FLAG_START_JUMPING = 31;
+    public const int FLAG_START_GLIDING = 32;
+    public const int FLAG_STOP_GLIDING = 33;
+    public const int FLAG_PERFORM_ITEM_INTERACTION = 34;
+    public const int FLAG_PERFORM_BLOCK_ACTIONS = 35;
+    public const int FLAG_PERFORM_ITEM_STACK_REQUEST = 36;
+    public const int FLAG_START_FLYING = 42;
+    public const int FLAG_STOP_FLYING = 43;
+    public const int FLAG_VERTICAL_COLLISION = 50;
 
-    public const FLAG_COUNT = 66;
+    public const int FLAG_COUNT = 66;
 
-    private const MAX_BLOCK_ACTIONS = 64;
+    private const int MAX_BLOCK_ACTIONS = 64;
 
     public float $pitch = 0.0;
     public float $yaw = 0.0;

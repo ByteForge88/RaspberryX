@@ -34,7 +34,7 @@ use function trim;
 
 class NetherNetTransport{
 
-    private const MESSAGES_PER_FLUSH = 256;
+    private const int MESSAGES_PER_FLUSH = 256;
 
     private WebRtcSessionManager $sessions;
 

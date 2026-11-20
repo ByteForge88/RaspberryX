@@ -10,7 +10,7 @@ use raspberry\command\CommandSender;
 
 use raspberry\network\mcpe\protocol\ProtocolInfo;
 
-use raspberry\Server;
+use raspberry\ServerInfo;
 
 class VersionCommand extends Command{
 
@@ -22,8 +22,8 @@ class VersionCommand extends Command{
 
     public function onSent(CommandSender $sender, CommandOutput $output, array $args) : void{
         $output->successText($this->text("command.version.info", [
-            "name" => Server::NAME,
-            "version" => Server::VERSION,
+            "name" => ServerInfo::NAME,
+            "version" => ServerInfo::VERSION,
             "minecraft" => ProtocolInfo::MINECRAFT_VERSION,
             "protocol" => ProtocolInfo::CURRENT_PROTOCOL
         ]));

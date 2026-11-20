@@ -81,7 +81,6 @@ final class BinaryWriter{
 
     public function writeVarInt(int $value) : void{
         self::checkRange($value, -2147483648, 2147483647);
-
         $encoded = (($value << 1) ^ ($value >> 31)) & 0xffffffff;
         $this->writeUnsignedVarInt($encoded);
     }

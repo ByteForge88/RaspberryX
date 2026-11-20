@@ -46,7 +46,6 @@ final class BinaryReader{
 
         $bytes = substr($this->buffer, $this->offset, $length);
         $this->offset += $length;
-
         return $bytes;
     }
 
@@ -70,7 +69,6 @@ final class BinaryReader{
 
     public function readShort(bool $littleEndian = true) : int{
         $value = $this->readUnsignedShort($littleEndian);
-
         return $value >= 0x8000 ? $value - 0x10000 : $value;
     }
 
@@ -80,13 +78,11 @@ final class BinaryReader{
 
     public function readInt(bool $littleEndian = true) : int{
         $value = $this->readUnsignedInt($littleEndian);
-
         return $value >= 0x80000000 ? $value - 0x100000000 : $value;
     }
 
     public function readLong(bool $littleEndian = true) : int{
         $parts = unpack($littleEndian ? "Vlow/Vhigh" : "Nhigh/Nlow", $this->readBytes(8));
-
         return ($parts["high"] << 32) | $parts["low"];
     }
 
@@ -120,7 +116,6 @@ final class BinaryReader{
 
     public function readVarInt() : int{
         $value = $this->readUnsignedVarInt();
-
         return ($value >> 1) ^ -($value & 1);
     }
 

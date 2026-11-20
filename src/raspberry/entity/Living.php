@@ -160,7 +160,7 @@ abstract class Living extends Entity{
     }
 
     public function isBreathing() : bool{
-        return $this->breathing;
+        return $this->breathing && $this->air >= self::MAX_AIR;
     }
 
     public function canBreatheUnderwater() : bool{

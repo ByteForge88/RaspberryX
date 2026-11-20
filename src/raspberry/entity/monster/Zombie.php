@@ -61,6 +61,12 @@ class Zombie extends Monster{
         $this->updateEffectAttributes();
     }
 
+    public function onSpawnedNaturally() : void{
+        if(mt_rand(0, 99) < 5){
+            $this->setBaby(true);
+        }
+    }
+
     public function getXpReward() : int{
         return $this->baby ? 12 : 5;
     }

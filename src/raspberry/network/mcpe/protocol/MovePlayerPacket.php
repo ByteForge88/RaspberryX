@@ -11,16 +11,16 @@ use UnexpectedValueException;
 
 class MovePlayerPacket implements Packet{
 
-    public const MODE_NORMAL = 0;
-    public const MODE_RESET = 1;
-    public const MODE_TELEPORT = 2;
-    public const MODE_ROTATION = 3;
+    public const int MODE_NORMAL = 0;
+    public const int MODE_RESET = 1;
+    public const int MODE_TELEPORT = 2;
+    public const int MODE_ROTATION = 3;
 
-    public const TELEPORT_CAUSE_UNKNOWN = 0;
-    public const TELEPORT_CAUSE_PROJECTILE = 1;
-    public const TELEPORT_CAUSE_CHORUS_FRUIT = 2;
-    public const TELEPORT_CAUSE_COMMAND = 3;
-    public const TELEPORT_CAUSE_BEHAVIOR = 4;
+    public const int TELEPORT_CAUSE_UNKNOWN = 0;
+    public const int TELEPORT_CAUSE_PROJECTILE = 1;
+    public const int TELEPORT_CAUSE_CHORUS_FRUIT = 2;
+    public const int TELEPORT_CAUSE_COMMAND = 3;
+    public const int TELEPORT_CAUSE_BEHAVIOR = 4;
 
     public int $actorRuntimeId = 0;
 

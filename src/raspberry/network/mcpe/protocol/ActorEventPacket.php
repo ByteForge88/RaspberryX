@@ -9,16 +9,16 @@ use raspberry\network\encoding\BinaryWriter;
 
 class ActorEventPacket implements Packet{
 
-    public const JUMP = 1;
-    public const HURT = 2;
-    public const DEATH = 3;
-    public const ARM_SWING = 4;
-    public const EAT_GRASS = 10;
-    public const RESPAWN = 18;
-    public const LOVE_PARTICLES = 21;
-    public const EATING_ITEM = 57;
-    public const BABY_ANIMAL_FEED = 60;
-    public const DEATH_SMOKE_CLOUD = 61;
+    public const int JUMP = 1;
+    public const int HURT = 2;
+    public const int DEATH = 3;
+    public const int ARM_SWING = 4;
+    public const int EAT_GRASS = 10;
+    public const int RESPAWN = 18;
+    public const int LOVE_PARTICLES = 21;
+    public const int EATING_ITEM = 57;
+    public const int BABY_ANIMAL_FEED = 60;
+    public const int DEATH_SMOKE_CLOUD = 61;
 
     public int $actorRuntimeId = 0;
 

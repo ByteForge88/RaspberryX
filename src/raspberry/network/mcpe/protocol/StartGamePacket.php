@@ -21,23 +21,23 @@ use function substr;
 
 class StartGamePacket implements Packet{
 
-    public const GAME_MODE_SURVIVAL = 0;
-    public const GAME_MODE_CREATIVE = 1;
-    public const GAME_MODE_ADVENTURE = 2;
-    public const GAME_MODE_SPECTATOR = 6;
+    public const int GAME_MODE_SURVIVAL = 0;
+    public const int GAME_MODE_CREATIVE = 1;
+    public const int GAME_MODE_ADVENTURE = 2;
+    public const int GAME_MODE_SPECTATOR = 6;
 
-    public const DIFFICULTY_PEACEFUL = 0;
-    public const DIFFICULTY_EASY = 1;
-    public const DIFFICULTY_NORMAL = 2;
-    public const DIFFICULTY_HARD = 3;
+    public const int DIFFICULTY_PEACEFUL = 0;
+    public const int DIFFICULTY_EASY = 1;
+    public const int DIFFICULTY_NORMAL = 2;
+    public const int DIFFICULTY_HARD = 3;
 
-    public const PERMISSION_VISITOR = 0;
-    public const PERMISSION_MEMBER = 1;
-    public const PERMISSION_OPERATOR = 2;
+    public const int PERMISSION_VISITOR = 0;
+    public const int PERMISSION_MEMBER = 1;
+    public const int PERMISSION_OPERATOR = 2;
 
     /** world generator shown to the client: 1 = infinite (default), 2 = flat */
-    public const GENERATOR_INFINITE = 1;
-    public const GENERATOR_FLAT = 2;
+    public const int GENERATOR_INFINITE = 1;
+    public const int GENERATOR_FLAT = 2;
 
     public int $actorUniqueId = 1;
     public int $actorRuntimeId = 1;

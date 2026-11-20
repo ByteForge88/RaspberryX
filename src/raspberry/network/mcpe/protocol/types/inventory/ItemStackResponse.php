@@ -6,8 +6,8 @@ namespace raspberry\network\mcpe\protocol\types\inventory;
 
 class ItemStackResponse{
 
-    public const STATUS_OK = 0;
-    public const STATUS_ERROR = 1;
+    public const int STATUS_OK = 0;
+    public const int STATUS_ERROR = 1;
 
     public int $status;
 

@@ -11,13 +11,13 @@ use UnexpectedValueException;
 
 class ContainerSetDataPacket implements Packet{
 
-    public const FURNACE_TICK_COUNT = 0;
-    public const FURNACE_LIT_TIME = 1;
-    public const FURNACE_LIT_DURATION = 2;
+    public const int FURNACE_TICK_COUNT = 0;
+    public const int FURNACE_LIT_TIME = 1;
+    public const int FURNACE_LIT_DURATION = 2;
 
-    public const BREWING_STAND_BREW_TIME = 0;
-    public const BREWING_STAND_FUEL_AMOUNT = 1;
-    public const BREWING_STAND_FUEL_TOTAL = 2;
+    public const int BREWING_STAND_BREW_TIME = 0;
+    public const int BREWING_STAND_FUEL_AMOUNT = 1;
+    public const int BREWING_STAND_FUEL_TOTAL = 2;
 
     public int $windowId = 0;
 

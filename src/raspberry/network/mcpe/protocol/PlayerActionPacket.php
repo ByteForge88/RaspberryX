@@ -11,9 +11,9 @@ use UnexpectedValueException;
 
 class PlayerActionPacket implements Packet{
 
-    public const ACTION_START_SLEEPING = 5;
-    public const ACTION_STOP_SLEEPING = 6;
-    public const ACTION_RESPAWN = 7;
+    public const int ACTION_START_SLEEPING = 5;
+    public const int ACTION_STOP_SLEEPING = 6;
+    public const int ACTION_RESPAWN = 7;
 
     public int $actorRuntimeId = 0;
 

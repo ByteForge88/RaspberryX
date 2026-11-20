@@ -91,6 +91,8 @@ use raspberry\entity\object\ThrownPotion;
 use raspberry\entity\object\FallingBlock;
 use raspberry\entity\object\LightningBolt;
 use raspberry\entity\object\PrimedTNT;
+use raspberry\entity\object\ExperienceOrb;
+use raspberry\entity\projectile\Projectile;
 
 use raspberry\inventory\PlayerInventory;
 
@@ -146,37 +148,37 @@ use function trim;
 
 class NetworkSession{
 
-    public const STATE_NETWORK_SETTINGS = 0;
+    public const int STATE_NETWORK_SETTINGS = 0;
 
-    public const STATE_LOGIN = 1;
+    public const int STATE_LOGIN = 1;
 
-    public const STATE_RESOURCE_PACKS = 2;
+    public const int STATE_RESOURCE_PACKS = 2;
 
     /** StartGame sent, waiting for RequestChunkRadius */
-    public const STATE_SPAWNING = 3;
+    public const int STATE_SPAWNING = 3;
 
     /** PLAYER_SPAWN sent, waiting for the client to finish loading */
-    public const STATE_LOADING = 4;
+    public const int STATE_LOADING = 4;
 
-    public const STATE_IN_GAME = 5;
+    public const int STATE_IN_GAME = 5;
 
-    public const STATE_DISCONNECTING = 6;
+    public const int STATE_DISCONNECTING = 6;
 
-    public const STATE_CLOSED = 7;
+    public const int STATE_CLOSED = 7;
 
-    public const COMPRESSION_THRESHOLD = 256;
+    public const int COMPRESSION_THRESHOLD = 256;
 
     /** longest chat message accepted, in characters (the vanilla client allows about this much) */
-    public const CHAT_MAX_LENGTH = 512;
+    public const int CHAT_MAX_LENGTH = 512;
 
     /** how long to wait for a client to arrive after a teleport before sending it again (5 seconds) */
-    private const TELEPORT_RESEND_TICKS = 100;
+    private const int TELEPORT_RESEND_TICKS = 100;
 
     /** chunks being encoded for this client at once */
-    private const CHUNKS_IN_FLIGHT = 16;
+    private const int CHUNKS_IN_FLIGHT = 16;
 
     /** ticks to wait after a DisconnectPacket before closing, so the message reaches the client */
-    private const DISCONNECT_DELAY_TICKS = 10;
+    private const int DISCONNECT_DELAY_TICKS = 10;
 
     private Server $server;
 
@@ -808,7 +810,7 @@ class NetworkSession{
             return;
         }
 
-        if($entity instanceof LightningBolt || $entity instanceof FallingBlock || $entity instanceof PrimedTNT){
+        if($entity instanceof LightningBolt || $entity instanceof FallingBlock || $entity instanceof PrimedTNT || $entity instanceof Projectile || $entity instanceof ExperienceOrb){
             $this->spawnBlockActor($entity);
             return;
         }
@@ -897,7 +899,7 @@ class NetworkSession{
     /**
      * Lightning, falling blocks and lit TNT: plain actors that carry their own metadata.
      */
-    private function spawnBlockActor(LightningBolt|FallingBlock|PrimedTNT $entity) : void{
+    private function spawnBlockActor(LightningBolt|FallingBlock|PrimedTNT|Projectile|ExperienceOrb $entity) : void{
         $position = $entity->getPosition();
         $motion = $entity->getMotion();
 
@@ -905,11 +907,13 @@ class NetworkSession{
         $packet->actorRuntimeId = $entity->getId();
         $packet->type = $entity->getNetworkTypeId();
         $packet->x = $position->x;
-        $packet->y = $position->y;
+        $packet->y = $position->y + $entity->getNetworkOffset();
         $packet->z = $position->z;
         $packet->motionX = $motion->x;
         $packet->motionY = $motion->y;
         $packet->motionZ = $motion->z;
+        $packet->pitch = $entity->getPitch();
+        $packet->yaw = $entity->getYaw();
         $packet->metadata = $entity->createMetadata();
 
         $this->sendDataPacket($packet);
@@ -929,7 +933,14 @@ class NetworkSession{
         $packet->headYaw = $mob->getHeadYaw();
         $packet->metadata = $mob->createMetadata();
         [$packet->intProperties, $packet->floatProperties] = EntityProperties::encode($mob->getNetworkTypeId(), $mob->getSyncedProperties());
+
         $this->sendDataPacket($packet);
+
+        $held = $mob->getHeldItem();
+
+        if($held !== null){
+            $this->sendDataPacket(MobEquipmentPacket::create($mob->getId(), $this->toItemInstance($held), 0, InventoryContentPacket::WINDOW_INVENTORY));
+        }
     }
 
     /**
@@ -977,7 +988,7 @@ class NetworkSession{
         $position = $entity->getPosition();
         $flags = $teleport ? MoveActorAbsolutePacket::FLAG_TELEPORT : 0;
 
-        if(($entity instanceof ItemEntity || $entity instanceof Mob) && $entity->isOnGround()){
+        if(($entity instanceof ItemEntity || $entity instanceof Mob || $entity instanceof PrimedTNT || $entity instanceof FallingBlock) && $entity->isOnGround()){
             $flags |= MoveActorAbsolutePacket::FLAG_ON_GROUND;
         }
 

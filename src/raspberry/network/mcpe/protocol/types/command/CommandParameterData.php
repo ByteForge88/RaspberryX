@@ -6,9 +6,9 @@ namespace raspberry\network\mcpe\protocol\types\command;
 
 class CommandParameterData{
 
-    public const OPTION_COLLAPSE_ENUM = 1;
-    public const OPTION_HAS_SEMANTIC_CONSTRAINT = 2;
-    public const OPTION_AS_CHAINED_COMMAND = 4;
+    public const int OPTION_COLLAPSE_ENUM = 1;
+    public const int OPTION_HAS_SEMANTIC_CONSTRAINT = 2;
+    public const int OPTION_AS_CHAINED_COMMAND = 4;
 
     public string $name;
 

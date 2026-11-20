@@ -11,9 +11,9 @@ use UnexpectedValueException;
 
 class MobEffectPacket implements Packet{
 
-    public const EVENT_ADD = 1;
-    public const EVENT_UPDATE = 2;
-    public const EVENT_REMOVE = 3;
+    public const int EVENT_ADD = 1;
+    public const int EVENT_UPDATE = 2;
+    public const int EVENT_REMOVE = 3;
 
     public int $actorRuntimeId = 0;
 

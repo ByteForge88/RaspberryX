@@ -9,14 +9,14 @@ use raspberry\network\encoding\BinaryWriter;
 
 class Attribute{
 
-    public const HEALTH = "minecraft:health";
-    public const ABSORPTION = "minecraft:absorption";
-    public const MOVEMENT_SPEED = "minecraft:movement";
-    public const HUNGER = "minecraft:player.hunger";
-    public const SATURATION = "minecraft:player.saturation";
-    public const EXHAUSTION = "minecraft:player.exhaustion";
-    public const EXPERIENCE = "minecraft:player.experience";
-    public const EXPERIENCE_LEVEL = "minecraft:player.level";
+    public const string HEALTH = "minecraft:health";
+    public const string ABSORPTION = "minecraft:absorption";
+    public const string MOVEMENT_SPEED = "minecraft:movement";
+    public const string HUNGER = "minecraft:player.hunger";
+    public const string SATURATION = "minecraft:player.saturation";
+    public const string EXHAUSTION = "minecraft:player.exhaustion";
+    public const string EXPERIENCE = "minecraft:player.experience";
+    public const string EXPERIENCE_LEVEL = "minecraft:player.level";
 
     public string $name;
 

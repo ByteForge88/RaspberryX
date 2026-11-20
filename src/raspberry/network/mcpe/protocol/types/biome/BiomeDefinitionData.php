@@ -7,7 +7,7 @@ namespace raspberry\network\mcpe\protocol\types\biome;
 class BiomeDefinitionData{
 
     /** the ID vanilla biomes are sent with, the client then finds the biome by name */
-    public const VANILLA_ID = 0xffff;
+    public const int VANILLA_ID = 0xffff;
 
     public string $name;
 

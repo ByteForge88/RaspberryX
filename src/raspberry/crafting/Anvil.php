@@ -10,6 +10,7 @@ use raspberry\item\Item;
 use raspberry\item\ItemIds;
 use raspberry\item\ItemProperties;
 use raspberry\item\enchantment\Enchantment;
+use raspberry\item\enchantment\EnchantmentException;
 
 use function intdiv;
 use function max;
@@ -20,16 +21,17 @@ use function substr;
 class Anvil{
 
     /** at this cost the anvil says "Too Expensive!" outside creative */
-    public const MAX_COST = 40;
+    public const int MAX_COST = 40;
 
     /** chance the anvil gets damaged each use */
-    public const DAMAGE_CHANCE = 0.12;
+    public const float DAMAGE_CHANCE = 0.12;
 
     private function __construct(){
     }
 
     /**
      * @return array{Item, int, int}|null
+     * @throws EnchantmentException
      */
     public static function combine(Item $input, Item $material, ?string $newName, bool $creative) : ?array{
         if($input->isNull()){
@@ -154,6 +156,7 @@ class Anvil{
      * enchantment could go on.
      *
      * @return array{int, bool}
+     * @throws EnchantmentException
      */
     private static function mergeEnchantments(Item $input, Item $material, Item $result, bool $book) : array{
         $cost = 0;

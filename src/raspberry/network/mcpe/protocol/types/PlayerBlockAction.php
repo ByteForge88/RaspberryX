@@ -6,12 +6,12 @@ namespace raspberry\network\mcpe\protocol\types;
 
 class PlayerBlockAction{
 
-    public const START_BREAK = 0;
-    public const ABORT_BREAK = 1;
-    public const STOP_BREAK = 2;
-    public const CRACK_BREAK = 18;
-    public const PREDICT_DESTROY_BLOCK = 26;
-    public const CONTINUE_DESTROY_BLOCK = 27;
+    public const int START_BREAK = 0;
+    public const int ABORT_BREAK = 1;
+    public const int STOP_BREAK = 2;
+    public const int CRACK_BREAK = 18;
+    public const int PREDICT_DESTROY_BLOCK = 26;
+    public const int CONTINUE_DESTROY_BLOCK = 27;
 
     public int $action;
 

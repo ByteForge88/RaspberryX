@@ -23,10 +23,10 @@ use function array_keys;
 class TimeCommand extends Command{
 
     /** the one world clock there is until there are dimensions */
-    public const OVERWORLD_CLOCK = "minecraft:overworld";
+    public const string OVERWORLD_CLOCK = "minecraft:overworld";
 
     /** the time of day each marker stands for */
-    public const MARKERS = [
+    public const array MARKERS = [
         "day" => World::TIME_DAY,
         "noon" => World::TIME_NOON,
         "sunset" => World::TIME_SUNSET,

@@ -120,12 +120,14 @@ use raspberry\command\defaults\VersionCommand;
 use raspberry\command\defaults\PluginsCommand;
 use raspberry\command\defaults\ClearCommand;
 use raspberry\command\defaults\EffectCommand;
+use raspberry\command\defaults\EnchantCommand;
 use raspberry\command\defaults\GiveCommand;
 use raspberry\command\defaults\SummonCommand;
 use raspberry\command\defaults\TimeCommand;
 use raspberry\command\defaults\DaylockCommand;
 use raspberry\command\defaults\ToggleDownfallCommand;
 use raspberry\command\defaults\WeatherCommand;
+use raspberry\command\defaults\XpCommand;
 use raspberry\command\defaults\TickingareaCommand;
 use raspberry\command\defaults\GameruleCommand;
 
@@ -202,18 +204,9 @@ use function strtolower;
 
 class Server{
 
-    //TODO: create ServerInfo.php and move this
-    public const string NAME = "RaspberryX";
-    public const string VERSION = "1.0.0-ALPHA1";
-    public const string PLUGIN_API = self::VERSION;
-
-    public const bool IS_DEVELOPMENT = true;
-
-    public const string LICENSE = "GNU Lesser General Public License v3.0";
-
     public const array DEFAULT_PROPERTIES = [
         "language" => Language::FALLBACK,
-        "server-name" => self::NAME,
+        "server-name" => ServerInfo::NAME,
         "server-ip" => "0.0.0.0",
         "server-port" => 19132,
         "max-players" => 20,
@@ -251,7 +244,7 @@ class Server{
     private bool $running = false;
     private int $currentTick = 0;
 
-    private string $serverName = self::NAME;
+    private string $serverName = ServerInfo::NAME;
     private int $maxPlayers = 20;
     private int $viewDistance = 8;
     private int $tickDistance = 4;
@@ -968,7 +961,9 @@ class Server{
             "gamerule" => "op",
             "weather" => "op",
             "toggledownfall" => "op",
-            "tickingarea" => "op"
+            "tickingarea" => "op",
+            "enchant" => "op",
+            "xp" => "op"
         ] as $command => $default){
             $permissions["raspberry.command.{$command}"] = [
                 "description" => $this->language->translate("permission.command", ["command" => $command]),
@@ -997,6 +992,7 @@ class Server{
             new SummonCommand(),
             new ClearCommand(),
             new EffectCommand(),
+            new EnchantCommand(),
             new SaveAllCommand(),
             new StopCommand(),
             new VersionCommand(),
@@ -1006,7 +1002,8 @@ class Server{
             new WeatherCommand(),
             new ToggleDownfallCommand(),
             new GameruleCommand(),
-            new TickingareaCommand()
+            new TickingareaCommand(),
+            new XpCommand()
         ]);
     }
 
@@ -1149,8 +1146,8 @@ class Server{
 
             $this->transport->start($listenAddress);
 
-            $this->logger->info($this->language->translate("server.software", ["name" => self::NAME, "version" => self::VERSION]));
-            $this->logger->info($this->language->translate("server.license", ["name" => self::NAME, "license" => self::LICENSE]));
+            $this->logger->info($this->language->translate("server.software", ["name" => ServerInfo::NAME, "version" => ServerInfo::VERSION]));
+            $this->logger->info($this->language->translate("server.license", ["name" => ServerInfo::NAME, "license" => ServerInfo::LICENSE]));
             $this->logger->info($this->language->translate("server.done", ["time" => sprintf("%.3f", (hrtime(true) - $this->startTime) / 1e9)]));
 
             $this->consoleReader = new ConsoleReader($this->logger, function(string $line) : void{

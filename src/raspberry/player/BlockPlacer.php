@@ -27,6 +27,7 @@ use raspberry\block\entity\Jukebox;
 use raspberry\block\entity\Lectern;
 use raspberry\block\entity\FlowerPot;
 use raspberry\block\entity\Campfire;
+use raspberry\block\entity\Spawner;
 use raspberry\block\entity\BlockEntity;
 use raspberry\block\entity\BlockEntityFactory;
 
@@ -183,6 +184,20 @@ class BlockPlacer{
         }
 
         $mob = EntityFactory::getSpawnEggType($held->getId());
+
+        if($mob !== null && $clicked->getName() === BlockIds::MOB_SPAWNER && $player->getGameMode() === GameMode::CREATIVE){
+            $spawner = $world->getBlockEntity($x, $y, $z);
+
+            if(!$spawner instanceof Spawner){
+                $spawner = new Spawner($x, $y, $z);
+                $world->addBlockEntity($spawner);
+            }
+
+            $spawner->setEntityId($mob);
+            $world->sendBlockEntity($spawner);
+            $player->swingArm(AnimatePacket::SWING_INTERACT);
+            return;
+        }
 
         if($mob !== null){
             [$dx, $dy, $dz] = Facing::offset($face);

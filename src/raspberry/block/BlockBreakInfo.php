@@ -114,6 +114,13 @@ class BlockBreakInfo{
     }
 
     /**
+     * @return list<array<string, mixed>>
+     */
+    public function getDropEntries() : array{
+        return $this->drops;
+    }
+
+    /**
      * What breaking $block with $item drops, nothing when the tool cannot harvest it. An
      * explosion breaks blocks with $anyTool: stone still drops cobblestone.
      *

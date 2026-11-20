@@ -12,7 +12,7 @@ use UnexpectedValueException;
 class ContainerOpenPacket implements Packet{
 
     /** the player's own inventory */
-    public const TYPE_INVENTORY = -1;
+    public const int TYPE_INVENTORY = -1;
 
     public int $windowId = 0;
 

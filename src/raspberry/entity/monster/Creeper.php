@@ -22,7 +22,9 @@ use raspberry\player\Player;
 use raspberry\world\Explosion;
 use raspberry\world\GameRules;
 
+use function count;
 use function max;
+use function mt_rand;
 
 class Creeper extends Monster{
 
@@ -31,6 +33,21 @@ class Creeper extends Monster{
     public const int MAX_SWELL = 30;
 
     public const float EXPLOSION_RADIUS = 3.0;
+
+    private const array MUSIC_DISCS = [
+        "minecraft:music_disc_13",
+        "minecraft:music_disc_cat",
+        "minecraft:music_disc_blocks",
+        "minecraft:music_disc_chirp",
+        "minecraft:music_disc_far",
+        "minecraft:music_disc_mall",
+        "minecraft:music_disc_mellohi",
+        "minecraft:music_disc_stal",
+        "minecraft:music_disc_strad",
+        "minecraft:music_disc_ward",
+        "minecraft:music_disc_11",
+        "minecraft:music_disc_wait"
+    ];
 
     private int $swell = 0;
 
@@ -194,7 +211,13 @@ class Creeper extends Monster{
 
     protected function getDrops(int $looting) : array{
         $gunpowder = self::lootCount(0, 2, $looting);
-        return $gunpowder > 0 ? [new Item(ItemIds::GUNPOWDER, $gunpowder)] : [];
+        $drops = $gunpowder > 0 ? [new Item(ItemIds::GUNPOWDER, $gunpowder)] : [];
+
+        if($this->lastDamageSource?->getAttacker() instanceof Skeleton){
+            $drops[] = new Item(self::MUSIC_DISCS[mt_rand(0, count(self::MUSIC_DISCS) - 1)]);
+        }
+
+        return $drops;
     }
 
     public function save() : ?CompoundTag{

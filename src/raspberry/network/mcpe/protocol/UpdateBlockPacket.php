@@ -11,8 +11,8 @@ use UnexpectedValueException;
 
 class UpdateBlockPacket implements Packet{
 
-    public const FLAG_NEIGHBORS = 1;
-    public const FLAG_NETWORK = 2;
+    public const int FLAG_NEIGHBORS = 1;
+    public const int FLAG_NETWORK = 2;
 
     public int $x = 0;
     public int $y = 0;

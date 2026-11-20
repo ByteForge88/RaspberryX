@@ -9,9 +9,11 @@ use raspberry\entity\Human;
 use raspberry\entity\Living;
 use raspberry\entity\Skin;
 use raspberry\entity\damage\DamageSource;
+use raspberry\entity\object\ExperienceOrb;
 use raspberry\entity\object\ItemEntity;
 use raspberry\entity\effect\Effect;
 use raspberry\entity\effect\EffectInstance;
+use raspberry\entity\projectile\FishingHook;
 
 use raspberry\event\player\PlayerBedEnterEvent;
 use raspberry\event\player\PlayerBedLeaveEvent;
@@ -266,6 +268,8 @@ class Player extends Human implements CommandSender{
     private ContainerOpener $containerOpener;
 
     private ItemUser $itemUser;
+
+    private ?FishingHook $fishingHook = null;
 
     private ?MovementCheck $movementCheck = null;
 
@@ -525,6 +529,14 @@ class Player extends Human implements CommandSender{
         return $this->itemUser;
     }
 
+    public function getFishingHook() : ?FishingHook{
+        return $this->fishingHook !== null && !$this->fishingHook->isClosed() ? $this->fishingHook : null;
+    }
+
+    public function setFishingHook(?FishingHook $hook) : void{
+        $this->fishingHook = $hook;
+    }
+
     public function getMovementCheck() : MovementCheck{
         return $this->movementCheck ??= new MovementCheck($this);
     }
@@ -578,6 +590,22 @@ class Player extends Human implements CommandSender{
         $this->session->sendDataPacket(LevelEventPacket::create(LevelEvent::SOUND_EXPERIENCE_ORB_PICKUP, $position->x, $position->y, $position->z));
 
         if(intdiv($this->xpLevel, 5) > intdiv($oldLevel, 5)){
+            $this->session->sendDataPacket(LevelSoundEventPacket::create(LevelSoundEvent::LEVELUP, $position->x, $position->y, $position->z, 0x10000000 * intdiv(min(30, $this->xpLevel), 5)));
+        }
+
+        $this->session->sendAttributes();
+    }
+
+    public function addXpLevels(int $levels) : void{
+        if($levels <= 0){
+            return;
+        }
+
+        $oldLevel = $this->xpLevel;
+        $this->xpLevel = min(self::MAX_XP_LEVEL, $this->xpLevel + $levels);
+
+        if(intdiv($this->xpLevel, 5) > intdiv($oldLevel, 5)){
+            $position = $this->getPosition();
             $this->session->sendDataPacket(LevelSoundEventPacket::create(LevelSoundEvent::LEVELUP, $position->x, $position->y, $position->z, 0x10000000 * intdiv(min(30, $this->xpLevel), 5)));
         }
 
@@ -1032,6 +1060,7 @@ class Player extends Human implements CommandSender{
                 $inventory->clearAll();
             }
 
+            ExperienceOrb::award($this->world, $this->position, min($this->xpLevel * 7, 100));
             $this->xpLevel = 0;
             $this->xpProgress = 0.0;
         }

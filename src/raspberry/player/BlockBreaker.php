@@ -5,11 +5,15 @@ declare(strict_types=1);
 namespace raspberry\player;
 
 use raspberry\block\BlockBreakInfo;
+use raspberry\block\BlockExperience;
+use raspberry\block\BlockLoot;
 use raspberry\block\BlockIds;
 use raspberry\block\BlockProperties;
 use raspberry\block\BlockState;
 use raspberry\block\StairsShape;
 use raspberry\block\entity\Lectern;
+
+use raspberry\entity\object\ExperienceOrb;
 
 use raspberry\event\block\BlockBreakEvent;
 use raspberry\event\player\PlayerInteractEvent;
@@ -99,7 +103,7 @@ class BlockBreaker{
         }
 
         if(!$this->player->getGameMode()->hasInstantBuild()){
-            $ticks = BlockBreakInfo::get($block->getName())->getBreakTicks($this->player->getInventory()->getItemInHand(), $block->getName(), $this->player->getEffects()->getBreakSpeedMultiplier());
+            $ticks = BlockBreakInfo::get($block->getName())->getBreakTicks($this->player->getInventory()->getItemInHand(), $block->getName(), $this->getSpeedMultiplier());
 
             if($ticks !== $this->breakTicks){
                 $this->breakTicks = $ticks;
@@ -162,13 +166,23 @@ class BlockBreaker{
             return;
         }
 
-        $this->breakTicks = BlockBreakInfo::get($block->getName())->getBreakTicks($this->player->getInventory()->getItemInHand(), $block->getName(), $this->player->getEffects()->getBreakSpeedMultiplier());
+        $this->breakTicks = BlockBreakInfo::get($block->getName())->getBreakTicks($this->player->getInventory()->getItemInHand(), $block->getName(), $this->getSpeedMultiplier());
 
         if($this->breakTicks > 0){
             $this->broadcastToAll(LevelEventPacket::create(LevelEvent::START_BLOCK_CRACKING, $x, $y, $z, intdiv(65535, $this->breakTicks)), $x, $z);
         }else{
             $this->progress = 1.0;
         }
+    }
+
+    private function getSpeedMultiplier() : float{
+        $multiplier = $this->player->getEffects()->getBreakSpeedMultiplier();
+
+        if($this->player->isHeadInWater() && $this->player->getArmorInventory()->getHelmet()->getEnchantmentLevel(Enchantment::AQUA_AFFINITY) <= 0){
+            $multiplier /= 5;
+        }
+
+        return $multiplier;
     }
 
     public function abort() : void{
@@ -197,10 +211,9 @@ class BlockBreaker{
 
         if($world->getBlock($x, $y, $z)->getName() === BlockIds::AIR){
             $this->abort();
-            return; //already broken, the client sent more than one finish
+            return;
         }
 
-        //hitting a lectern takes its book, the lectern stays
         if($this->tookBook !== null && [$this->tookBook[0], $this->tookBook[1], $this->tookBook[2]] === [$x, $y, $z] && $this->inputTicks - $this->tookBook[3] <= 10){
             $this->player->getNetworkSession()->sendBlock($x, $y, $z, $world->getBlock($x, $y, $z));
             return;
@@ -292,7 +305,7 @@ class BlockBreaker{
         $held = $player->getInventory()->getItemInHand();
         $entity = $world->getBlockEntity($x, $y, $z);
 
-        $event = new BlockBreakEvent($player, $block, new Vector3($x, $y, $z), $player->getGameMode()->hasInstantBuild() ? [] : $info->getDrops($block, $held));
+        $event = new BlockBreakEvent($player, $block, new Vector3($x, $y, $z), $player->getGameMode()->hasInstantBuild() ? [] : BlockLoot::getDrops($block, $held));
         $event->call();
 
         if($event->isCancelled()){
@@ -333,6 +346,8 @@ class BlockBreaker{
         foreach($entity?->getDrops($drops) ?? $drops as $drop){
             $world->dropItem(new Vector3($x + 0.5, $y + 0.5, $z + 0.5), $drop);
         }
+
+        ExperienceOrb::award($world, new Vector3($x + 0.5, $y + 0.5, $z + 0.5), BlockExperience::get($block, $held, $drops !== []));
 
         $player->exhaust(self::EXHAUSTION);
 

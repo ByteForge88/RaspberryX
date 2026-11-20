@@ -26,8 +26,6 @@ use function trim;
 
 class CommandMap{
 
-    private Server $server;
-
     private CommandArgumentParser $parser;
 
     /** @var array<string, Command> label => command */
@@ -37,7 +35,6 @@ class CommandMap{
     private array $aliases = [];
 
     public function __construct(Server $server){
-        $this->server = $server;
         $this->parser = new CommandArgumentParser($server);
     }
 

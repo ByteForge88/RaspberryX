@@ -14,25 +14,25 @@ use function in_array;
 
 class ContainerWindow{
 
-    public const TYPE_CONTAINER = 0;
-    public const TYPE_WORKBENCH = 1;
-    public const TYPE_FURNACE = 2;
-    public const TYPE_ENCHANTMENT = 3;
-    public const TYPE_BREWING_STAND = 4;
-    public const TYPE_ANVIL = 5;
-    public const TYPE_DISPENSER = 6;
-    public const TYPE_DROPPER = 7;
-    public const TYPE_HOPPER = 8;
-    public const TYPE_BEACON = 13;
-    public const TYPE_LOOM = 24;
-    public const TYPE_LECTERN = 25;
-    public const TYPE_GRINDSTONE = 26;
-    public const TYPE_BLAST_FURNACE = 27;
-    public const TYPE_SMOKER = 28;
-    public const TYPE_STONECUTTER = 29;
-    public const TYPE_CARTOGRAPHY = 30;
-    public const TYPE_SMITHING_TABLE = 33;
-    public const TYPE_CRAFTER = 36;
+    public const int TYPE_CONTAINER = 0;
+    public const int TYPE_WORKBENCH = 1;
+    public const int TYPE_FURNACE = 2;
+    public const int TYPE_ENCHANTMENT = 3;
+    public const int TYPE_BREWING_STAND = 4;
+    public const int TYPE_ANVIL = 5;
+    public const int TYPE_DISPENSER = 6;
+    public const int TYPE_DROPPER = 7;
+    public const int TYPE_HOPPER = 8;
+    public const int TYPE_BEACON = 13;
+    public const int TYPE_LOOM = 24;
+    public const int TYPE_LECTERN = 25;
+    public const int TYPE_GRINDSTONE = 26;
+    public const int TYPE_BLAST_FURNACE = 27;
+    public const int TYPE_SMOKER = 28;
+    public const int TYPE_STONECUTTER = 29;
+    public const int TYPE_CARTOGRAPHY = 30;
+    public const int TYPE_SMITHING_TABLE = 33;
+    public const int TYPE_CRAFTER = 36;
 
     private int $windowId;
 
@@ -54,10 +54,13 @@ class ContainerWindow{
     private ?BlockEntity $entity;
 
     /**
+     * @param int $windowId
+     * @param int $type
      * @param list<array{int, int, int}> $positions
-     * @param list<int>                  $slotContainerIds
-     * @param list<Inventory>            $inventories shown one after the other
-     * @param (Closure() : void)|null    $onClose
+     * @param list<int> $slotContainerIds
+     * @param list<Inventory> $inventories shown one after the other
+     * @param (Closure() : void)|null $onClose
+     * @param BlockEntity|null $entity
      */
     public function __construct(int $windowId, int $type, array $positions, array $slotContainerIds, array $inventories, ?Closure $onClose, ?BlockEntity $entity){
         $this->windowId = $windowId;

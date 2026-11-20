@@ -59,15 +59,15 @@ use const OPENSSL_KEYTYPE_EC;
 
 class NetherNetIdentity{
 
-    private const ISSUER = "https://authorization.franchise.minecraft-services.net/";
+    private const string ISSUER = "https://authorization.franchise.minecraft-services.net/";
 
-    private const AUDIENCE = "api://auth-minecraft-services/multiplayer";
+    private const string AUDIENCE = "api://auth-minecraft-services/multiplayer";
 
-    private const KEYS_URL = "https://authorization.franchise.minecraft-services.net/.well-known/keys";
+    private const string KEYS_URL = "https://authorization.franchise.minecraft-services.net/.well-known/keys";
 
-    public const CLOCK_LEEWAY = 60;
+    public const int CLOCK_LEEWAY = 60;
 
-    private const JSON_FLAGS = JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR;
+    private const int JSON_FLAGS = JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR;
 
     private readonly string $privateKey;
 

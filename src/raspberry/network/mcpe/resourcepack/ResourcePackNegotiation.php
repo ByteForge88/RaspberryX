@@ -15,12 +15,12 @@ use function hrtime;
 
 class ResourcePackNegotiation{
 
-    private const NEW = 0;
-    private const WAITING_FOR_DOWNLOADS = 1;
-    private const WAITING_FOR_STACK = 2;
-    private const COMPLETE = 3;
+    private const int NEW = 0;
+    private const int WAITING_FOR_DOWNLOADS = 1;
+    private const int WAITING_FOR_STACK = 2;
+    private const int COMPLETE = 3;
 
-    private const TIMEOUT_NS = 30_000_000_000;
+    private const int TIMEOUT_NS = 30_000_000_000;
 
     private int $state = self::NEW;
     private int $deadlineNs = 0;

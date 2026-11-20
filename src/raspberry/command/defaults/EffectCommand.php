@@ -20,11 +20,11 @@ use raspberry\player\Player;
 
 class EffectCommand extends Command{
 
-    public const MAX_SECONDS = 1000000;
+    public const int MAX_SECONDS = 1000000;
 
-    public const MAX_AMPLIFIER = 255;
+    public const int MAX_AMPLIFIER = 255;
 
-    private const DEFAULT_SECONDS = 30;
+    private const int DEFAULT_SECONDS = 30;
 
     public function __construct(){
         parent::__construct("effect", "commands.effect.description", "raspberry.command.effect");

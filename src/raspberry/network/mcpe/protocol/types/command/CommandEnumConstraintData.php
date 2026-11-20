@@ -6,9 +6,9 @@ namespace raspberry\network\mcpe\protocol\types\command;
 
 class CommandEnumConstraintData{
 
-    public const CHEATS_ENABLED = 0;
-    public const OPERATOR_PERMISSIONS = 1;
-    public const HOST_PERMISSIONS = 2;
+    public const int CHEATS_ENABLED = 0;
+    public const int OPERATOR_PERMISSIONS = 1;
+    public const int HOST_PERMISSIONS = 2;
 
     public int $valueIndex;
 

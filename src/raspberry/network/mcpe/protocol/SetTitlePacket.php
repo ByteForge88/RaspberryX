@@ -9,15 +9,15 @@ use raspberry\network\encoding\BinaryWriter;
 
 class SetTitlePacket implements Packet{
 
-    public const TYPE_CLEAR = 0;
-    public const TYPE_RESET = 1;
-    public const TYPE_SET_TITLE = 2;
-    public const TYPE_SET_SUBTITLE = 3;
-    public const TYPE_SET_ACTIONBAR = 4;
-    public const TYPE_SET_DURATIONS = 5;
-    public const TYPE_SET_TITLE_JSON = 6;
-    public const TYPE_SET_SUBTITLE_JSON = 7;
-    public const TYPE_SET_ACTIONBAR_JSON = 8;
+    public const int TYPE_CLEAR = 0;
+    public const int TYPE_RESET = 1;
+    public const int TYPE_SET_TITLE = 2;
+    public const int TYPE_SET_SUBTITLE = 3;
+    public const int TYPE_SET_ACTIONBAR = 4;
+    public const int TYPE_SET_DURATIONS = 5;
+    public const int TYPE_SET_TITLE_JSON = 6;
+    public const int TYPE_SET_SUBTITLE_JSON = 7;
+    public const int TYPE_SET_ACTIONBAR_JSON = 8;
 
     public int $type = self::TYPE_SET_TITLE;
 

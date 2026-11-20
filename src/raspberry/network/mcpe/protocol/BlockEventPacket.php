@@ -12,7 +12,7 @@ use UnexpectedValueException;
 class BlockEventPacket implements Packet{
 
     /** data: 1 to open the lid, 0 to close it */
-    public const TYPE_CHANGE_CHEST_STATE = 1;
+    public const int TYPE_CHANGE_CHEST_STATE = 1;
 
     public int $x = 0;
     public int $y = 0;

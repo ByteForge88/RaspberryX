@@ -10,9 +10,9 @@ use raspberry\network\mcpe\serializer\ItemStackSerializer;
 
 class UseItemOnEntityData{
 
-    public const ACTION_INTERACT = 0;
-    public const ACTION_ATTACK = 1;
-    public const ACTION_ITEM_INTERACT = 2;
+    public const int ACTION_INTERACT = 0;
+    public const int ACTION_ATTACK = 1;
+    public const int ACTION_ITEM_INTERACT = 2;
 
     public int $targetRuntimeId;
 

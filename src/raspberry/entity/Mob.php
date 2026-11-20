@@ -11,8 +11,9 @@ use raspberry\block\BlockProperties;
 use raspberry\block\growth\Farmland;
 
 use raspberry\entity\ai\Behavior;
-use raspberry\entity\damage\DamageSource;
 use raspberry\entity\effect\Effect;
+use raspberry\entity\damage\DamageSource;
+use raspberry\entity\object\ExperienceOrb;
 
 use raspberry\item\enchantment\Enchantment;
 use raspberry\item\Item;
@@ -72,6 +73,8 @@ abstract class Mob extends Living{
     public const int EVENT_ATTACK = 6;
     public const int EVENT_TARGET = 7;
     public const int EVENT_SWELL = 8;
+    public const int EVENT_USE_ITEM = 9;
+    public const int EVENT_SHOOT = 10;
 
     public const float BABY_SCALE = 0.5;
 
@@ -429,6 +432,17 @@ abstract class Mob extends Living{
 
     }
 
+    /**
+     * Spawned by natural spawning or a spawner, the way some mobs come out different.
+     */
+    public function onSpawnedNaturally() : void{
+
+    }
+
+    public function getHeldItem() : ?Item{
+        return null;
+    }
+
     public function setMotion(Vector3 $motion) : void{
         parent::setMotion($motion);
         $this->world->getMobEngine()->setMotion($this, $motion);
@@ -512,7 +526,7 @@ abstract class Mob extends Living{
             $this->world->dropItem($this->position, $item);
         }
 
-        $killer?->addXp($event->getXp());
+        ExperienceOrb::award($this->world, $this->position, $event->getXp());
     }
 
     /** baby animals drop nothing, baby monsters drop like adults */

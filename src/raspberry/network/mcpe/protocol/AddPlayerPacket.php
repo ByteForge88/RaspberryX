@@ -20,9 +20,9 @@ use function str_repeat;
 class AddPlayerPacket implements Packet{
 
     /** every ability bit (1 << 20) - 1: other players' abilities are only used for display */
-    private const ALL_ABILITIES = 0xfffff;
+    private const int ALL_ABILITIES = 0xfffff;
 
-    private const ABILITY_LAYER_BASE = 1;
+    private const int ABILITY_LAYER_BASE = 1;
 
     public Uuid $uuid;
 

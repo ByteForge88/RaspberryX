@@ -6,12 +6,12 @@ namespace raspberry\network\mcpe\protocol\types\command;
 
 class CommandData{
 
-    public const PERMISSION_ANY = "any";
-    public const PERMISSION_GAME_DIRECTORS = "gamedirectors";
-    public const PERMISSION_ADMIN = "admin";
-    public const PERMISSION_HOST = "host";
-    public const PERMISSION_OWNER = "owner";
-    public const PERMISSION_INTERNAL = "internal";
+    public const string PERMISSION_ANY = "any";
+    public const string PERMISSION_GAME_DIRECTORS = "gamedirectors";
+    public const string PERMISSION_ADMIN = "admin";
+    public const string PERMISSION_HOST = "host";
+    public const string PERMISSION_OWNER = "owner";
+    public const string PERMISSION_INTERNAL = "internal";
 
     public string $name;
 

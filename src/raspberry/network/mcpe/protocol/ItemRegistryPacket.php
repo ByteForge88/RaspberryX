@@ -14,9 +14,9 @@ use function count;
 class ItemRegistryPacket implements Packet{
 
     /** item entry versions */
-    public const VERSION_LEGACY = 0;
-    public const VERSION_DATA_DRIVEN = 1;
-    public const VERSION_NONE = 2;
+    public const int VERSION_LEGACY = 0;
+    public const int VERSION_DATA_DRIVEN = 1;
+    public const int VERSION_NONE = 2;
 
     /** @var list<array{string, int, bool, int, string}> */
     public array $items = [];

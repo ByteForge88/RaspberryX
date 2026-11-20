@@ -39,16 +39,16 @@ use function usort;
 class TargetSelector{
 
     /** @a every player, @e every entity, @p nearest player, @r random player, @s / @initiator the sender */
-    public const PATTERN = '/^@(a|e|p|r|s|initiator)(\[.*\])?$/Dsi';
+    public const string PATTERN = '/^@(a|e|p|r|s|initiator)(\[.*\])?$/Dsi';
 
-    private const ARGUMENTS = ["x", "y", "z", "r", "rm", "dx", "dy", "dz", "rx", "rxm", "ry", "rym", "c", "name", "type", "family", "m", "tag", "l", "lm"];
+    private const array ARGUMENTS = ["x", "y", "z", "r", "rm", "dx", "dy", "dz", "rx", "rxm", "ry", "rym", "c", "name", "type", "family", "m", "tag", "l", "lm"];
 
-    private const NOT_SUPPORTED_YET = ["scores", "hasitem", "haspermission", "has_property"];
+    private const array NOT_SUPPORTED_YET = ["scores", "hasitem", "haspermission", "has_property"];
 
     /** arguments that may be given more than once, as long as at most one is not negated */
-    private const REPEATABLE = ["name", "type", "family", "m", "tag"];
+    private const array REPEATABLE = ["name", "type", "family", "m", "tag"];
 
-    private const PLAYER_FAMILIES = ["player", "mob"];
+    private const array PLAYER_FAMILIES = ["player", "mob"];
 
     private Server $server;
 

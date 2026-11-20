@@ -25,10 +25,10 @@ class ItemTypeDictionary{
 
     private string $version;
 
-    /** @var array<string, int> item name => runtime ID */
+    /** @var array<string, int> */
     private array $items = [];
 
-    /** @var array<string, array{bool, int, string}> item name => component based, version, components as network NBT */
+    /** @var array<string, array{bool, int, string}> */
     private array $components = [];
 
     public function __construct(?string $path = null, ?string $componentsPath = null){

@@ -14,7 +14,7 @@ use function in_array;
 class CommandParameter{
 
     /** types that take the rest of the line, so they must be the last parameter */
-    public const REST_OF_LINE_TYPES = [
+    public const array REST_OF_LINE_TYPES = [
         AvailableCommandsPacket::ARG_TYPE_MESSAGE,
         AvailableCommandsPacket::ARG_TYPE_RAWTEXT,
         AvailableCommandsPacket::ARG_TYPE_COMMAND

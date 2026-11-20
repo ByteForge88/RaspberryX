@@ -49,6 +49,8 @@ pub const EVENT_LAND: u32 = 5;
 pub const EVENT_ATTACK: u32 = 6;
 pub const EVENT_TARGET: u32 = 7;
 pub const EVENT_SWELL: u32 = 8;
+pub const EVENT_USE_ITEM: u32 = 9;
+pub const EVENT_SHOOT: u32 = 10;
 
 const HURT_MEMORY: i32 = 100;
 
@@ -108,6 +110,7 @@ pub struct Mob {
     pub nav: Nav,
     pub look: Option<[f64; 3]>,
     pub jump: bool,
+    pub strafe: Option<(f32, f32)>,
     sent: Option<([f64; 3], [f32; 3], u32)>,
 }
 
@@ -260,6 +263,25 @@ impl Mob {
             self.yaw = turn(self.yaw, self.head_yaw, 10.0);
         }
     }
+
+        fn strafe_travel(&mut self, view: &View, ahead: f32, side: f32, events: &mut Vec<Event>) {
+            let length = (ahead * ahead + side * side).sqrt().max(1.0);
+            let (ahead, side) = (ahead / length, side / length);
+            let input = (ahead * ahead + side * side).sqrt();
+            let yaw = self.yaw - side.atan2(ahead).to_degrees();
+            let radians = (yaw as f64).to_radians();
+            let (bx, bz) = ((self.x - radians.sin()).floor() as i32, (self.z + radians.cos()).floor() as i32);
+
+            if !blocks::is_solid(view.block(bx, (self.y - 0.5).floor() as i32, bz)) {
+                self.travel(view, 0.0, events);
+                return;
+            }
+
+            let facing = self.yaw;
+            self.yaw = yaw;
+            self.travel(view, self.speed * input, events);
+            self.yaw = facing;
+        }
 
         fn stuck_in(&self, view: &View) -> Option<[f64; 3]> {
             let (bx, bz) = (self.x.floor() as i32, self.z.floor() as i32);
@@ -624,6 +646,7 @@ impl World {
                         nav: Nav::default(),
                         look: None,
                         jump: false,
+                        strafe: None,
                         sent: None,
                     });
                 }
@@ -757,7 +780,7 @@ impl World {
 
                 goals::tick(mob, &mut context);
                 forward = mob.follow_path(view);
-                mob.turn_head(forward > 0.0);
+                mob.turn_head(forward > 0.0 || mob.strafe.is_some());
             }
 
             let (mut push_x, mut push_z) = (0.0, 0.0);
@@ -797,7 +820,10 @@ impl World {
             mob.mx += push_x;
             mob.mz += push_z;
 
-            mob.travel(view, forward, &mut events);
+            match mob.strafe {
+                Some((ahead, side)) => mob.strafe_travel(view, ahead, side, &mut events),
+                None => mob.travel(view, forward, &mut events),
+            }
 
             let now = ([mob.x, mob.y, mob.z], [mob.yaw, mob.head_yaw, mob.pitch], mob.state);
 
