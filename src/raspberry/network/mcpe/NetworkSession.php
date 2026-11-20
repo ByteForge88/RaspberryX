@@ -18,6 +18,7 @@ use raspberry\network\mcpe\protocol\InventoryTransactionPacket;
 use raspberry\network\mcpe\protocol\AddActorPacket;
 use raspberry\network\mcpe\protocol\AnimatePacket;
 use raspberry\network\mcpe\protocol\AddItemActorPacket;
+use raspberry\network\mcpe\protocol\AddPaintingPacket;
 use raspberry\network\mcpe\protocol\MobArmorEquipmentPacket;
 use raspberry\network\mcpe\protocol\MobEffectPacket;
 use raspberry\network\mcpe\protocol\MobEquipmentPacket;
@@ -92,6 +93,7 @@ use raspberry\entity\object\FallingBlock;
 use raspberry\entity\object\LightningBolt;
 use raspberry\entity\object\PrimedTNT;
 use raspberry\entity\object\ExperienceOrb;
+use raspberry\entity\object\Painting;
 use raspberry\entity\projectile\Projectile;
 
 use raspberry\inventory\PlayerInventory;
@@ -114,6 +116,7 @@ use raspberry\event\server\DataPacketSendEvent;
 
 use InvalidArgumentException;
 
+use raspberry\math\Facing;
 use raspberry\math\Vector3;
 
 use raspberry\player\Player;
@@ -797,6 +800,12 @@ class NetworkSession{
     public function spawnEntity(Entity $entity) : void{
         if($entity instanceof ItemEntity){
             $this->spawnItemEntity($entity);
+            return;
+        }
+
+        if($entity instanceof Painting){
+            $position = $entity->getPosition();
+            $this->sendDataPacket(AddPaintingPacket::create($entity->getId(), $position->x, $position->y, $position->z, Facing::toLegacyDirection($entity->getFacing()), $entity->getMotive()->value));
             return;
         }
 

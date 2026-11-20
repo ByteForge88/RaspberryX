@@ -11,6 +11,7 @@ use raspberry\entity\Skin;
 use raspberry\entity\damage\DamageSource;
 use raspberry\entity\object\ExperienceOrb;
 use raspberry\entity\object\ItemEntity;
+use raspberry\entity\object\Painting;
 use raspberry\entity\effect\Effect;
 use raspberry\entity\effect\EffectInstance;
 use raspberry\entity\projectile\FishingHook;
@@ -1303,7 +1304,24 @@ class Player extends Human implements CommandSender{
         return $this->onGround;
     }
 
+    private function breakPainting(Painting $painting) : bool{
+        $reach = ($this->gameMode === GameMode::CREATIVE ? self::CREATIVE_ATTACK_REACH : self::ATTACK_REACH) + self::REACH_LEEWAY;
+
+        if($this->dead || $this->gameMode === GameMode::SPECTATOR || $painting->isClosed() || $painting->getWorld() !== $this->world || $painting->distanceFrom($this->getEyePosition()) > $reach){
+            return false;
+        }
+
+        $this->swingArm(AnimatePacket::SWING_ATTACK);
+        $painting->destroy(!$this->gameMode->hasInstantBuild());
+
+        return true;
+    }
+
     public function attackEntity(Entity $target) : bool{
+        if($target instanceof Painting){
+            return $this->breakPainting($target);
+        }
+
         if($this->dead || !$this->gameMode->allowsInteraction() || $target === $this || !$target instanceof Living || !$target->isAlive() || $target->isClosed() || $target->getWorld() !== $this->world){
             return false;
         }

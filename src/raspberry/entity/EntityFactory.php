@@ -15,6 +15,7 @@ use raspberry\entity\monster\Spider;
 use raspberry\entity\monster\CaveSpider;
 use raspberry\entity\object\ItemEntity;
 use raspberry\entity\object\ExperienceOrb;
+use raspberry\entity\object\Painting;
 
 use raspberry\math\Vector3;
 
@@ -90,6 +91,10 @@ class EntityFactory{
 
         if($name === EntityIds::XP_ORB){
             return ExperienceOrb::fromSave($world, $tag);
+        }
+
+        if($name === Painting::NETWORK_ID){
+            return Painting::fromSave($world, $tag);
         }
 
         [$x, $y, $z] = [$tag->getDouble("X"), $tag->getDouble("Y"), $tag->getDouble("Z")];

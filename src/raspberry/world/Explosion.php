@@ -17,6 +17,7 @@ use raspberry\entity\Living;
 use raspberry\entity\damage\DamageSource;
 use raspberry\entity\object\FallingBlock;
 use raspberry\entity\object\ItemEntity;
+use raspberry\entity\object\Painting;
 use raspberry\entity\object\PrimedTNT;
 
 use raspberry\event\world\ExplosionEvent;
@@ -241,6 +242,11 @@ class Explosion{
 
         if($entity instanceof ItemEntity){
             $entity->close();
+            return;
+        }
+
+        if($entity instanceof Painting){
+            $entity->destroy(true);
             return;
         }
 

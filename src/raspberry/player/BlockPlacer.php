@@ -33,6 +33,7 @@ use raspberry\block\entity\BlockEntityFactory;
 
 use raspberry\entity\Human;
 use raspberry\entity\EntityFactory;
+use raspberry\entity\object\Painting;
 
 use raspberry\event\block\BlockPlaceEvent;
 use raspberry\event\block\SignChangeEvent;
@@ -178,6 +179,15 @@ class BlockPlacer{
                 $player->swingArm(AnimatePacket::SWING_INTERACT);
             }else{
                 $this->resend($x, $y, $z, $face);
+            }
+
+            return;
+        }
+
+        if($held->getId() === ItemIds::PAINTING){
+            if($player->getGameMode()->allowsBuilding() && Painting::place($world, $x, $y, $z, $face) !== null){
+                $player->swingArm(AnimatePacket::SWING_INTERACT);
+                $this->useUpHeld($held);
             }
 
             return;

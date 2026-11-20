@@ -74,6 +74,7 @@ use raspberry\network\mcpe\protocol\ItemStackRequestPacket;
 use raspberry\network\mcpe\protocol\ItemStackResponsePacket;
 use raspberry\network\mcpe\protocol\InventoryTransactionPacket;
 use raspberry\network\mcpe\protocol\AddItemActorPacket;
+use raspberry\network\mcpe\protocol\AddPaintingPacket;
 use raspberry\network\mcpe\protocol\TakeItemActorPacket;
 use raspberry\network\mcpe\protocol\CraftingDataPacket;
 use raspberry\network\mcpe\protocol\UnlockedRecipesPacket;
@@ -905,6 +906,7 @@ class Server{
             ItemStackResponsePacket::class,
             InventoryTransactionPacket::class,
             AddItemActorPacket::class,
+            AddPaintingPacket::class,
             TakeItemActorPacket::class,
             CraftingDataPacket::class,
             UnlockedRecipesPacket::class,
