@@ -33,6 +33,7 @@ use raspberry\block\entity\BlockEntityFactory;
 
 use raspberry\entity\Human;
 use raspberry\entity\EntityFactory;
+use raspberry\entity\object\Boat;
 use raspberry\entity\object\Painting;
 
 use raspberry\event\block\BlockPlaceEvent;
@@ -193,6 +194,17 @@ class BlockPlacer{
             return;
         }
 
+        $variant = Boat::variantOf($held->getId());
+
+        if($variant !== null){
+            if($this->placeBoat($x, $y, $z, $data, $clicked, $variant)){
+                $player->swingArm(AnimatePacket::SWING_INTERACT);
+                $this->useUpHeld($held);
+            }
+
+            return;
+        }
+
         $mob = EntityFactory::getSpawnEggType($held->getId());
 
         if($mob !== null && $clicked->getName() === BlockIds::MOB_SPAWNER && $player->getGameMode() === GameMode::CREATIVE){
@@ -234,6 +246,12 @@ class BlockPlacer{
         $player->swingArm(AnimatePacket::SWING_BUILD);
 
         $this->useUpHeld($held);
+    }
+
+    private function placeBoat(int $x, int $y, int $z, UseItemData $data, BlockState $clicked, int $variant) : bool{
+        $water = $clicked->getName() === BlockIds::WATER || $clicked->getName() === BlockIds::FLOWING_WATER;
+        $position = new Vector3($x + $data->clickX, $y + ($water && $data->clickY <= 0.0 ? 1.0 : $data->clickY), $z + $data->clickZ);
+        return Boat::place($this->player->getWorld(), $position, $this->player->getYaw(), $variant) !== null;
     }
 
     /**

@@ -9,6 +9,7 @@ use raspberry\entity\Human;
 use raspberry\entity\Living;
 use raspberry\entity\Skin;
 use raspberry\entity\damage\DamageSource;
+use raspberry\entity\object\Boat;
 use raspberry\entity\object\ExperienceOrb;
 use raspberry\entity\object\ItemEntity;
 use raspberry\entity\object\Painting;
@@ -271,6 +272,8 @@ class Player extends Human implements CommandSender{
     private ItemUser $itemUser;
 
     private ?FishingHook $fishingHook = null;
+
+    private ?Boat $vehicle = null;
 
     private ?MovementCheck $movementCheck = null;
 
@@ -538,6 +541,30 @@ class Player extends Human implements CommandSender{
         $this->fishingHook = $hook;
     }
 
+    public function getVehicle() : ?Boat{
+        return $this->vehicle;
+    }
+
+    /**
+     * @internal
+     */
+    public function setVehicle(?Boat $vehicle) : void{
+        $this->vehicle = $vehicle;
+        $this->fallDistance = 0.0;
+        $this->broadcastEffectVisuals();
+    }
+
+    public function dismountVehicle() : void{
+        $this->vehicle?->removePassenger($this);
+    }
+
+    /**
+     * @internal
+     */
+    public function onVehicleMoved() : void{
+        $this->fallDistance = 0.0;
+    }
+
     public function getMovementCheck() : MovementCheck{
         return $this->movementCheck ??= new MovementCheck($this);
     }
@@ -801,6 +828,7 @@ class Player extends Human implements CommandSender{
     }
 
     protected function doTeleport(Vector3 $position, ?float $yaw, ?float $pitch, ?World $world) : void{
+        $this->dismountVehicle();
         $changesWorld = $world !== null && $world !== $this->world;
 
         if($changesWorld){
@@ -1046,6 +1074,7 @@ class Player extends Human implements CommandSender{
         }
 
         $this->wake();
+        $this->dismountVehicle();
         $this->deathCause = null;
         $this->dead = true;
         $this->effects->clear();
@@ -1317,9 +1346,25 @@ class Player extends Human implements CommandSender{
         return true;
     }
 
+    private function hitBoat(Boat $boat) : bool{
+        $reach = ($this->gameMode === GameMode::CREATIVE ? self::CREATIVE_ATTACK_REACH : self::ATTACK_REACH) + self::REACH_LEEWAY;
+
+        if($this->dead || !$this->gameMode->allowsInteraction() || $boat->isClosed() || $boat->getWorld() !== $this->world || $boat->distanceToBox($this->getEyePosition()) > $reach){
+            return false;
+        }
+
+        $this->swingArm(AnimatePacket::SWING_ATTACK);
+        $boat->hurt(min(4.0, ToolInfo::getAttackDamage($this->inventory->getItemInHand()->getId())), $this);
+        return true;
+    }
+
     public function attackEntity(Entity $target) : bool{
         if($target instanceof Painting){
             return $this->breakPainting($target);
+        }
+
+        if($target instanceof Boat){
+            return $this->hitBoat($target);
         }
 
         if($this->dead || !$this->gameMode->allowsInteraction() || $target === $this || !$target instanceof Living || !$target->isAlive() || $target->isClosed() || $target->getWorld() !== $this->world){
@@ -2025,6 +2070,7 @@ class Player extends Human implements CommandSender{
         }
 
         $this->wake();
+        $this->vehicle?->removePassenger($this, null, true);
 
         foreach($this->world->getEntities() as $entity){
             $entity->despawnFrom($this, false);

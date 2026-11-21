@@ -12,6 +12,7 @@ use function count;
 class EntityMetadata{
 
     public const int KEY_FLAGS = 0;
+    public const int KEY_HEALTH = 1;
     public const int KEY_VARIANT = 2;
     public const int KEY_COLOR_INDEX = 3;
     public const int KEY_NAME = 4;
@@ -20,6 +21,10 @@ class EntityMetadata{
     public const int KEY_AIR_SUPPLY = 7;
     public const int KEY_EFFECT_COLOR = 8;
     public const int KEY_EFFECT_AMBIENCE = 9;
+    public const int KEY_HURT_TIME = 11;
+    public const int KEY_HURT_DIRECTION = 12;
+    public const int KEY_PADDLE_TIME_LEFT = 13;
+    public const int KEY_PADDLE_TIME_RIGHT = 14;
     public const int KEY_EXPERIENCE_VALUE = 15;
     public const int KEY_CUSTOM_DISPLAY = 18;
     public const int KEY_PLAYER_FLAGS = 26;
@@ -30,9 +35,15 @@ class EntityMetadata{
     public const int KEY_WIDTH = 53;
     public const int KEY_HEIGHT = 54;
     public const int KEY_FUSE_TIME = 55;
+    public const int KEY_RIDER_SEAT_POSITION = 56;
+    public const int KEY_RIDER_ROTATION_LOCKED = 57;
+    public const int KEY_RIDER_MAX_ROTATION = 58;
+    public const int KEY_RIDER_MIN_ROTATION = 59;
+    public const int KEY_RIDER_SEAT_ROTATION_OFFSET = 60;
     public const int KEY_CLOUD_RADIUS = 61;
     public const int KEY_CLOUD_WAITING = 62;
     public const int KEY_CLOUD_PARTICLE = 63;
+    public const int KEY_CONTROLLING_RIDER_SEAT = 74;
     public const int KEY_ALWAYS_SHOW_NAME_TAG = 81;
     public const int KEY_FLAGS_TWO = 92;
     public const int KEY_CLOUD_DURATION = 95;
@@ -41,6 +52,8 @@ class EntityMetadata{
     public const int KEY_CLOUD_RADIUS_ON_PICKUP = 98;
     public const int KEY_CLOUD_PICKUP_COUNT = 99;
     public const int KEY_INTERACT_TEXT = 100;
+    public const int KEY_IS_BUOYANT = 119;
+    public const int KEY_BUOYANCY_DATA = 121;
     public const int KEY_VISIBLE_MOB_EFFECTS = 131;
 
     public const int TYPE_BYTE = 0;
@@ -50,12 +63,14 @@ class EntityMetadata{
     public const int TYPE_STRING = 4;
     public const int TYPE_POSITION = 6;
     public const int TYPE_LONG = 7;
+    public const int TYPE_VECTOR3 = 8;
 
     /** bits of KEY_PLAYER_FLAGS */
     public const int PLAYER_FLAG_SLEEPING = 1;
 
     public const int FLAG_ON_FIRE = 0;
     public const int FLAG_SNEAKING = 1;
+    public const int FLAG_RIDING = 2;
     public const int FLAG_SPRINTING = 3;
     public const int FLAG_USING_ITEM = 4;
     public const int FLAG_INVISIBLE = 5;
@@ -70,8 +85,10 @@ class EntityMetadata{
     public const int FLAG_CAN_CLIMB = 19;
     public const int FLAG_SHEARED = 31;
     public const int FLAG_BREATHING = 35;
+    public const int FLAG_STACKABLE = 37;
     public const int FLAG_HAS_COLLISION = 48;
     public const int FLAG_HAS_GRAVITY = 49;
+    public const int FLAG_COLLIDABLE = 121;
 
     private array $values = [];
 
@@ -97,6 +114,10 @@ class EntityMetadata{
 
     public function setLong(int $key, int $value) : void{
         $this->values[$key] = [self::TYPE_LONG, $value];
+    }
+
+    public function setVector3(int $key, float $x, float $y, float $z) : void{
+        $this->values[$key] = [self::TYPE_VECTOR3, [$x, $y, $z]];
     }
 
     public function setBlockPosition(int $key, int $x, int $y, int $z) : void{
@@ -137,9 +158,19 @@ class EntityMetadata{
                 self::TYPE_FLOAT => $writer->writeFloat($value),
                 self::TYPE_STRING => $writer->writeString($value),
                 self::TYPE_POSITION => $this->writePosition($writer, $value),
-                self::TYPE_LONG => $writer->writeVarLong($value)
+                self::TYPE_LONG => $writer->writeVarLong($value),
+                self::TYPE_VECTOR3 => $this->writeVector3($writer, $value)
             };
         }
+    }
+
+    /**
+     * @param array{float, float, float} $vector
+     */
+    private function writeVector3(BinaryWriter $writer, array $vector) : void{
+        $writer->writeFloat($vector[0]);
+        $writer->writeFloat($vector[1]);
+        $writer->writeFloat($vector[2]);
     }
 
     /**

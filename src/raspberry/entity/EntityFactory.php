@@ -14,6 +14,7 @@ use raspberry\entity\monster\Creeper;
 use raspberry\entity\monster\Spider;
 use raspberry\entity\monster\CaveSpider;
 use raspberry\entity\object\ItemEntity;
+use raspberry\entity\object\Boat;
 use raspberry\entity\object\ExperienceOrb;
 use raspberry\entity\object\Painting;
 
@@ -95,6 +96,10 @@ class EntityFactory{
 
         if($name === Painting::NETWORK_ID){
             return Painting::fromSave($world, $tag);
+        }
+
+        if($name === EntityIds::BOAT){
+            return Boat::fromSave($world, $tag);
         }
 
         [$x, $y, $z] = [$tag->getDouble("X"), $tag->getDouble("Y"), $tag->getDouble("Z")];

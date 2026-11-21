@@ -53,6 +53,7 @@ use raspberry\network\mcpe\protocol\SetPlayerGameTypePacket;
 use raspberry\network\mcpe\protocol\UpdateAbilitiesPacket;
 use raspberry\network\mcpe\protocol\UpdateAttributesPacket;
 use raspberry\network\mcpe\protocol\SetActorDataPacket;
+use raspberry\network\mcpe\protocol\SetActorLinkPacket;
 use raspberry\network\mcpe\protocol\SetActorMotionPacket;
 use raspberry\network\mcpe\protocol\ActorEventPacket;
 use raspberry\network\mcpe\protocol\DeathInfoPacket;
@@ -888,6 +889,7 @@ class Server{
             UpdateAbilitiesPacket::class,
             UpdateAttributesPacket::class,
             SetActorDataPacket::class,
+            SetActorLinkPacket::class,
             MovePlayerPacket::class,
             RespawnPacket::class,
             SetSpawnPositionPacket::class,

@@ -30,6 +30,9 @@ class PlayerAuthInputPacket implements Packet{
     public const int FLAG_PERFORM_ITEM_STACK_REQUEST = 36;
     public const int FLAG_START_FLYING = 42;
     public const int FLAG_STOP_FLYING = 43;
+    public const int FLAG_IN_CLIENT_PREDICTED_VEHICLE = 45;
+    public const int FLAG_PADDLING_LEFT = 46;
+    public const int FLAG_PADDLING_RIGHT = 47;
     public const int FLAG_VERTICAL_COLLISION = 50;
 
     public const int FLAG_COUNT = 66;
@@ -39,7 +42,7 @@ class PlayerAuthInputPacket implements Packet{
     public float $pitch = 0.0;
     public float $yaw = 0.0;
 
-    /** eye position */
+    /** eye position, or the vehicle's position when riding a boat */
     public float $x = 0.0;
     public float $y = 0.0;
     public float $z = 0.0;
@@ -63,6 +66,12 @@ class PlayerAuthInputPacket implements Packet{
 
     /** @var list<PlayerBlockAction> */
     public array $blockActions = [];
+
+    /** which way the boat the player steers points */
+    public ?float $vehicleYaw = null;
+
+    /** the vehicle the client thinks it rides */
+    public ?int $predictedVehicleId = null;
 
     public static function getPacketId() : int{
         return ProtocolPacketIds::PLAYER_AUTH_INPUT_PACKET;
@@ -136,7 +145,16 @@ class PlayerAuthInputPacket implements Packet{
             }
         }
 
-        //vehicle rotation, predicted vehicle, analog movement, camera orientation, raw movement: not used yet
+        $this->vehicleYaw = null;
+
+        if($reader->readBool()){
+            $reader->readFloat();
+            $this->vehicleYaw = $reader->readFloat();
+        }
+
+        $this->predictedVehicleId = $reader->readBool() ? $reader->readVarLong() : null;
+
+        //analog movement, camera orientation, raw movement: not used yet
         $reader->readBytes($reader->remaining());
     }
 
