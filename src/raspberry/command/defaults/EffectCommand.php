@@ -4,12 +4,16 @@ declare(strict_types=1);
 
 namespace raspberry\command\defaults;
 
-use raspberry\command\Command;
-use raspberry\command\CommandEnum;
+use raspberry\command\CommandBuilder;
 use raspberry\command\CommandException;
-use raspberry\command\CommandOutput;
-use raspberry\command\CommandParameter;
 use raspberry\command\CommandSender;
+use raspberry\command\ParameterBuilder;
+
+use raspberry\command\argument\BoolArgument;
+use raspberry\command\argument\EffectArgument;
+use raspberry\command\argument\IntArgument;
+use raspberry\command\argument\KeywordArgument;
+use raspberry\command\argument\TargetArgument;
 
 use raspberry\entity\effect\Effect;
 use raspberry\entity\effect\EffectInstance;
@@ -18,7 +22,7 @@ use raspberry\lang\Translation;
 
 use raspberry\player\Player;
 
-class EffectCommand extends Command{
+class EffectCommand extends CommandBuilder{
 
     public const int MAX_SECONDS = 1000000;
 
@@ -26,41 +30,42 @@ class EffectCommand extends Command{
 
     private const int DEFAULT_SECONDS = 30;
 
-    public function __construct(){
-        parent::__construct("effect", "commands.effect.description", "raspberry.command.effect");
+    protected function configure() : void{
+        $this->setName("effect");
+        $this->setDescription("commands.effect.description");
+        $this->setPermission("raspberry.command.effect");
 
-        $effects = CommandEnum::effects();
+        $clear = new ParameterBuilder(0);
+        $clear->addArgument(0, new TargetArgument("player"));
+        $clear->addArgument(1, new KeywordArgument("Mode", "ClearEffects", ["clear"]));
+        $clear->addArgument(2, new EffectArgument("effect", true));
+        $this->addParameterBuilder($clear);
 
-        $this->addOverload(
-            CommandParameter::target("player"),
-            CommandParameter::enum("Mode", new CommandEnum("ClearEffects", ["clear"])),
-            CommandParameter::enum("effect", $effects, true)
-        );
+        $give = new ParameterBuilder(1);
+        $give->addArgument(0, new TargetArgument("player"));
+        $give->addArgument(1, new EffectArgument("effect"));
+        $give->addArgument(2, new IntArgument("seconds", true));
+        $give->addArgument(3, new IntArgument("amplifier", true));
+        $give->addArgument(4, new BoolArgument("hideParticles", true));
+        $this->addParameterBuilder($give);
 
-        $this->addOverload(
-            CommandParameter::target("player"),
-            CommandParameter::enum("effect", $effects),
-            CommandParameter::int("seconds", true),
-            CommandParameter::int("amplifier", true),
-            CommandParameter::bool("hideParticles", true)
-        );
-
-        $this->addOverload(
-            CommandParameter::target("player"),
-            CommandParameter::enum("effect", $effects),
-            CommandParameter::enum("Mode", new CommandEnum("AddInfiniteEffect", ["infinite"])),
-            CommandParameter::int("amplifier", true),
-            CommandParameter::bool("hideParticles", true)
-        );
+        $infinite = new ParameterBuilder(2);
+        $infinite->addArgument(0, new TargetArgument("player"));
+        $infinite->addArgument(1, new EffectArgument("effect"));
+        $infinite->addArgument(2, new KeywordArgument("Mode", "AddInfiniteEffect", ["infinite"]));
+        $infinite->addArgument(3, new IntArgument("amplifier", true));
+        $infinite->addArgument(4, new BoolArgument("hideParticles", true));
+        $this->addParameterBuilder($infinite);
     }
 
-    public function onSent(CommandSender $sender, CommandOutput $output, array $args) : void{
+    public function onSent(CommandSender $sender, string $label, array $args) : void{
         /** @var list<Player> $players */
         $players = $args["player"];
-        $effect = isset($args["effect"]) ? (Effect::fromName($args["effect"]) ?? throw new CommandException("commands.effect.notFound", [$args["effect"]])) : null;
+        /** @var Effect|null $effect */
+        $effect = $args["effect"] ?? null;
 
         if(($args["Mode"] ?? null) === "clear"){
-            $this->clear($output, $players, $effect);
+            $this->clear($players, $effect);
             return;
         }
 
@@ -92,9 +97,9 @@ class EffectCommand extends Command{
             if($seconds === 0 && !$infinite && !$effect->isInstant()){
                 if($player->getEffects()->has($effect)){
                     $player->getEffects()->remove($effect);
-                    $output->success("commands.effect.success.removed", [$name, $player->getName()]);
+                    $this->success(new Translation("commands.effect.success.removed", [$name, $player->getName()]));
                 }else{
-                    $output->error("commands.effect.failure.notActive", [$name, $player->getName()]);
+                    $this->failure(new Translation("commands.effect.failure.notActive", [$name, $player->getName()]));
                 }
 
                 continue;
@@ -103,9 +108,9 @@ class EffectCommand extends Command{
             $player->getEffects()->add(new EffectInstance($effect, $infinite ? EffectInstance::INFINITE : $seconds * 20, $amplifier, false, $visible), true);
 
             if($infinite){
-                $output->success("commands.effect.success.infinite", [$name, $amplifier, $player->getName()]);
+                $this->success(new Translation("commands.effect.success.infinite", [$name, $amplifier, $player->getName()]));
             }else{
-                $output->success("commands.effect.success", [$name, $amplifier, $player->getName(), $seconds]);
+                $this->success(new Translation("commands.effect.success", [$name, $amplifier, $player->getName(), $seconds]));
             }
         }
     }
@@ -113,7 +118,7 @@ class EffectCommand extends Command{
     /**
      * @param list<Player> $players
      */
-    private function clear(CommandOutput $output, array $players, ?Effect $effect) : void{
+    private function clear(array $players, ?Effect $effect) : void{
         foreach($players as $player){
             $effects = $player->getEffects();
 
@@ -122,15 +127,15 @@ class EffectCommand extends Command{
 
                 if($effects->has($effect)){
                     $effects->remove($effect);
-                    $output->success("commands.effect.success.removed", [$name, $player->getName()]);
+                    $this->success(new Translation("commands.effect.success.removed", [$name, $player->getName()]));
                 }else{
-                    $output->error("commands.effect.failure.notActive", [$name, $player->getName()]);
+                    $this->failure(new Translation("commands.effect.failure.notActive", [$name, $player->getName()]));
                 }
             }elseif($effects->all() !== []){
                 $effects->clear();
-                $output->success("commands.effect.success.removed.all", [$player->getName()]);
+                $this->success(new Translation("commands.effect.success.removed.all", [$player->getName()]));
             }else{
-                $output->error("commands.effect.failure.notActive.all", [$player->getName()]);
+                $this->failure(new Translation("commands.effect.failure.notActive.all", [$player->getName()]));
             }
         }
     }

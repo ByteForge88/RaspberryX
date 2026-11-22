@@ -57,7 +57,7 @@ use raspberry\block\BlockProperties;
 use raspberry\block\PointedDripstone;
 use raspberry\block\growth\Farmland;
 
-use raspberry\command\CommandOutput;
+use raspberry\command\CommandFeedback;
 use raspberry\command\CommandSender;
 
 use raspberry\lang\Translation;
@@ -84,7 +84,6 @@ use raspberry\permission\PermissibleTrait;
 use raspberry\permission\PermissionManager;
 
 use raspberry\utils\Uuid;
-use raspberry\utils\TextFormat;
 
 use raspberry\world\Chunk;
 use raspberry\world\World;
@@ -1918,19 +1917,8 @@ class Player extends Human implements CommandSender{
         $this->session->sendTranslation($message, $parameters);
     }
 
-    public function sendCommandOutput(CommandOutput $output) : void{
-        $language = $this->session->getServer()->getLanguage();
-
-        foreach($output->getMessages() as $message){
-            $text = $message->getMessage();
-            $color = $message->isSuccess() ? "" : TextFormat::RED;
-
-            if($text instanceof Translation){
-                $this->sendTranslation($color . "%" . $text->getKey(), Translation::toClientParams($text->getParams(), $language));
-            }else{
-                $this->sendMessage($color . $text);
-            }
-        }
+    public function sendCommandFeedback(CommandFeedback $feedback) : void{
+        $this->session->sendCommandFeedback($feedback);
     }
 
     /**

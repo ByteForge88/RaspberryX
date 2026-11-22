@@ -4,57 +4,59 @@ declare(strict_types=1);
 
 namespace raspberry\command\defaults;
 
-use raspberry\command\Command;
-use raspberry\command\CommandOutput;
-use raspberry\command\CommandParameter;
+use raspberry\command\CommandBuilder;
+use raspberry\command\CommandException;
 use raspberry\command\CommandSender;
+use raspberry\command\ParameterBuilder;
+
+use raspberry\command\argument\TargetArgument;
+
+use raspberry\lang\Translation;
 
 use raspberry\Server;
 
 use function str_starts_with;
 
-class DeopCommand extends Command{
+class DeopCommand extends CommandBuilder{
 
-    public function __construct(){
-        parent::__construct("deop", "commands.deop.description", "raspberry.command.deop");
+    protected function configure() : void{
+        $this->setName("deop");
+        $this->setDescription("commands.deop.description");
+        $this->setPermission("raspberry.command.deop");
 
-        $this->addOverload(CommandParameter::target("player", false, false));
+        $builder = new ParameterBuilder(0);
+        $builder->addArgument(0, new TargetArgument("player", false, false));
+        $this->addParameterBuilder($builder);
     }
 
-    public function onSent(CommandSender $sender, CommandOutput $output, array $args) : void{
+    public function onSent(CommandSender $sender, string $label, array $args) : void{
         $server = Server::getInstance();
         $target = $args["player"];
         $players = $server->getCommandMap()->selectPlayers($sender, $target);
 
         if($players === [] && !str_starts_with($target, "@")){
             $operators = $server->getOperatorList();
-            $xuid = $operators->getXuidByName($target);
-
-            if($xuid === null){
-                $output->error("commands.deop.failed", [$target]);
-                return;
-            }
-
+            $xuid = $operators->getXuidByName($target) ?? throw new CommandException("commands.deop.failed", [$target]);
             $name = $operators->getAll()[$xuid];
+
             $operators->remove($xuid);
-            $output->success("commands.deop.success", [$name]);
+            $this->success(new Translation("commands.deop.success", [$name]));
             return;
         }
 
         if($players === []){
-            $output->error("commands.generic.noTargetMatch");
-            return;
+            throw new CommandException("commands.generic.noTargetMatch");
         }
 
         foreach($players as $player){
             if(!$player->isOp()){
-                $output->error("commands.deop.failed", [$player->getName()]);
+                $this->failure(new Translation("commands.deop.failed", [$player->getName()]));
                 continue;
             }
 
             $player->setOp(false);
             $player->sendTranslation("%commands.deop.message");
-            $output->success("commands.deop.success", [$player->getName()]);
+            $this->success(new Translation("commands.deop.success", [$player->getName()]));
         }
     }
 }

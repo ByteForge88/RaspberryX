@@ -4,12 +4,14 @@ declare(strict_types=1);
 
 namespace raspberry\command\defaults;
 
-use raspberry\command\Command;
-use raspberry\command\CommandEnum;
+use raspberry\command\CommandBuilder;
 use raspberry\command\CommandException;
-use raspberry\command\CommandOutput;
-use raspberry\command\CommandParameter;
 use raspberry\command\CommandSender;
+use raspberry\command\ParameterBuilder;
+
+use raspberry\command\argument\GameModeArgument;
+use raspberry\command\argument\IntArgument;
+use raspberry\command\argument\TargetArgument;
 
 use raspberry\lang\Translation;
 
@@ -17,39 +19,41 @@ use raspberry\player\GameMode;
 
 use raspberry\Server;
 
-class GamemodeCommand extends Command{
+class GamemodeCommand extends CommandBuilder{
 
-    public function __construct(){
-        parent::__construct("gamemode", "commands.gamemode.description", "raspberry.command.gamemode");
+    protected function configure() : void{
+        $this->setName("gamemode");
+        $this->setDescription("commands.gamemode.description");
+        $this->setPermission("raspberry.command.gamemode");
 
-        $this->addOverload(CommandParameter::enum("gameMode", CommandEnum::gameModes()), CommandParameter::target("player", true));
-        $this->addOverload(CommandParameter::int("gameMode"), CommandParameter::target("player", true));
+        $builder = new ParameterBuilder(0);
+        $builder->addArgument(0, new GameModeArgument("gameMode"));
+        $builder->addArgument(0, new IntArgument("gameMode"));
+        $builder->addArgument(1, new TargetArgument("player", true));
+        $this->addParameterBuilder($builder);
     }
 
-    public function onSent(CommandSender $sender, CommandOutput $output, array $args) : void{
-        $mode = self::toGameMode($args["gameMode"]);
-        $players = $this->playersOrSelf($sender, $args, "player");
+    public function onSent(CommandSender $sender, string $label, array $args) : void{
+        $mode = $args["gameMode"] instanceof GameMode ? $args["gameMode"] : self::fromNumber($args["gameMode"]);
+        $name = new Translation("createWorldScreen.gameMode." . $mode->getName());
 
-        foreach($players as $player){
+        foreach($this->targetsOrSelf($sender, $args, "player") as $player){
             $player->setGameMode($mode);
 
             if($player === $sender){
-                $output->success("commands.gamemode.success.self", [new Translation("createWorldScreen.gameMode." . $mode->getName())]);
+                $this->success(new Translation("commands.gamemode.success.self", [$name]));
             }else{
                 $player->sendTranslation("%gameMode.changed", ["%gameMode." . $mode->getName()]);
-                $output->success("commands.gamemode.success.other", [new Translation("createWorldScreen.gameMode." . $mode->getName()), $player->getName()]);
+                $this->success(new Translation("commands.gamemode.success.other", [$name, $player->getName()]));
             }
         }
     }
 
-    private static function toGameMode(string|int $value) : GameMode{
-        return match($value){
-            "default", "d", 5 => Server::getInstance()->getDefaultGameMode(),
-            "survival", "s", 0 => GameMode::SURVIVAL,
-            "creative", "c", 1 => GameMode::CREATIVE,
-            "adventure", "a", 2 => GameMode::ADVENTURE,
-            "spectator", 6 => GameMode::SPECTATOR,
-            default => throw new CommandException("commands.gamemode.fail.invalid", [(string) $value])
+    private static function fromNumber(int $number) : GameMode{
+        return match($number){
+            5 => Server::getInstance()->getDefaultGameMode(),
+            0, 1, 2, 6 => GameMode::from($number),
+            default => throw new CommandException("commands.gamemode.fail.invalid", [(string) $number])
         };
     }
 }

@@ -6,9 +6,10 @@ namespace raspberry\command\defaults;
 
 use raspberry\Server;
 
-use raspberry\command\Command;
-use raspberry\command\CommandOutput;
+use raspberry\command\CommandBuilder;
 use raspberry\command\CommandSender;
+
+use raspberry\lang\Translation;
 
 use raspberry\player\Player;
 
@@ -16,13 +17,15 @@ use raspberry\world\Weather;
 
 use function mt_rand;
 
-class ToggleDownfallCommand extends Command{
+class ToggleDownfallCommand extends CommandBuilder{
 
-    public function __construct(){
-        parent::__construct("toggledownfall", "commands.downfall.description", "raspberry.command.toggledownfall");
+    protected function configure() : void{
+        $this->setName("toggledownfall");
+        $this->setDescription("commands.downfall.description");
+        $this->setPermission("raspberry.command.toggledownfall");
     }
 
-    public function onSent(CommandSender $sender, CommandOutput $output, array $args) : void{
+    public function onSent(CommandSender $sender, string $label, array $args) : void{
         $world = $sender instanceof Player ? $sender->getWorld() : Server::getInstance()->getWorldManager()->getDefaultWorld();
         $weather = $world->getWeather();
         $duration = mt_rand(...Weather::COMMAND_DURATION);
@@ -33,6 +36,6 @@ class ToggleDownfallCommand extends Command{
             $weather->setRain($duration);
         }
 
-        $output->success("commands.downfall.success");
+        $this->success(new Translation("commands.downfall.success"));
     }
 }

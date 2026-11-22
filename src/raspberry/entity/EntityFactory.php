@@ -15,6 +15,7 @@ use raspberry\entity\monster\Spider;
 use raspberry\entity\monster\CaveSpider;
 use raspberry\entity\object\ItemEntity;
 use raspberry\entity\object\Boat;
+use raspberry\entity\object\ChestBoat;
 use raspberry\entity\object\ExperienceOrb;
 use raspberry\entity\object\Painting;
 
@@ -100,6 +101,10 @@ class EntityFactory{
 
         if($name === EntityIds::BOAT){
             return Boat::fromSave($world, $tag);
+        }
+
+        if($name === EntityIds::CHEST_BOAT){
+            return ChestBoat::fromSave($world, $tag);
         }
 
         [$x, $y, $z] = [$tag->getDouble("X"), $tag->getDouble("Y"), $tag->getDouble("Z")];

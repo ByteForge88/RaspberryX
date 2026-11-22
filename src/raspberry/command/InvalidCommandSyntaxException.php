@@ -8,14 +8,17 @@ use RuntimeException;
 
 class InvalidCommandSyntaxException extends RuntimeException{
 
-    private int $offset;
+    private int $word;
 
-    public function __construct(int $offset = -1){
+    /**
+     * @param int $word
+     */
+    public function __construct(int $word = -1){
         parent::__construct("Invalid command syntax");
-        $this->offset = $offset;
+        $this->word = $word;
     }
 
-    public function getOffset() : int{
-        return $this->offset;
+    public function getWord() : int{
+        return $this->word;
     }
 }

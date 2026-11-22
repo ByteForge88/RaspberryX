@@ -4,31 +4,36 @@ declare(strict_types=1);
 
 namespace raspberry\command\defaults;
 
-use raspberry\command\Command;
-use raspberry\command\CommandEnum;
-use raspberry\command\CommandException;
-use raspberry\command\CommandOutput;
-use raspberry\command\CommandParameter;
+use raspberry\command\CommandBuilder;
 use raspberry\command\CommandSender;
+use raspberry\command\ParameterBuilder;
+
+use raspberry\command\argument\IntArgument;
+use raspberry\command\argument\ItemArgument;
+use raspberry\command\argument\TargetArgument;
 
 use raspberry\item\Item;
 
-class ClearCommand extends Command{
+use raspberry\lang\Translation;
 
-    public function __construct(){
-        parent::__construct("clear", "commands.clear.description", "raspberry.command.clear");
+class ClearCommand extends CommandBuilder{
 
-        $this->addOverload(
-            CommandParameter::target("player", true),
-            CommandParameter::enum("itemName", CommandEnum::items(), true),
-            CommandParameter::int("data", true),
-            CommandParameter::int("maxCount", true)
-        );
+    protected function configure() : void{
+        $this->setName("clear");
+        $this->setDescription("commands.clear.description");
+        $this->setPermission("raspberry.command.clear");
+
+        $builder = new ParameterBuilder(0);
+        $builder->addArgument(0, new TargetArgument("player", true));
+        $builder->addArgument(1, new ItemArgument("itemName", true));
+        $builder->addArgument(2, new IntArgument("data", true));
+        $builder->addArgument(3, new IntArgument("maxCount", true));
+        $this->addParameterBuilder($builder);
     }
 
-    public function onSent(CommandSender $sender, CommandOutput $output, array $args) : void{
-        $players = $this->playersOrSelf($sender, $args, "player");
-        $id = isset($args["itemName"]) ? (CommandEnum::toItemId($args["itemName"]) ?? throw new CommandException("commands.give.item.notFound", [$args["itemName"]])) : null;
+    public function onSent(CommandSender $sender, string $label, array $args) : void{
+        $players = $this->targetsOrSelf($sender, $args, "player");
+        $id = $args["itemName"] ?? null;
         $data = $args["data"] ?? -1;
         $max = $args["maxCount"] ?? -1;
         $filter = fn(Item $item) : bool => ($id === null || $item->getId() === $id) && ($data === -1 || $item->getMeta() === $data);
@@ -42,7 +47,7 @@ class ClearCommand extends Command{
                     $count += $inventory->countMatching($filter);
                 }
 
-                $output->success("commands.clear.testing", [$player->getName(), $count]);
+                $this->success(new Translation("commands.clear.testing", [$player->getName(), $count]));
                 continue;
             }
 
@@ -55,9 +60,9 @@ class ClearCommand extends Command{
             }
 
             if($count === 0){
-                $output->error("commands.clear.failure.no.items", [$player->getName()]);
+                $this->failure(new Translation("commands.clear.failure.no.items", [$player->getName()]));
             }else{
-                $output->success("commands.clear.success", [$player->getName(), $count]);
+                $this->success(new Translation("commands.clear.success", [$player->getName(), $count]));
             }
         }
     }

@@ -51,7 +51,6 @@ use raspberry\network\mcpe\protocol\CommandOutputPacket;
 use raspberry\network\mcpe\protocol\CommandRequestPacket;
 use raspberry\network\mcpe\protocol\SetPlayerGameTypePacket;
 use raspberry\network\mcpe\protocol\SetActorDataPacket;
-use raspberry\network\mcpe\protocol\SetActorLinkPacket;
 use raspberry\network\mcpe\protocol\ActorEventPacket;
 use raspberry\network\mcpe\protocol\DeathInfoPacket;
 use raspberry\network\mcpe\protocol\MovePlayerPacket;
@@ -70,6 +69,7 @@ use raspberry\network\mcpe\protocol\types\inventory\ContainerIds;
 use raspberry\network\mcpe\protocol\types\inventory\TransactionAction;
 use raspberry\network\mcpe\protocol\types\inventory\UseItemData;
 use raspberry\network\mcpe\protocol\types\inventory\UseItemOnEntityData;
+use raspberry\network\mcpe\protocol\types\command\CommandOriginData;
 use raspberry\network\mcpe\protocol\types\command\CommandOutputMessage;
 use raspberry\network\mcpe\auth\AuthenticatedLogin;
 use raspberry\network\mcpe\compression\PacketCompression;
@@ -80,6 +80,8 @@ use raspberry\network\mcpe\convert\CommandDataAdapter;
 
 use raspberry\block\BlockState;
 
+use raspberry\command\CommandFeedback;
+
 use raspberry\entity\Entity;
 use raspberry\entity\EntityProperties;
 use raspberry\entity\Human;
@@ -89,6 +91,7 @@ use raspberry\entity\effect\Effect;
 use raspberry\entity\effect\EffectInstance;
 use raspberry\entity\object\AreaEffectCloud;
 use raspberry\entity\object\Boat;
+use raspberry\entity\object\ChestBoat;
 use raspberry\entity\object\ItemEntity;
 use raspberry\entity\object\ThrownPotion;
 use raspberry\entity\object\FallingBlock;
@@ -1157,7 +1160,7 @@ class NetworkSession{
         if($vehicle !== null){
             $seat = $vehicle->getSeat($human);
             $metadata->setFlag(EntityMetadata::FLAG_RIDING);
-            $metadata->setVector3(EntityMetadata::KEY_RIDER_SEAT_POSITION, $seat->x, $seat->y, $seat->z);
+            $metadata->setVector3(EntityMetadata::KEY_RIDER_SEAT_POSITION, $seat->x, $seat->y + Boat::PLAYER_SEAT_LIFT, $seat->z);
             $metadata->setByte(EntityMetadata::KEY_RIDER_ROTATION_LOCKED, 1);
             $metadata->setFloat(EntityMetadata::KEY_RIDER_MAX_ROTATION, Boat::RIDER_ROTATION_LOCK);
             $metadata->setFloat(EntityMetadata::KEY_RIDER_MIN_ROTATION, -Boat::RIDER_ROTATION_LOCK);
@@ -1245,6 +1248,7 @@ class NetworkSession{
             $target = $player->getWorld()->getEntity($packet->targetActorRuntimeId);
             $player->setInteractText(match(true){
                 $target instanceof Mob && $this->canInteractWith($player, $target) => $target->getInteractText($player),
+                $target instanceof ChestBoat && ($player->isSneaking() || !$target->canBoard($player)) => "action.interact.opencontainer",
                 $target instanceof Boat && $target->canBoard($player) => "action.interact.ride.boat",
                 default => ""
             });
@@ -1258,6 +1262,13 @@ class NetworkSession{
                 $vehicle->removePassenger($player, $packet->position === null ? null : new Vector3($packet->position[0], $packet->position[1] - $player->getEyeHeight(), $packet->position[2]));
             }
 
+            return;
+        }
+
+        $vehicle = $player->getVehicle();
+
+        if($packet->action === InteractPacket::ACTION_OPEN_INVENTORY && $vehicle instanceof ChestBoat && $packet->targetActorRuntimeId === $vehicle->getId()){
+            $vehicle->rummage($player);
             return;
         }
 
@@ -1354,7 +1365,13 @@ class NetworkSession{
         if($data->action === UseItemOnEntityData::ACTION_ATTACK){
             $player->attackEntity($target);
         }elseif($data->action === UseItemOnEntityData::ACTION_INTERACT && $target instanceof Boat){
-            if(!$player->isSneaking() && !$player->isDead() && $player->getGameMode()->allowsInteraction() && $target->distanceToBox($player->getEyePosition()) <= Mob::INTERACT_REACH && $target->addPassenger($player)){
+            if($player->isDead() || !$player->getGameMode()->allowsInteraction() || $target->distanceToBox($player->getEyePosition()) > Mob::INTERACT_REACH){
+                return;
+            }
+
+            if($target instanceof ChestBoat && ($player->isSneaking() || !$target->canBoard($player))){
+                $target->rummage($player);
+            }elseif(!$player->isSneaking() && $target->addPassenger($player)){
                 $player->setInteractText("");
             }
         }elseif($data->action === UseItemOnEntityData::ACTION_INTERACT && $target instanceof Mob && $this->canInteractWith($player, $target)){
@@ -1488,20 +1505,32 @@ class NetworkSession{
             return;
         }
 
-        $output = $this->server->dispatchCommand($player, $event->getCommand(), false);
+        $this->sendCommandFeedback($this->server->dispatchCommand($player, $event->getCommand(), false), $packet->origin);
+    }
+
+    /**
+     * @param CommandOriginData|null $origin
+     */
+    public function sendCommandFeedback(CommandFeedback $feedback, ?CommandOriginData $origin = null) : void{
+        if($this->player === null || $feedback->getMessages() === []){
+            return;
+        }
+
+        if($origin === null){
+            $origin = new CommandOriginData();
+            $origin->uuid = $this->player->getUuid();
+            $origin->playerActorUniqueId = $this->player->getId();
+        }
+
         $messages = [];
 
-        foreach($output->getMessages() as $message){
-            $text = $message->getMessage();
-
-            $messages[] = $text instanceof Translation
-                ? new CommandOutputMessage($text->getKey(), $message->isSuccess(), Translation::toClientParams($text->getParams(), $this->server->getLanguage()))
-                : new CommandOutputMessage($text, $message->isSuccess());
+        foreach($feedback->getMessages() as [$message, $success]){
+            $messages[] = $message instanceof Translation
+                ? new CommandOutputMessage($message->getKey(), $success, Translation::toClientParams($message->getParams(), $this->server->getLanguage()))
+                : new CommandOutputMessage($message, $success);
         }
 
-        if($messages !== []){
-            $this->sendDataPacket(CommandOutputPacket::create($packet->origin, $output->getSuccessCount(), $messages));
-        }
+        $this->sendDataPacket(CommandOutputPacket::create($origin, $feedback->getSuccessCount(), $messages));
     }
 
     private function handleText(TextPacket $packet) : void{

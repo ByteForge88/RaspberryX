@@ -4,23 +4,33 @@ declare(strict_types=1);
 
 namespace raspberry\command\defaults;
 
-use raspberry\command\Command;
+use raspberry\command\CommandBuilder;
 use raspberry\command\CommandException;
-use raspberry\command\CommandOutput;
-use raspberry\command\CommandParameter;
 use raspberry\command\CommandSender;
+use raspberry\command\ParameterBuilder;
+
+use raspberry\command\argument\MessageArgument;
+use raspberry\command\argument\TargetArgument;
+
+use raspberry\lang\Translation;
 
 use raspberry\player\Player;
 
-class TellCommand extends Command{
+class TellCommand extends CommandBuilder{
 
-    public function __construct(){
-        parent::__construct("tell", "commands.tell.description", "raspberry.command.tell", ["w", "msg"]);
+    protected function configure() : void{
+        $this->setName("tell");
+        $this->setDescription("commands.tell.description");
+        $this->setPermission("raspberry.command.tell");
+        $this->setAliases(["w", "msg"]);
 
-        $this->addOverload(CommandParameter::target("target"), CommandParameter::message("message"));
+        $builder = new ParameterBuilder(0);
+        $builder->addArgument(0, new TargetArgument("target"));
+        $builder->addArgument(1, new MessageArgument("message"));
+        $this->addParameterBuilder($builder);
     }
 
-    public function onSent(CommandSender $sender, CommandOutput $output, array $args) : void{
+    public function onSent(CommandSender $sender, string $label, array $args) : void{
         /** @var list<Player> $players */
         $players = $args["target"];
         $message = $args["message"];
@@ -32,7 +42,7 @@ class TellCommand extends Command{
             }
 
             $player->sendWhisper($sender->getName(), $message);
-            $output->success("commands.message.display.outgoing", [$player->getName(), $message]);
+            $this->success(new Translation("commands.message.display.outgoing", [$player->getName(), $message]));
             $sent = true;
         }
 

@@ -6,12 +6,20 @@ namespace raspberry\command\defaults;
 
 use raspberry\block\BlockIds;
 
-use raspberry\command\Command;
-use raspberry\command\CommandEnum;
+use raspberry\command\CommandBuilder;
 use raspberry\command\CommandException;
-use raspberry\command\CommandOutput;
-use raspberry\command\CommandParameter;
 use raspberry\command\CommandSender;
+use raspberry\command\ParameterBuilder;
+
+use raspberry\command\argument\Argument;
+use raspberry\command\argument\BoolArgument;
+use raspberry\command\argument\KeywordArgument;
+use raspberry\command\argument\PositionArgument;
+use raspberry\command\argument\RelativeValue;
+use raspberry\command\argument\RelativeValueArgument;
+use raspberry\command\argument\TargetArgument;
+
+use raspberry\lang\Translation;
 
 use raspberry\math\Vector3;
 
@@ -26,42 +34,60 @@ use function min;
 use function number_format;
 use function rad2deg;
 use function sqrt;
-use function str_starts_with;
-use function substr;
 
-class TeleportCommand extends Command{
+class TeleportCommand extends CommandBuilder{
 
-    public function __construct(){
-        parent::__construct("teleport", "commands.tp.description", "raspberry.command.teleport", ["tp"]);
+    protected function configure() : void{
+        $this->setName("teleport");
+        $this->setDescription("commands.tp.description");
+        $this->setPermission("raspberry.command.teleport");
+        $this->setAliases(["tp"]);
 
-        $facing = new CommandEnum("TeleportFacing", ["facing"]);
-        $flags = [CommandParameter::bool("checkForBlocks", true), CommandParameter::bool("forceProvidedPositionOnDimensionChange", true)];
+        $victim = new TargetArgument("victim");
+        $to = new PositionArgument("destination");
+        $toPlayer = new TargetArgument("destination");
+        $yaw = new RelativeValueArgument("yRot", true);
+        $pitch = new RelativeValueArgument("xRot", true);
+        $facing = new KeywordArgument("facing", "TeleportFacing", ["facing"]);
+        $lookAtPosition = new PositionArgument("lookAtPosition");
+        $lookAtEntity = new TargetArgument("lookAtEntity");
 
-        $this->setOverloads([
-            [CommandParameter::position("destination"), ...$flags],
-            [CommandParameter::position("destination"), CommandParameter::value("yRot", true), CommandParameter::value("xRot", true), ...$flags],
-            [CommandParameter::position("destination"), CommandParameter::enum("facing", $facing), CommandParameter::position("lookAtPosition"), ...$flags],
-            [CommandParameter::position("destination"), CommandParameter::enum("facing", $facing), CommandParameter::target("lookAtEntity"), ...$flags],
-            [CommandParameter::target("victim"), CommandParameter::position("destination"), CommandParameter::value("yRot", true), CommandParameter::value("xRot", true), ...$flags],
-            [CommandParameter::target("victim"), CommandParameter::position("destination"), ...$flags],
-            [CommandParameter::target("victim"), CommandParameter::position("destination"), CommandParameter::enum("facing", $facing), CommandParameter::position("lookAtPosition"), ...$flags],
-            [CommandParameter::target("victim"), CommandParameter::position("destination"), CommandParameter::enum("facing", $facing), CommandParameter::target("lookAtEntity"), ...$flags],
-            [CommandParameter::target("destination")],
-            [CommandParameter::target("victim"), CommandParameter::target("destination"), ...$flags]
-        ]);
+        $this->addWay(0, true, $to);
+        $this->addWay(1, true, $to, $yaw, $pitch);
+        $this->addWay(2, true, $to, $facing, $lookAtPosition);
+        $this->addWay(3, true, $to, $facing, $lookAtEntity);
+        $this->addWay(4, true, $victim, $to, $yaw, $pitch);
+        $this->addWay(5, true, $victim, $to);
+        $this->addWay(6, true, $victim, $to, $facing, $lookAtPosition);
+        $this->addWay(7, true, $victim, $to, $facing, $lookAtEntity);
+        $this->addWay(8, false, $toPlayer);
+        $this->addWay(9, true, $victim, $toPlayer);
     }
 
-    public function onSent(CommandSender $sender, CommandOutput $output, array $args) : void{
-        /** @var list<Player> $victims */
-        $victims = $this->playersOrSelf($sender, $args, "victim");
+    private function addWay(int $index, bool $checks, Argument ...$arguments) : void{
+        if($checks){
+            $arguments[] = new BoolArgument("checkForBlocks", true);
+            $arguments[] = new BoolArgument("forceProvidedPositionOnDimensionChange", true);
+        }
 
+        $builder = new ParameterBuilder($index);
+
+        foreach($arguments as $position => $argument){
+            $builder->addArgument($position, $argument);
+        }
+
+        $this->addParameterBuilder($builder);
+    }
+
+    public function onSent(CommandSender $sender, string $label, array $args) : void{
+        $victims = $this->targetsOrSelf($sender, $args, "victim");
         $destination = $args["destination"];
         $target = null;
 
         if($destination instanceof Vector3){
             $world = $sender instanceof Player ? $sender->getWorld() : null;
         }else{
-            $target = $this->single($destination);
+            $target = self::single($destination);
             $world = $target->getWorld();
             $destination = $target->getPosition();
         }
@@ -71,7 +97,7 @@ class TeleportCommand extends Command{
         if(isset($args["lookAtPosition"])){
             $lookAt = $args["lookAtPosition"];
         }elseif(isset($args["lookAtEntity"])){
-            $lookAt = $this->single($args["lookAtEntity"])->getEyePosition();
+            $lookAt = self::single($args["lookAtEntity"])->getEyePosition();
         }
 
         foreach($victims as $victim){
@@ -81,13 +107,17 @@ class TeleportCommand extends Command{
 
             $victimWorld = $world ?? $victim->getWorld();
 
-            if(($args["checkForBlocks"] ?? false) && !$this->isFree($victimWorld, $destination)){
-                $output->error("commands.tp.safeTeleportFail", [$victim->getName(), $target?->getName() ?? self::coordinates($destination)]);
+            if(($args["checkForBlocks"] ?? false) && !self::isFree($victimWorld, $destination)){
+                $this->failure(new Translation("commands.tp.safeTeleportFail", [$victim->getName(), $target?->getName() ?? self::coordinates($destination)]));
                 continue;
             }
 
-            $yaw = isset($args["yRot"]) ? $this->rotation($args["yRot"], $victim->getYaw()) : null;
-            $pitch = isset($args["xRot"]) ? max(-90.0, min(90.0, $this->rotation($args["xRot"], $victim->getPitch()))) : null;
+            /** @var RelativeValue|null $yRot */
+            $yRot = $args["yRot"] ?? null;
+            /** @var RelativeValue|null $xRot */
+            $xRot = $args["xRot"] ?? null;
+            $yaw = $yRot?->from($victim->getYaw());
+            $pitch = $xRot === null ? null : max(-90.0, min(90.0, $xRot->from($victim->getPitch())));
 
             if($lookAt !== null){
                 [$yaw, $pitch] = self::facing($destination->add(0, $victim->getEyeHeight(), 0), $lookAt);
@@ -96,9 +126,9 @@ class TeleportCommand extends Command{
             $victim->teleport($destination, $yaw, $pitch, $victimWorld);
 
             if($target !== null){
-                $output->success("commands.tp.success", [$victim->getName(), $target->getName()]);
+                $this->success(new Translation("commands.tp.success", [$victim->getName(), $target->getName()]));
             }else{
-                $output->success("commands.tp.success.coordinates", [$victim->getName(), self::number($destination->x), self::number($destination->y), self::number($destination->z)]);
+                $this->success(new Translation("commands.tp.success.coordinates", [$victim->getName(), self::number($destination->x), self::number($destination->y), self::number($destination->z)]));
             }
         }
     }
@@ -106,7 +136,7 @@ class TeleportCommand extends Command{
     /**
      * @param list<Player> $players
      */
-    private function single(array $players) : Player{
+    private static function single(array $players) : Player{
         if(count($players) !== 1){
             throw new CommandException("commands.generic.tooManyTargets");
         }
@@ -122,17 +152,6 @@ class TeleportCommand extends Command{
         return self::number($position->x) . ", " . self::number($position->y) . ", " . self::number($position->z);
     }
 
-    private function rotation(string $value, float $current) : float{
-        $relative = str_starts_with($value, "~");
-        $number = $relative ? substr($value, 1) : $value;
-
-        if($number === ""){
-            return $current;
-        }
-
-        return ($relative ? $current : 0.0) + (float) $number;
-    }
-
     /**
      * @return array{float, float}
      */
@@ -143,7 +162,7 @@ class TeleportCommand extends Command{
         return [rad2deg(atan2(-$x, $z)), rad2deg(-atan2($y, sqrt($x * $x + $z * $z)))];
     }
 
-    private function isFree(World $world, Vector3 $position) : bool{
+    private static function isFree(World $world, Vector3 $position) : bool{
         $x = $position->getFloorX();
         $y = $position->getFloorY();
         $z = $position->getFloorZ();

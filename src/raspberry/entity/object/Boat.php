@@ -44,7 +44,7 @@ use const M_PI;
 
 class Boat extends Entity{
 
-    private const array ITEMS = [
+    protected const array ITEMS = [
         ItemIds::OAK_BOAT,
         ItemIds::SPRUCE_BOAT,
         ItemIds::BIRCH_BOAT,
@@ -71,6 +71,8 @@ class Boat extends Entity{
 
     public const float RIDER_ROTATION_LOCK = 90.0;
     public const float RIDER_ROTATION_OFFSET = -90.0;
+
+    public const float PLAYER_SEAT_LIFT = 1.22001;
 
     private const float BREAK_DAMAGE = 40.0;
 
@@ -119,28 +121,27 @@ class Boat extends Entity{
     }
 
     public static function variantOf(string $itemId) : ?int{
-        $variant = array_search($itemId, self::ITEMS, true);
-
+        $variant = array_search($itemId, static::ITEMS, true);
         return $variant === false ? null : $variant;
     }
 
-    public static function place(World $world, Vector3 $position, float $playerYaw, int $variant) : ?self{
+    public static function place(World $world, Vector3 $position, float $playerYaw, int $variant) : ?static{
         if(self::boxBlocked($world, $position->x, $position->y, $position->z)){
             return null;
         }
 
-        return new self($world, $position, fmod($playerYaw + 90.0, 360.0), $variant);
+        return new static($world, $position, fmod($playerYaw + 90.0, 360.0), $variant);
     }
 
-    public static function fromSave(World $world, CompoundTag $tag) : ?self{
+    public static function fromSave(World $world, CompoundTag $tag) : ?static{
         [$x, $y, $z] = [$tag->getDouble("X"), $tag->getDouble("Y"), $tag->getDouble("Z")];
         $variant = $tag->getInt("Variant", 0) ?? 0;
 
-        if($x === null || $y === null || $z === null || !isset(self::ITEMS[$variant])){
+        if($x === null || $y === null || $z === null || !isset(static::ITEMS[$variant])){
             return null;
         }
 
-        return new self($world, new Vector3($x, $y, $z), $tag->getFloat("Yaw", 0.0) ?? 0.0, $variant);
+        return new static($world, new Vector3($x, $y, $z), $tag->getFloat("Yaw", 0.0) ?? 0.0, $variant);
     }
 
     public function save() : ?CompoundTag{
@@ -149,7 +150,7 @@ class Boat extends Entity{
         }
 
         $tag = new CompoundTag();
-        $tag->setString("identifier", EntityIds::BOAT);
+        $tag->setString("identifier", $this->getNetworkTypeId());
         $tag->setDouble("X", $this->position->x);
         $tag->setDouble("Y", $this->position->y);
         $tag->setDouble("Z", $this->position->z);
@@ -234,8 +235,7 @@ class Boat extends Entity{
     }
 
     public function canBoard(Player $player) : bool{
-        return !$this->closed && count($this->passengers) < self::MAX_PASSENGERS && $player->getVehicle() === null && !$this->isUnderwater() &&
-            $player->getWorld() === $this->world;
+        return !$this->closed && count($this->passengers) < static::MAX_PASSENGERS && $player->getVehicle() === null && !$this->isUnderwater() && $player->getWorld() === $this->world;
     }
 
     public function addPassenger(Player $player) : bool{
@@ -247,7 +247,6 @@ class Boat extends Entity{
         $player->setVehicle($this);
         $this->sendLink($player, count($this->passengers) === 1 ? SetActorLinkPacket::TYPE_RIDER : SetActorLinkPacket::TYPE_PASSENGER);
         $this->updatePassengers();
-
         return true;
     }
 
@@ -283,7 +282,15 @@ class Boat extends Entity{
     public function sendLinksTo(Player $viewer) : void{
         foreach($this->passengers as $seat => $rider){
             if($rider === $viewer || isset($rider->getViewers()[$viewer->getId()])){
-                $viewer->getNetworkSession()->sendDataPacket(SetActorLinkPacket::create($this->id, $rider->getId(), $seat === 0 ? SetActorLinkPacket::TYPE_RIDER : SetActorLinkPacket::TYPE_PASSENGER, false, true));
+                $viewer->getNetworkSession()->sendDataPacket(
+                    SetActorLinkPacket::create(
+                        $this->id,
+                        $rider->getId(),
+                        $seat === 0 ? SetActorLinkPacket::TYPE_RIDER : SetActorLinkPacket::TYPE_PASSENGER,
+                        false,
+                        true
+                    )
+                );
             }
         }
     }
@@ -314,7 +321,7 @@ class Boat extends Entity{
         $this->removePassengers(true);
 
         if($drop && $this->world->getGameRules()->getBool(GameRules::DO_ENTITY_DROPS)){
-            $this->world->dropItem($this->position->add(0, 0.5, 0), new Item(self::ITEMS[$this->variant]));
+            $this->world->dropItem($this->position->add(0, 0.5, 0), new Item(static::ITEMS[$this->variant]));
         }
 
         $this->close();
@@ -358,7 +365,6 @@ class Boat extends Entity{
         }
 
         $this->updatePassengers();
-
         return true;
     }
 

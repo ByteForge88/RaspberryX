@@ -6,44 +6,38 @@ namespace raspberry\command\defaults;
 
 use raspberry\Server;
 
-use raspberry\command\Command;
-use raspberry\command\CommandEnum;
+use raspberry\command\CommandBuilder;
 use raspberry\command\CommandException;
-use raspberry\command\CommandOutput;
-use raspberry\command\CommandParameter;
 use raspberry\command\CommandSender;
+use raspberry\command\ParameterBuilder;
+
+use raspberry\command\argument\EntityTypeArgument;
+use raspberry\command\argument\PositionArgument;
 
 use raspberry\entity\EntityFactory;
+
+use raspberry\lang\Translation;
 
 use raspberry\player\Player;
 
 use raspberry\world\Chunk;
 
 use function mt_rand;
-use function str_starts_with;
-use function substr;
 
-class SummonCommand extends Command{
+class SummonCommand extends CommandBuilder{
 
-    public function __construct(){
-        parent::__construct("summon", "commands.summon.description", "raspberry.command.summon");
+    protected function configure() : void{
+        $this->setName("summon");
+        $this->setDescription("commands.summon.description");
+        $this->setPermission("raspberry.command.summon");
 
-        $names = [];
-
-        foreach(EntityFactory::getRegistered() as $name){
-            $names[] = substr($name, 10);
-            $names[] = $name;
-        }
-
-        $this->addOverload(
-            CommandParameter::enum("entityType", new CommandEnum("EntityType", $names)),
-            CommandParameter::position("spawnPos", true)
-        );
+        $builder = new ParameterBuilder(0);
+        $builder->addArgument(0, new EntityTypeArgument("entityType"));
+        $builder->addArgument(1, new PositionArgument("spawnPos", true));
+        $this->addParameterBuilder($builder);
     }
 
-    public function onSent(CommandSender $sender, CommandOutput $output, array $args) : void{
-        $name = str_starts_with($args["entityType"], "minecraft:") ? $args["entityType"] : "minecraft:" . $args["entityType"];
-
+    public function onSent(CommandSender $sender, string $label, array $args) : void{
         if(isset($args["spawnPos"])){
             $position = $args["spawnPos"];
         }elseif($sender instanceof Player){
@@ -59,10 +53,10 @@ class SummonCommand extends Command{
         $world = $sender instanceof Player ? $sender->getWorld() : Server::getInstance()->getWorldManager()->getDefaultWorld();
         $world->loadChunk($position->getChunkX(), $position->getChunkZ());
 
-        if(EntityFactory::create($name, $world, $position, (float) mt_rand(0, 359)) === null){
+        if(EntityFactory::create($args["entityType"], $world, $position, (float) mt_rand(0, 359)) === null){
             throw new CommandException("commands.summon.failed");
         }
 
-        $output->success("commands.summon.success");
+        $this->success(new Translation("commands.summon.success"));
     }
 }

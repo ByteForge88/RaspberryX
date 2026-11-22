@@ -150,7 +150,7 @@ They're all in `raspberry\event\<folder>`, like `raspberry\event\player\PlayerJo
 # Commands:
 There's two ways to make a command.
 
-**1. In plugin.yml**: put it under `commands:` and handle it in `onCommand()` in your main class like `/hello` above. `$args` is the words typed after the command. Return `false` to show the usage.
+**1. In plugin.yml**: put it under `commands:` and handle it in `onCommand()` in your main class like `/hello` above. `$args` is the words typed after the command. Return `false` and the player gets a syntax error like vanilla.
 
 **2. Your own command class**: extend `PluginOwnedCommand` and register it with `registerCommand()`. This way you get real Bedrock command arguments, so players get autocomplete and the client checks the types for you.
 ```php
@@ -160,39 +160,117 @@ declare(strict_types=1);
 
 namespace hello\command;
 
-use raspberry\command\CommandOutput;
-use raspberry\command\CommandParameter;
 use raspberry\command\CommandSender;
+use raspberry\command\ParameterBuilder;
 
-use raspberry\plugin\PluginBase;
+use raspberry\command\argument\IntArgument;
+use raspberry\command\argument\TargetArgument;
+
 use raspberry\plugin\PluginOwnedCommand;
 
 use raspberry\player\Player;
 
 class HealCommand extends PluginOwnedCommand{
 
-    public function __construct(PluginBase $plugin){
-        parent::__construct($plugin, "heal", "Heals players", "helloworld.command.heal");
+    protected function configure() : void{
+        $this->setName("heal");
+        $this->setDescription("Heals players");
+        $this->setPermission("helloworld.command.heal");
+        $this->setAliases(["h"]);
 
-        $this->addOverload(CommandParameter::target("player", true));
+        $builder = new ParameterBuilder(0);
+        $builder->addArgument(0, new TargetArgument("player", true));
+        $builder->addArgument(1, new IntArgument("amount", true));
+        $this->addParameterBuilder($builder);
     }
 
-    public function onSent(CommandSender $sender, CommandOutput $output, array $args) : void{
+    public function onSent(CommandSender $sender, string $label, array $args) : void{
         /** @var list<Player> $players */
-        $players = $args["player"] ?? ($sender instanceof Player ? [$sender] : []);
+        $players = $this->targetsOrSelf($sender, $args, "player");
 
         foreach($players as $player){
-            $player->setHealth($player->getMaxHealth());
-            $output->successText("Healed " . $player->getName());
+            $player->setHealth($player->getHealth() + ($args["amount"] ?? $player->getMaxHealth()));
+            $this->success("Healed " . $player->getName());
         }
     }
 }
 ```
 
-- Each `addOverload()` is one way to type the command. Parameters include `int`, `float`, `string`, `bool`, `target`, `position`, `blockPosition`, `message`, `json`, `enum`, `postfix` (like `5L`) ect, pass `true` to make one optional
-- A `target` gives you a list of players, so `@a` and `@p` work
-- Send results with `$output->successText()` and `$output->errorText()`
+- Everything goes in `configure()`: the name, description, permission, aliases and what it takes. No constructor, register it with `new HealCommand($this)`
+- `onSent()` runs it with what each argument read, by name
+- A `ParameterBuilder` is one way to type the command, the number you give it is its place in the list (0 first). Add as many as you need with `addParameterBuilder()`
+- `addArgument(position, argument)` puts an argument at a spot. Give one spot more than one argument and the player can type either one, like `/gamemode` takes a name or a number at 0
+- A builder can have its own permission with `setPermission()`, players without it don't see that way to type it
+- Pass `true` after the name to make it optional, nothing required can come after an optional one
+- A target gives you a list of players, so `@a` and `@p` work. `targetsOrSelf()` gives you the sender when it was left out
+- Send results with `$this->success()` and `$this->failure()`. Plain text, or a `new Translation("commands.give.success", [...])` so the player sees it in their language. They go back to the player as the command's output like vanilla, failures in red
+- Throw a `CommandException` to stop and show a failure, like `throw new CommandException("commands.generic.noTargetMatch")`
+- Not for the console? Check `$sender instanceof Player` in `onSent()` and throw
 - If another plugin already has the name, yours becomes `/yourplugin:heal`
+
+### Arguments:
+| Argument | Typed like | You get |
+|---|---|---|
+| `IntArgument` | `64` | int |
+| `FloatArgument` | `1.5` | float |
+| `RelativeValueArgument` | `90`, `~`, `~-15` | `RelativeValue`, use `->from($origin)` |
+| `WildcardIntArgument` | `5` or `*` | int, or null for `*` |
+| `BoolArgument` | `true` | bool |
+| `StringArgument` | `word` or `"two words"` | string |
+| `TargetArgument` | `Steve`, `@a[r=10]` | list of players, or the text with `resolve: false` |
+| `WildcardTargetArgument` | same, or `*` for everyone | list of players |
+| `PositionArgument` | `10 64 ~2`, `^ ^ ^5` | Vector3 |
+| `BlockPositionArgument` | `10 64 -3` | Vector3 of the block |
+| `MessageArgument` | rest of the line, `@a` becomes names | string |
+| `RawTextArgument` | rest of the line as typed | string |
+| `CommandLineArgument` | another command, like after `/execute run` | string |
+| `JsonArgument` | `{"rawtext":[]}` | array |
+| `BlockStatesArgument` | `["open_bit"=true]` | array |
+| `IntegerRangeArgument` | `5`, `1..5`, `..5` | `["min" => ?int, "max" => ?int]` |
+| `OperatorArgument` | `+=` | string |
+| `CompareOperatorArgument` | `>=` | string |
+| `EquipmentSlotArgument` | `slot.weapon.mainhand` | string |
+| `FilePathArgument` | `folder/name` | string |
+| `PostfixArgument` | `5L` | int |
+| `EnumArgument` | one of a `CommandEnum`'s values | string |
+| `KeywordArgument` | one fixed word, like `facing` | string |
+| `ItemArgument` | `diamond` | the item id |
+| `EffectArgument` | `speed` | Effect |
+| `EnchantmentArgument` | `sharpness` | Enchantment |
+| `EntityTypeArgument` | `zombie` | the entity id |
+| `GameModeArgument` | `creative`, `c` | GameMode |
+| `CommandNameArgument` | a command's name | string |
+
+Make your own by extending `Argument`: `accepts()` says if the text is the right kind and `read()` turns it into what you get.
+
+### More ways to type it:
+Every way to type the command is its own `ParameterBuilder`. A fixed word like `set` is just a `KeywordArgument`:
+```php
+protected function configure() : void{
+    $this->setName("warp");
+
+    $set = new ParameterBuilder(0);
+    $set->setPermission("helloworld.command.warp.set");
+    $set->addArgument(0, new KeywordArgument("action", "WarpSet", ["set", "make"]));
+    $set->addArgument(1, new StringArgument("name"));
+    $this->addParameterBuilder($set);
+
+    $go = new ParameterBuilder(1);
+    $go->addArgument(0, new StringArgument("name"));
+    $this->addParameterBuilder($go);
+}
+
+public function onSent(CommandSender $sender, string $label, array $args) : void{
+    if(isset($args["action"])){
+        $this->success("Set warp " . $args["name"]);
+    }else{
+        $this->success("Warped to " . $args["name"]);
+    }
+}
+```
+- `/warp set home` and `/warp make home` use the first one, `/warp home` the second
+- They're tried in order, the first one that fits wins
+- The 2nd thing in `KeywordArgument` is how it looks in the client, `/time add` is `<mode: TimeModeAdd>`
 
 # Scheduler:
 Tasks run on the server's ticks, 20 ticks is 1 second.

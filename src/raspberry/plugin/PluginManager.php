@@ -12,7 +12,7 @@ use raspberry\event\RegisteredListener;
 use raspberry\event\plugin\PluginDisableEvent;
 use raspberry\event\plugin\PluginEnableEvent;
 
-use raspberry\command\Command;
+use raspberry\command\CommandBuilder;
 
 use raspberry\Server;
 use raspberry\ServerInfo;
@@ -317,7 +317,7 @@ class PluginManager{
      *
      * @return string
      */
-    public function registerCommand(PluginBase $plugin, Command $command, ?string $label = null) : string{
+    public function registerCommand(PluginBase $plugin, CommandBuilder $command, ?string $label = null) : string{
         if($command instanceof PluginOwned && $command->getOwningPlugin() !== $plugin){
             throw new PluginException("/{$command->getName()} belongs to {$command->getOwningPlugin()->getName()}, not {$plugin->getName()}");
         }

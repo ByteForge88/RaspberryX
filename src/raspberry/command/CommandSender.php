@@ -12,6 +12,9 @@ interface CommandSender extends Permissible{
 
     public function sendMessage(string $message) : void;
 
-    public function sendCommandOutput(CommandOutput $output) : void;
+    /**
+     * What a command said when it was done. A player gets it as the command's output.
+     */
+    public function sendCommandFeedback(CommandFeedback $feedback) : void;
 
 }

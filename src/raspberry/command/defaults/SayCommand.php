@@ -4,23 +4,27 @@ declare(strict_types=1);
 
 namespace raspberry\command\defaults;
 
-use raspberry\command\Command;
-use raspberry\command\CommandOutput;
-use raspberry\command\CommandParameter;
+use raspberry\command\CommandBuilder;
 use raspberry\command\CommandSender;
+use raspberry\command\ParameterBuilder;
+
+use raspberry\command\argument\MessageArgument;
 
 use raspberry\Server;
 
-class SayCommand extends Command{
+class SayCommand extends CommandBuilder{
 
-    public function __construct(){
-        parent::__construct("say", "commands.say.description", "raspberry.command.say");
+    protected function configure() : void{
+        $this->setName("say");
+        $this->setDescription("commands.say.description");
+        $this->setPermission("raspberry.command.say");
 
-        $this->addOverload(CommandParameter::message("message"));
+        $builder = new ParameterBuilder(0);
+        $builder->addArgument(0, new MessageArgument("message"));
+        $this->addParameterBuilder($builder);
     }
 
-    public function onSent(CommandSender $sender, CommandOutput $output, array $args) : void{
+    public function onSent(CommandSender $sender, string $label, array $args) : void{
         Server::getInstance()->broadcastAnnouncement($sender->getName(), $args["message"]);
-        $output->addSuccess();
     }
 }

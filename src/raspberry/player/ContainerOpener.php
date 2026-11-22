@@ -104,8 +104,10 @@ class ContainerOpener{
         }
 
         [$x, $y, $z] = $window->getPositions()[0];
+        $actor = $window->getActor();
+        $at = $actor !== null ? $actor->getPosition() : new Vector3($x + 0.5, $y + 0.5, $z + 0.5);
 
-        if($this->player->getEyePosition()->distance(new Vector3($x + 0.5, $y + 0.5, $z + 0.5)) > self::MAX_DISTANCE){
+        if(($actor !== null && $actor->isClosed()) || $this->player->getEyePosition()->distance($at) > self::MAX_DISTANCE){
             $this->player->getNetworkSession()->getInventoryManager()?->closeWindow(true);
         }
     }

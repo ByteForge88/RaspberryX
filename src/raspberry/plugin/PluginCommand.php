@@ -4,34 +4,52 @@ declare(strict_types=1);
 
 namespace raspberry\plugin;
 
-use raspberry\command\Command;
-use raspberry\command\CommandOutput;
-use raspberry\command\CommandParameter;
-use raspberry\command\CommandReader;
+use raspberry\command\CommandBuilder;
 use raspberry\command\CommandSender;
+use raspberry\command\CommandWords;
+use raspberry\command\InvalidCommandSyntaxException;
+use raspberry\command\ParameterBuilder;
 
-/**
- * A command from plugin.yml. It takes any words after its name and hands them to its executor,
- * the plugin unless setExecutor() gave it another one.
- */
-class PluginCommand extends Command implements PluginOwned{
+use raspberry\command\argument\RawTextArgument;
+
+use function array_map;
+
+class PluginCommand extends CommandBuilder implements PluginOwned{
+
+    private string $commandName;
 
     private PluginBase $plugin;
 
     private CommandExecutor $executor;
 
-    private string $usage;
+    /** @var array{description: string, permission: string|null, aliases: list<string>, usage: string} */
+    private array $properties;
 
     /**
      * @param list<string> $aliases
      */
     public function __construct(string $name, PluginBase $plugin, string $description = "", ?string $permission = null, array $aliases = [], string $usage = ""){
-        parent::__construct($name, $description, $permission, $aliases);
+        $this->commandName = $name;
         $this->plugin = $plugin;
         $this->executor = $plugin;
-        $this->usage = $usage;
+        $this->properties = ["description" => $description, "permission" => $permission, "aliases" => $aliases, "usage" => $usage];
 
-        $this->addOverload(CommandParameter::rawText("args", true));
+        parent::__construct();
+    }
+
+    protected function configure() : void{
+        $this->setName($this->commandName);
+        $this->setDescription($this->properties["description"]);
+        $this->setPermission($this->properties["permission"]);
+        $this->setAliases($this->properties["aliases"]);
+
+        $builder = new ParameterBuilder(0);
+        $builder->addArgument(0, new RawTextArgument("args", true));
+        $this->addParameterBuilder($builder);
+    }
+
+    public function getUsage(?CommandSender $sender = null) : array{
+        return $this->properties["usage"] !== "" ? [$this->properties["usage"]] : parent::getUsage($sender);
     }
 
     public function getPlugin() : PluginBase{
@@ -50,29 +68,11 @@ class PluginCommand extends Command implements PluginOwned{
         $this->executor = $executor;
     }
 
-    /**
-     * @return list<string>
-     */
-    public function getUsage() : array{
-        return $this->usage === "" ? parent::getUsage() : [$this->usage];
-    }
+    public function onSent(CommandSender $sender, string $label, array $args) : void{
+        $words = CommandWords::split($args["args"] ?? "");
 
-    public function onSent(CommandSender $sender, CommandOutput $output, array $args) : void{
-        if(!$this->plugin->isEnabled()){
-            return;
-        }
-
-        $reader = new CommandReader($args["args"] ?? "");
-        $words = [];
-
-        while(!$reader->atEnd()){
-            $words[] = $reader->readWord();
-        }
-
-        if($this->executor->onCommand($sender, $this, $words)){
-            $output->addSuccess();
-        }elseif($this->usage !== ""){
-            $output->errorText($this->usage);
+        if(!$this->executor->onCommand($sender, $this, array_map(fn(string $word) => CommandWords::unquote($word), $words))){
+            throw new InvalidCommandSyntaxException($words === [] ? -1 : 0);
         }
     }
 }

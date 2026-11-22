@@ -6,12 +6,16 @@ namespace raspberry\command\defaults;
 
 use raspberry\Server;
 
-use raspberry\command\Command;
-use raspberry\command\CommandEnum;
+use raspberry\command\CommandBuilder;
 use raspberry\command\CommandException;
-use raspberry\command\CommandOutput;
-use raspberry\command\CommandParameter;
 use raspberry\command\CommandSender;
+use raspberry\command\ParameterBuilder;
+
+use raspberry\command\argument\BoolArgument;
+use raspberry\command\argument\IntArgument;
+use raspberry\command\argument\KeywordArgument;
+use raspberry\command\argument\PositionArgument;
+use raspberry\command\argument\StringArgument;
 
 use raspberry\math\Vector3;
 
@@ -26,28 +30,56 @@ use function max;
 use function min;
 use function str_replace;
 
-class TickingareaCommand extends Command{
+class TickingareaCommand extends CommandBuilder{
 
     public const int MAX_COORDINATE = 30000000;
 
-    public function __construct(){
-        parent::__construct("tickingarea", "commands.tickingarea.description", "raspberry.command.tickingarea");
+    protected function configure() : void{
+        $this->setName("tickingarea");
+        $this->setDescription("commands.tickingarea.description");
+        $this->setPermission("raspberry.command.tickingarea");
 
-        $add = CommandParameter::enum("mode", new CommandEnum("TickingAreaModeAdd", ["add"]));
-        $remove = CommandParameter::enum("mode", new CommandEnum("TickingAreaModeRemove", ["remove"]));
-        $preload = CommandParameter::enum("mode", new CommandEnum("TickingAreaModePreload", ["preload"]));
+        $circle = new ParameterBuilder(0);
+        $circle->addArgument(0, new KeywordArgument("mode", "TickingAreaModeAdd", ["add"]));
+        $circle->addArgument(1, new KeywordArgument("circle", "AddTickingAreaType", ["circle"]));
+        $circle->addArgument(2, new PositionArgument("center"));
+        $circle->addArgument(3, new IntArgument("radius"));
+        $circle->addArgument(4, new StringArgument("name", true));
+        $circle->addArgument(5, new BoolArgument("preload", true));
+        $this->addParameterBuilder($circle);
 
-        $this->addOverload($add, CommandParameter::enum("circle", new CommandEnum("AddTickingAreaType", ["circle"])), CommandParameter::position("center"), CommandParameter::int("radius"), CommandParameter::string("name", true), CommandParameter::bool("preload", true));
-        $this->addOverload($add, CommandParameter::position("from"), CommandParameter::position("to"), CommandParameter::string("name", true), CommandParameter::bool("preload", true));
-        $this->addOverload($remove, CommandParameter::position("position"));
-        $this->addOverload($remove, CommandParameter::string("name"));
-        $this->addOverload(CommandParameter::enum("mode", new CommandEnum("TickingAreaModeRemoveAll", ["remove_all"])));
-        $this->addOverload(CommandParameter::enum("mode", new CommandEnum("TickingAreaModeList", ["list"])), CommandParameter::enum("all-dimensions", new CommandEnum("AllDimensions", ["all-dimensions"]), true));
-        $this->addOverload($preload, CommandParameter::position("position"), CommandParameter::bool("preload", true));
-        $this->addOverload($preload, CommandParameter::string("name"), CommandParameter::bool("preload", true));
+        $box = new ParameterBuilder(1);
+        $box->addArgument(0, new KeywordArgument("mode", "TickingAreaModeAdd", ["add"]));
+        $box->addArgument(1, new PositionArgument("from"));
+        $box->addArgument(2, new PositionArgument("to"));
+        $box->addArgument(3, new StringArgument("name", true));
+        $box->addArgument(4, new BoolArgument("preload", true));
+        $this->addParameterBuilder($box);
+
+        $remove = new ParameterBuilder(2);
+        $remove->addArgument(0, new KeywordArgument("mode", "TickingAreaModeRemove", ["remove"]));
+        $remove->addArgument(1, new PositionArgument("position"));
+        $remove->addArgument(1, new StringArgument("name"));
+        $this->addParameterBuilder($remove);
+
+        $removeAll = new ParameterBuilder(3);
+        $removeAll->addArgument(0, new KeywordArgument("mode", "TickingAreaModeRemoveAll", ["remove_all"]));
+        $this->addParameterBuilder($removeAll);
+
+        $list = new ParameterBuilder(4);
+        $list->addArgument(0, new KeywordArgument("mode", "TickingAreaModeList", ["list"]));
+        $list->addArgument(1, new KeywordArgument("all-dimensions", "AllDimensions", ["all-dimensions"], true));
+        $this->addParameterBuilder($list);
+
+        $preload = new ParameterBuilder(5);
+        $preload->addArgument(0, new KeywordArgument("mode", "TickingAreaModePreload", ["preload"]));
+        $preload->addArgument(1, new PositionArgument("position"));
+        $preload->addArgument(1, new StringArgument("name"));
+        $preload->addArgument(2, new BoolArgument("preload", true));
+        $this->addParameterBuilder($preload);
     }
 
-    public function onSent(CommandSender $sender, CommandOutput $output, array $args) : void{
+    public function onSent(CommandSender $sender, string $label, array $args) : void{
         $world = $sender instanceof Player ? $sender->getWorld() : Server::getInstance()->getWorldManager()->getDefaultWorld();
         $areas = $world->getTickingAreas();
 
@@ -56,18 +88,18 @@ class TickingareaCommand extends Command{
         }
 
         match($args["mode"]){
-            "add" => $this->add($world, $areas, $output, $args),
-            "remove" => $this->remove($areas, $output, $this->find($areas, $args)),
-            "remove_all" => $this->remove($areas, $output, $areas->getAll()),
-            "list" => $this->list($world, $output, isset($args["all-dimensions"])),
-            default => $this->preload($world, $areas, $output, $this->find($areas, $args), $args["preload"] ?? null)
+            "add" => $this->add($world, $areas, $args),
+            "remove" => $this->remove($areas, $this->find($areas, $args)),
+            "remove_all" => $this->remove($areas, $areas->getAll()),
+            "list" => $this->list($world, isset($args["all-dimensions"])),
+            default => $this->preload($world, $areas, $this->find($areas, $args), $args["preload"] ?? null)
         };
     }
 
     /**
      * @param array<string, mixed> $args
      */
-    private function add(World $world, TickingAreas $areas, CommandOutput $output, array $args) : void{
+    private function add(World $world, TickingAreas $areas, array $args) : void{
         if($areas->isFull()){
             throw $this->error("full", ["max" => TickingAreas::MAX_AREAS]);
         }
@@ -107,14 +139,14 @@ class TickingareaCommand extends Command{
             }
         }
 
-        $output->successText($this->describe($area, "added.{shape}"));
-        $output->successText($this->message("inuse", ["count" => $areas->count(), "max" => TickingAreas::MAX_AREAS]));
+        $this->success($this->describe($area, "added.{shape}"));
+        $this->success($this->message("inuse", ["count" => $areas->count(), "max" => TickingAreas::MAX_AREAS]));
     }
 
     /**
      * @param list<TickingArea> $found
      */
-    private function remove(TickingAreas $areas, CommandOutput $output, array $found) : void{
+    private function remove(TickingAreas $areas, array $found) : void{
         $names = [];
 
         foreach($found as $area){
@@ -122,10 +154,10 @@ class TickingareaCommand extends Command{
             $names[] = $area->getName();
         }
 
-        $output->successText($this->message("removed", ["names" => implode(", ", $names)]));
+        $this->success($this->message("removed", ["names" => implode(", ", $names)]));
     }
 
-    private function list(World $world, CommandOutput $output, bool $allWorlds) : void{
+    private function list(World $world, bool $allWorlds) : void{
         $worlds = $allWorlds ? Server::getInstance()->getWorldManager()->getWorlds() : [$world];
         $listed = false;
 
@@ -137,16 +169,16 @@ class TickingareaCommand extends Command{
             }
 
             if(!$listed){
-                $output->successText($this->message($allWorlds ? "list.all" : "list"));
+                $this->success($this->message($allWorlds ? "list.all" : "list"));
                 $listed = true;
             }
 
             if($allWorlds){
-                $output->successText($this->message("list.world", ["world" => $listedWorld->getName()]));
+                $this->success($this->message("list.world", ["world" => $listedWorld->getName()]));
             }
 
             foreach($all as $area){
-                $output->successText($this->describe($area, $area->isPreload() ? "list.{shape}.preload" : "list.{shape}"));
+                $this->success($this->describe($area, $area->isPreload() ? "list.{shape}.preload" : "list.{shape}"));
             }
         }
 
@@ -158,10 +190,10 @@ class TickingareaCommand extends Command{
     /**
      * @param list<TickingArea> $found
      */
-    private function preload(World $world, TickingAreas $areas, CommandOutput $output, array $found, ?bool $preload) : void{
+    private function preload(World $world, TickingAreas $areas, array $found, ?bool $preload) : void{
         foreach($found as $area){
             if($preload === null){
-                $output->successText($this->message("preload.query", ["name" => $area->getName(), "preload" => $area->isPreload() ? "true" : "false"]));
+                $this->success($this->message("preload.query", ["name" => $area->getName(), "preload" => $area->isPreload() ? "true" : "false"]));
                 continue;
             }
 
@@ -173,7 +205,7 @@ class TickingareaCommand extends Command{
                 }
             }
 
-            $output->successText($this->message("preload.set", ["name" => $area->getName(), "preload" => $preload ? "true" : "false"]));
+            $this->success($this->message("preload.set", ["name" => $area->getName(), "preload" => $preload ? "true" : "false"]));
         }
 
         if($preload !== null){

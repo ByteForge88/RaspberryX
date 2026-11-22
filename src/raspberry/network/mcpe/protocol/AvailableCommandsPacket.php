@@ -58,7 +58,7 @@ class AvailableCommandsPacket implements Packet{
 
     public const int ARG_TYPE_BLOCK_STATES = 84;
 
-    public const int ARG_TYPE_COMMAND = 90;
+    public const int ARG_TYPE_COMMAND = 87;
 
     /**
      * Enums are composed as ARG_FLAG_ENUM | ARG_FLAG_VALID | (index into $enums).

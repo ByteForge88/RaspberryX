@@ -6,12 +6,17 @@ namespace raspberry\command\defaults;
 
 use raspberry\Server;
 
-use raspberry\command\Command;
+use raspberry\command\CommandBuilder;
 use raspberry\command\CommandEnum;
 use raspberry\command\CommandException;
-use raspberry\command\CommandOutput;
-use raspberry\command\CommandParameter;
 use raspberry\command\CommandSender;
+use raspberry\command\ParameterBuilder;
+
+use raspberry\command\argument\EnumArgument;
+use raspberry\command\argument\IntArgument;
+use raspberry\command\argument\KeywordArgument;
+
+use raspberry\lang\Translation;
 
 use raspberry\player\Player;
 
@@ -20,7 +25,7 @@ use raspberry\world\World;
 
 use function array_keys;
 
-class TimeCommand extends Command{
+class TimeCommand extends CommandBuilder{
 
     /** the one world clock there is until there are dimensions */
     public const string OVERWORLD_CLOCK = "minecraft:overworld";
@@ -35,34 +40,94 @@ class TimeCommand extends Command{
         "sunrise" => World::TIME_SUNRISE
     ];
 
-    public function __construct(){
-        parent::__construct("time", "commands.time.description", "raspberry.command.time");
+    protected function configure() : void{
+        $this->setName("time");
+        $this->setDescription("commands.time.description");
+        $this->setPermission("raspberry.command.time");
 
-        $add = CommandParameter::enum("mode", new CommandEnum("TimeModeAdd", ["add"]));
-        $set = CommandParameter::enum("mode", new CommandEnum("TimeModeSet", ["set"]));
-        $query = CommandParameter::enum("mode", new CommandEnum("TimeModeQuery", ["query"]));
-        $pause = CommandParameter::enum("mode", new CommandEnum("TimeModePause", ["pause"]));
-        $resume = CommandParameter::enum("mode", new CommandEnum("TimeModeResume", ["resume"]));
-        $marker = CommandParameter::enum("timeMarkerName", new CommandEnum("ClockTimeMarkerName", array_keys(self::MARKERS), true));
-        $occurrence = CommandParameter::enum("timeMarkerOccurrence", new CommandEnum("TimeMarkerOccurrence", ["next", "previous", "stay"]), true);
-        $of = CommandParameter::enum("command", new CommandEnum("TimeOfCommand", ["of"]));
-        $clock = CommandParameter::enum("clockName", new CommandEnum("WorldClocks", [self::OVERWORLD_CLOCK]));
+        $amount = new IntArgument("amount");
+        $marker = new EnumArgument("timeMarkerName", new CommandEnum("ClockTimeMarkerName", array_keys(self::MARKERS), true));
+        $occurrence = new EnumArgument("timeMarkerOccurrence", new CommandEnum("TimeMarkerOccurrence", ["next", "previous", "stay"]), true);
+        $add = new KeywordArgument("mode", "TimeModeAdd", ["add"]);
+        $set = new KeywordArgument("mode", "TimeModeSet", ["set"]);
+        $query = new KeywordArgument("mode", "TimeModeQuery", ["query"]);
+        $pause = new KeywordArgument("mode", "TimeModePause", ["pause"]);
+        $resume = new KeywordArgument("mode", "TimeModeResume", ["resume"]);
+        $of = new KeywordArgument("command", "TimeOfCommand", ["of"]);
+        $clock = new EnumArgument("clockName", new CommandEnum("WorldClocks", [self::OVERWORLD_CLOCK]));
 
-        $this->addOverload($add, CommandParameter::int("amount"));
-        $this->addOverload($set, CommandParameter::int("amount"));
-        $this->addOverload($set, $marker, $occurrence);
-        $this->addOverload($query, CommandParameter::enum("time", new CommandEnum("TimeQuery2", ["time", "daytime", "gametime", "day"])));
-        $this->addOverload($pause);
-        $this->addOverload($resume);
-        $this->addOverload($of, $clock, $add, CommandParameter::int("amount"));
-        $this->addOverload($of, $clock, $set, CommandParameter::int("amount"));
-        $this->addOverload($of, $clock, $set, $marker, $occurrence);
-        $this->addOverload($of, $clock, $query, CommandParameter::enum("clockQuery", new CommandEnum("ClockTimeQuery", ["time"])));
-        $this->addOverload($of, $clock, $pause);
-        $this->addOverload($of, $clock, $resume);
+        $addTime = new ParameterBuilder(0);
+        $addTime->addArgument(0, $add);
+        $addTime->addArgument(1, $amount);
+        $this->addParameterBuilder($addTime);
+
+        $setTime = new ParameterBuilder(1);
+        $setTime->addArgument(0, $set);
+        $setTime->addArgument(1, $amount);
+        $this->addParameterBuilder($setTime);
+
+        $setMarker = new ParameterBuilder(2);
+        $setMarker->addArgument(0, $set);
+        $setMarker->addArgument(1, $marker);
+        $setMarker->addArgument(2, $occurrence);
+        $this->addParameterBuilder($setMarker);
+
+        $queryTime = new ParameterBuilder(3);
+        $queryTime->addArgument(0, $query);
+        $queryTime->addArgument(1, new EnumArgument("time", new CommandEnum("TimeQuery2", ["time", "daytime", "gametime", "day"])));
+        $this->addParameterBuilder($queryTime);
+
+        $pauseTime = new ParameterBuilder(4);
+        $pauseTime->addArgument(0, $pause);
+        $this->addParameterBuilder($pauseTime);
+
+        $resumeTime = new ParameterBuilder(5);
+        $resumeTime->addArgument(0, $resume);
+        $this->addParameterBuilder($resumeTime);
+
+        $addClock = new ParameterBuilder(6);
+        $addClock->addArgument(0, $of);
+        $addClock->addArgument(1, $clock);
+        $addClock->addArgument(2, $add);
+        $addClock->addArgument(3, $amount);
+        $this->addParameterBuilder($addClock);
+
+        $setClock = new ParameterBuilder(7);
+        $setClock->addArgument(0, $of);
+        $setClock->addArgument(1, $clock);
+        $setClock->addArgument(2, $set);
+        $setClock->addArgument(3, $amount);
+        $this->addParameterBuilder($setClock);
+
+        $setClockMarker = new ParameterBuilder(8);
+        $setClockMarker->addArgument(0, $of);
+        $setClockMarker->addArgument(1, $clock);
+        $setClockMarker->addArgument(2, $set);
+        $setClockMarker->addArgument(3, $marker);
+        $setClockMarker->addArgument(4, $occurrence);
+        $this->addParameterBuilder($setClockMarker);
+
+        $queryClock = new ParameterBuilder(9);
+        $queryClock->addArgument(0, $of);
+        $queryClock->addArgument(1, $clock);
+        $queryClock->addArgument(2, $query);
+        $queryClock->addArgument(3, new EnumArgument("clockQuery", new CommandEnum("ClockTimeQuery", ["time"])));
+        $this->addParameterBuilder($queryClock);
+
+        $pauseClock = new ParameterBuilder(10);
+        $pauseClock->addArgument(0, $of);
+        $pauseClock->addArgument(1, $clock);
+        $pauseClock->addArgument(2, $pause);
+        $this->addParameterBuilder($pauseClock);
+
+        $resumeClock = new ParameterBuilder(11);
+        $resumeClock->addArgument(0, $of);
+        $resumeClock->addArgument(1, $clock);
+        $resumeClock->addArgument(2, $resume);
+        $this->addParameterBuilder($resumeClock);
     }
 
-    public function onSent(CommandSender $sender, CommandOutput $output, array $args) : void{
+    public function onSent(CommandSender $sender, string $label, array $args) : void{
         $world = $sender instanceof Player ? $sender->getWorld() : Server::getInstance()->getWorldManager()->getDefaultWorld();
         $named = isset($args["clockName"]);
         $clock = self::OVERWORLD_CLOCK;
@@ -72,9 +137,9 @@ class TimeCommand extends Command{
                 $world->setTime($world->getTime() + $args["amount"]);
 
                 if($named){
-                    $output->success("commands.time.clock.added", [$args["amount"], $clock, $world->getTime()]);
+                    $this->success(new Translation("commands.time.clock.added", [$args["amount"], $clock, $world->getTime()]));
                 }else{
-                    $output->success("commands.time.added", [$args["amount"]]);
+                    $this->success(new Translation("commands.time.added", [$args["amount"]]));
                 }
                 break;
             case "set":
@@ -87,17 +152,17 @@ class TimeCommand extends Command{
                 $world->setTime($time);
 
                 if($named){
-                    $output->success("commands.time.clock.set", [$clock, $time]);
+                    $this->success(new Translation("commands.time.clock.set", [$clock, $time]));
                 }else{
-                    $output->success("commands.time.set", [$time]);
+                    $this->success(new Translation("commands.time.set", [$time]));
                 }
                 break;
             case "query":
                 match($args["time"] ?? $args["clockQuery"]){
-                    "daytime" => $output->success("commands.time.query.daytime", [$world->getTimeOfDay()]),
-                    "gametime" => $output->success("commands.time.query.gametime", [$world->getGameTime()]),
-                    "day" => $output->success("commands.time.query.day", [$world->getDay()]),
-                    default => $output->success("commands.time.clock.query.time", [$clock, $world->getTime()])
+                    "daytime" => $this->success(new Translation("commands.time.query.daytime", [$world->getTimeOfDay()])),
+                    "gametime" => $this->success(new Translation("commands.time.query.gametime", [$world->getGameTime()])),
+                    "day" => $this->success(new Translation("commands.time.query.day", [$world->getDay()])),
+                    default => $this->success(new Translation("commands.time.clock.query.time", [$clock, $world->getTime()]))
                 };
                 break;
             case "pause":
@@ -109,7 +174,7 @@ class TimeCommand extends Command{
                 }
 
                 $world->setGameRule(GameRules::DO_DAYLIGHT_CYCLE, $run);
-                $output->success($run ? "commands.time.clock.resumed" : "commands.time.clock.paused", [$clock, $world->getTime()]);
+                $this->success(new Translation($run ? "commands.time.clock.resumed" : "commands.time.clock.paused", [$clock, $world->getTime()]));
                 break;
         }
     }

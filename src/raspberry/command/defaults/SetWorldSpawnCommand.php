@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace raspberry\command\defaults;
 
-use raspberry\command\Command;
+use raspberry\command\CommandBuilder;
 use raspberry\command\CommandException;
-use raspberry\command\CommandOutput;
-use raspberry\command\CommandParameter;
 use raspberry\command\CommandSender;
+use raspberry\command\ParameterBuilder;
+
+use raspberry\command\argument\PositionArgument;
+
+use raspberry\lang\Translation;
 
 use raspberry\math\Vector3;
 
@@ -16,15 +19,19 @@ use raspberry\player\Player;
 
 use raspberry\Server;
 
-class SetWorldSpawnCommand extends Command{
+class SetWorldSpawnCommand extends CommandBuilder{
 
-    public function __construct(){
-        parent::__construct("setworldspawn", "commands.setworldspawn.description", "raspberry.command.setworldspawn");
+    protected function configure() : void{
+        $this->setName("setworldspawn");
+        $this->setDescription("commands.setworldspawn.description");
+        $this->setPermission("raspberry.command.setworldspawn");
 
-        $this->addOverload(CommandParameter::position("spawnPoint", true));
+        $builder = new ParameterBuilder(0);
+        $builder->addArgument(0, new PositionArgument("spawnPoint", true));
+        $this->addParameterBuilder($builder);
     }
 
-    public function onSent(CommandSender $sender, CommandOutput $output, array $args) : void{
+    public function onSent(CommandSender $sender, string $label, array $args) : void{
         if(isset($args["spawnPoint"])){
             $position = $args["spawnPoint"];
         }elseif($sender instanceof Player){
@@ -44,6 +51,6 @@ class SetWorldSpawnCommand extends Command{
             }
         }
 
-        $output->success("commands.setworldspawn.success", [$spawn->getFloorX(), $spawn->getFloorY(), $spawn->getFloorZ()]);
+        $this->success(new Translation("commands.setworldspawn.success", [$spawn->getFloorX(), $spawn->getFloorY(), $spawn->getFloorZ()]));
     }
 }

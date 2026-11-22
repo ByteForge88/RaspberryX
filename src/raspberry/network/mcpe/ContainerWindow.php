@@ -6,6 +6,8 @@ namespace raspberry\network\mcpe;
 
 use raspberry\block\entity\BlockEntity;
 
+use raspberry\entity\Entity;
+
 use raspberry\inventory\Inventory;
 
 use Closure;
@@ -32,6 +34,7 @@ class ContainerWindow{
     public const int TYPE_STONECUTTER = 29;
     public const int TYPE_CARTOGRAPHY = 30;
     public const int TYPE_SMITHING_TABLE = 33;
+    public const int TYPE_CHEST_BOAT = 34;
     public const int TYPE_CRAFTER = 36;
 
     private int $windowId;
@@ -53,6 +56,8 @@ class ContainerWindow{
     /** the block entity whose screen it is */
     private ?BlockEntity $entity;
 
+    private ?Entity $actor;
+
     /**
      * @param int $windowId
      * @param int $type
@@ -61,14 +66,16 @@ class ContainerWindow{
      * @param list<Inventory> $inventories shown one after the other
      * @param (Closure() : void)|null $onClose
      * @param BlockEntity|null $entity
+     * @param Entity|null $actor
      */
-    public function __construct(int $windowId, int $type, array $positions, array $slotContainerIds, array $inventories, ?Closure $onClose, ?BlockEntity $entity){
+    public function __construct(int $windowId, int $type, array $positions, array $slotContainerIds, array $inventories, ?Closure $onClose, ?BlockEntity $entity, ?Entity $actor = null){
         $this->windowId = $windowId;
         $this->type = $type;
         $this->positions = $positions;
         $this->slotContainerIds = $slotContainerIds;
         $this->onClose = $onClose;
         $this->entity = $entity;
+        $this->actor = $actor;
         $this->parts = [];
 
         $offset = 0;
@@ -106,6 +113,10 @@ class ContainerWindow{
 
     public function getEntity() : ?BlockEntity{
         return $this->entity;
+    }
+
+    public function getActor() : ?Entity{
+        return $this->actor;
     }
 
     /**

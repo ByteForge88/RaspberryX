@@ -100,7 +100,7 @@ use raspberry\network\nethernet\NetherNetTransport;
 
 use raspberry\command\CommandEnum;
 use raspberry\command\CommandMap;
-use raspberry\command\CommandOutput;
+use raspberry\command\CommandFeedback;
 use raspberry\command\CommandSender;
 use raspberry\command\ConsoleCommandSender;
 
@@ -429,24 +429,24 @@ class Server{
     }
 
     /**
-     * @param bool $sendOutput
+     * @param bool $sendFeedback
      */
-    public function dispatchCommand(CommandSender $sender, string $commandLine, bool $sendOutput = true) : CommandOutput{
+    public function dispatchCommand(CommandSender $sender, string $commandLine, bool $sendFeedback = true) : CommandFeedback{
         try{
-            $output = $this->commandMap->dispatch($sender, $commandLine);
+            $feedback = $this->commandMap->dispatch($sender, $commandLine);
         }catch(Throwable $exception){
             $this->logger->error("Error while running \"{$commandLine}\": " . $exception::class . ": " . $exception->getMessage());
             $this->logger->debug($exception->getTraceAsString());
 
-            $output = new CommandOutput();
-            $output->error("commands.generic.exception");
+            $feedback = new CommandFeedback();
+            $feedback->add(new Translation("commands.generic.exception"), false);
         }
 
-        if($sendOutput){
-            $sender->sendCommandOutput($output);
+        if($sendFeedback){
+            $sender->sendCommandFeedback($feedback);
         }
 
-        return $output;
+        return $feedback;
     }
 
     /**

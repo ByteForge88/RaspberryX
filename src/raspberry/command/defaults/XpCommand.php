@@ -4,25 +4,35 @@ declare(strict_types=1);
 
 namespace raspberry\command\defaults;
 
-use raspberry\command\Command;
+use raspberry\command\CommandBuilder;
 use raspberry\command\CommandException;
-use raspberry\command\CommandOutput;
-use raspberry\command\CommandParameter;
 use raspberry\command\CommandSender;
+use raspberry\command\ParameterBuilder;
+
+use raspberry\command\argument\IntArgument;
+use raspberry\command\argument\PostfixArgument;
+use raspberry\command\argument\TargetArgument;
+
+use raspberry\lang\Translation;
 
 use function abs;
 
-class XpCommand extends Command{
+class XpCommand extends CommandBuilder{
 
-    public function __construct(){
-        parent::__construct("xp", "commands.xp.description", "raspberry.command.xp");
+    protected function configure() : void{
+        $this->setName("xp");
+        $this->setDescription("commands.xp.description");
+        $this->setPermission("raspberry.command.xp");
 
-        $this->addOverload(CommandParameter::int("amount"), CommandParameter::target("player", true));
-        $this->addOverload(CommandParameter::postfix("levels", "L"), CommandParameter::target("player", true));
+        $builder = new ParameterBuilder(0);
+        $builder->addArgument(0, new IntArgument("amount"));
+        $builder->addArgument(0, new PostfixArgument("levels", "L"));
+        $builder->addArgument(1, new TargetArgument("player", true));
+        $this->addParameterBuilder($builder);
     }
 
-    public function onSent(CommandSender $sender, CommandOutput $output, array $args) : void{
-        $players = $this->playersOrSelf($sender, $args, "player");
+    public function onSent(CommandSender $sender, string $label, array $args) : void{
+        $players = $this->targetsOrSelf($sender, $args, "player");
         $levels = isset($args["levels"]);
         $amount = $args["levels"] ?? $args["amount"];
 
@@ -33,13 +43,13 @@ class XpCommand extends Command{
         foreach($players as $player){
             if(!$levels){
                 $player->addXp($amount);
-                $output->success("commands.xp.success", [$amount, $player->getName()]);
+                $this->success(new Translation("commands.xp.success", [$amount, $player->getName()]));
             }elseif($amount >= 0){
                 $player->addXpLevels($amount);
-                $output->success("commands.xp.success.levels", [$amount, $player->getName()]);
+                $this->success(new Translation("commands.xp.success.levels", [$amount, $player->getName()]));
             }else{
                 $player->takeXpLevels(abs($amount));
-                $output->success("commands.xp.success.negative.levels", [abs($amount), $player->getName()]);
+                $this->success(new Translation("commands.xp.success.negative.levels", [abs($amount), $player->getName()]));
             }
         }
     }

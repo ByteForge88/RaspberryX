@@ -4,14 +4,19 @@ declare(strict_types=1);
 
 namespace raspberry\command\defaults;
 
-use raspberry\command\Command;
-use raspberry\command\CommandEnum;
+use raspberry\command\CommandBuilder;
 use raspberry\command\CommandException;
-use raspberry\command\CommandOutput;
-use raspberry\command\CommandParameter;
 use raspberry\command\CommandSender;
+use raspberry\command\ParameterBuilder;
+
+use raspberry\command\argument\IntArgument;
+use raspberry\command\argument\ItemArgument;
+use raspberry\command\argument\JsonArgument;
+use raspberry\command\argument\TargetArgument;
 
 use raspberry\item\Item;
+
+use raspberry\lang\Translation;
 
 use raspberry\math\Vector3;
 
@@ -21,31 +26,32 @@ use function is_array;
 use function min;
 use function substr;
 
-class GiveCommand extends Command{
+class GiveCommand extends CommandBuilder{
 
     public const int MAX_AMOUNT = 32767;
 
     public const int MAX_DATA = 32767;
 
-    public function __construct(){
-        parent::__construct("give", "commands.give.description", "raspberry.command.give");
+    protected function configure() : void{
+        $this->setName("give");
+        $this->setDescription("commands.give.description");
+        $this->setPermission("raspberry.command.give");
 
-        $this->addOverload(
-            CommandParameter::target("player"),
-            CommandParameter::enum("itemName", CommandEnum::items()),
-            CommandParameter::int("amount", true),
-            CommandParameter::int("data", true),
-            CommandParameter::json("components", true)
-        );
+        $builder = new ParameterBuilder(0);
+        $builder->addArgument(0, new TargetArgument("player"));
+        $builder->addArgument(1, new ItemArgument("itemName"));
+        $builder->addArgument(2, new IntArgument("amount", true));
+        $builder->addArgument(3, new IntArgument("data", true));
+        $builder->addArgument(4, new JsonArgument("components", true));
+        $this->addParameterBuilder($builder);
     }
 
-    public function onSent(CommandSender $sender, CommandOutput $output, array $args) : void{
+    public function onSent(CommandSender $sender, string $label, array $args) : void{
         /** @var list<Player> $players */
         $players = $args["player"];
+        $id = $args["itemName"];
         $amount = $args["amount"] ?? 1;
         $data = $args["data"] ?? 0;
-        $name = $args["itemName"];
-        $id = CommandEnum::toItemId($name) ?? throw new CommandException("commands.give.item.notFound", [$name]);
 
         if($amount < 1){
             throw new CommandException("commands.generic.num.tooSmall", [$amount, 1]);
@@ -67,7 +73,7 @@ class GiveCommand extends Command{
 
         foreach($players as $player){
             self::give($player, $item, $amount);
-            $output->success("commands.give.success", [$item->getName(), $amount, $player->getName()]);
+            $this->success(new Translation("commands.give.success", [$item->getName(), $amount, $player->getName()]));
 
             if($player !== $sender){
                 $player->sendTranslation("%commands.give.successRecipient", [$item->getName(), (string) $amount]);
@@ -75,6 +81,9 @@ class GiveCommand extends Command{
         }
     }
 
+    /**
+     * @param array<mixed> $components
+     */
     private static function applyComponents(Item $item, array $components) : void{
         foreach($components as $name => $value){
             if(!is_array($value)){

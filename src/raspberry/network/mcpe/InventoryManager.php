@@ -6,6 +6,8 @@ namespace raspberry\network\mcpe;
 
 use raspberry\block\entity\BlockEntity;
 
+use raspberry\entity\Entity;
+
 use raspberry\inventory\Inventory;
 use raspberry\inventory\InventoryListener;
 
@@ -102,20 +104,24 @@ class InventoryManager implements InventoryListener{
      * Opens a container screen showing $inventories (none for a crafting table), closing the
      * one that was open.
      *
+     * @param int $type
      * @param list<array{int, int, int}> $positions the blocks it belongs to, the first is the one opened
-     * @param list<int>                  $slotContainerIds the container IDs of its slots in inventory requests
-     * @param list<Inventory>            $inventories
-     * @param (Closure() : void)|null    $onClose
+     * @param list<int> $slotContainerIds the container IDs of its slots in inventory requests
+     * @param list<Inventory> $inventories
+     * @param (Closure() : void)|null $onClose
+     * @param BlockEntity|null $entity
+     * @param Entity|null $actor the entity whose screen it is, like a chest boat
+     * @return ContainerWindow
      */
-    public function openWindow(int $type, array $positions, array $slotContainerIds, array $inventories, ?Closure $onClose = null, ?BlockEntity $entity = null) : ContainerWindow{
+    public function openWindow(int $type, array $positions, array $slotContainerIds, array $inventories, ?Closure $onClose = null, ?BlockEntity $entity = null, ?Entity $actor = null) : ContainerWindow{
         $this->closeWindow(true);
 
         $this->lastWindowId = $this->lastWindowId % self::MAX_WINDOW_ID + 1;
-        $window = new ContainerWindow($this->lastWindowId, $type, $positions, $slotContainerIds, $inventories, $onClose, $entity);
+        $window = new ContainerWindow($this->lastWindowId, $type, $positions, $slotContainerIds, $inventories, $onClose, $entity, $actor);
         $this->window = $window;
 
         [$x, $y, $z] = $positions[0];
-        $this->session->sendDataPacket(ContainerOpenPacket::create($window->getWindowId(), $type, $x, $y, $z, -1));
+        $this->session->sendDataPacket(ContainerOpenPacket::create($window->getWindowId(), $type, $x, $y, $z, $actor?->getId() ?? -1));
 
         foreach($window->getParts() as [$inventory, $offset]){
             $this->addWindow($inventory, $window->getWindowId(), $offset, false);

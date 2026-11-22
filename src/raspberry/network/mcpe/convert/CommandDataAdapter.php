@@ -5,8 +5,9 @@ declare(strict_types=1);
 namespace raspberry\network\mcpe\convert;
 
 use raspberry\command\CommandMap;
-use raspberry\command\CommandParameter;
 use raspberry\command\CommandSender;
+
+use raspberry\command\argument\Argument;
 
 use raspberry\network\mcpe\protocol\AvailableCommandsPacket;
 use raspberry\network\mcpe\protocol\types\command\CommandData;
@@ -27,7 +28,7 @@ class CommandDataAdapter{
         $names = [];
 
         foreach($commandMap->getCommands() as $command){
-            if($command->testPermission($sender)){
+            if($command->canUse($sender)){
                 $commands[] = $command;
                 $names[] = $command->getLabel();
 
@@ -57,14 +58,14 @@ class CommandDataAdapter{
                 $packet->enums[] = new CommandEnumData($command->getLabel() . "Aliases", $aliases);
             }
 
-            foreach($command->getOverloads() as $overload){
+            foreach($command->getOverloads($sender) as $overload){
                 $parameters = [];
 
-                foreach($overload as $parameter){
+                foreach($overload as $argument){
                     $parameters[] = new CommandParameterData(
-                        $parameter->getName(),
-                        self::getParameterType($packet, $parameter, $names, $enumIndices, $softEnumIndices, $postfixIndices),
-                        $parameter->isOptional()
+                        $argument->getName(),
+                        self::getParameterType($packet, $argument, $names, $enumIndices, $softEnumIndices, $postfixIndices),
+                        $argument->isOptional()
                     );
                 }
 
@@ -83,8 +84,8 @@ class CommandDataAdapter{
      * @param array<string, int> $softEnumIndices
      * @param array<string, int> $postfixIndices
      */
-    private static function getParameterType(AvailableCommandsPacket $packet, CommandParameter $parameter, array $commandNames, array &$enumIndices, array &$softEnumIndices, array &$postfixIndices) : int{
-        $postfix = $parameter->getPostfix();
+    private static function getParameterType(AvailableCommandsPacket $packet, Argument $argument, array $commandNames, array &$enumIndices, array &$softEnumIndices, array &$postfixIndices) : int{
+        $postfix = $argument->getPostfix();
 
         if($postfix !== null){
             if(!isset($postfixIndices[$postfix])){
@@ -95,10 +96,10 @@ class CommandDataAdapter{
             return AvailableCommandsPacket::ARG_FLAG_POSTFIX | $postfixIndices[$postfix];
         }
 
-        $enum = $parameter->getEnum();
+        $enum = $argument->getEnum();
 
         if($enum === null){
-            return AvailableCommandsPacket::ARG_FLAG_VALID | $parameter->getType();
+            return AvailableCommandsPacket::ARG_FLAG_VALID | $argument->getNetworkType();
         }
 
         $values = $enum->isDynamic() ? $commandNames : $enum->getValues();

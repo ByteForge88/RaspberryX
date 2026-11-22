@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace raspberry\plugin;
 
-use raspberry\command\Command;
+use raspberry\command\CommandBuilder;
 use raspberry\command\CommandSender;
 
 use raspberry\scheduler\TaskScheduler;
@@ -149,12 +149,12 @@ abstract class PluginBase implements CommandExecutor{
     /**
      * @return string
      */
-    public function registerCommand(string $label, Command $command) : string{
+    public function registerCommand(string $label, CommandBuilder $command) : string{
         return $this->server->getPluginManager()->registerCommand($this, $command, $label);
     }
 
     /**
-     * @param array<int|string, Command> $commands
+     * @param array<int|string, CommandBuilder> $commands
      */
     public function registerCommands(array $commands) : void{
         foreach($commands as $label => $command){

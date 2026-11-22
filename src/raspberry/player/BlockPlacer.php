@@ -34,6 +34,7 @@ use raspberry\block\entity\BlockEntityFactory;
 use raspberry\entity\Human;
 use raspberry\entity\EntityFactory;
 use raspberry\entity\object\Boat;
+use raspberry\entity\object\ChestBoat;
 use raspberry\entity\object\Painting;
 
 use raspberry\event\block\BlockPlaceEvent;
@@ -194,10 +195,11 @@ class BlockPlacer{
             return;
         }
 
-        $variant = Boat::variantOf($held->getId());
+        $chestVariant = ChestBoat::variantOf($held->getId());
+        $variant = $chestVariant ?? Boat::variantOf($held->getId());
 
         if($variant !== null){
-            if($this->placeBoat($x, $y, $z, $data, $clicked, $variant)){
+            if($this->placeBoat($x, $y, $z, $data, $clicked, $variant, $chestVariant !== null)){
                 $player->swingArm(AnimatePacket::SWING_INTERACT);
                 $this->useUpHeld($held);
             }
@@ -248,10 +250,11 @@ class BlockPlacer{
         $this->useUpHeld($held);
     }
 
-    private function placeBoat(int $x, int $y, int $z, UseItemData $data, BlockState $clicked, int $variant) : bool{
+    private function placeBoat(int $x, int $y, int $z, UseItemData $data, BlockState $clicked, int $variant, bool $withChest) : bool{
         $water = $clicked->getName() === BlockIds::WATER || $clicked->getName() === BlockIds::FLOWING_WATER;
         $position = new Vector3($x + $data->clickX, $y + ($water && $data->clickY <= 0.0 ? 1.0 : $data->clickY), $z + $data->clickZ);
-        return Boat::place($this->player->getWorld(), $position, $this->player->getYaw(), $variant) !== null;
+        $world = $this->player->getWorld();
+        return ($withChest ? ChestBoat::place($world, $position, $this->player->getYaw(), $variant) : Boat::place($world, $position, $this->player->getYaw(), $variant)) !== null;
     }
 
     /**
@@ -352,7 +355,6 @@ class BlockPlacer{
             $block = $block->withProperty(BlockProperties::OPEN_BIT, $open);
             $facing = Facing::fromYaw($this->player->getYaw());
 
-            //a gate opens away from the player
             if($open && $block->getProperty(BlockProperties::MINECRAFT_CARDINAL_DIRECTION) === Facing::name(Facing::opposite($facing))){
                 $block = $block->withProperty(BlockProperties::MINECRAFT_CARDINAL_DIRECTION, Facing::name($facing));
             }
@@ -396,7 +398,6 @@ class BlockPlacer{
             $world->setBlock($x, $y, $z, $block->withProperty(BlockProperties::BUTTON_PRESSED_BIT, true));
             $this->playSound(LevelSoundEvent::BUTTON_CLICK_ON, $x, $y, $z, $block);
 
-            //stone buttons stay pressed for a second, wooden ones for a second and a half
             $world->scheduleUpdate($name === BlockIds::STONE_BUTTON || $name === BlockIds::POLISHED_BLACKSTONE_BUTTON ? 20 : 30, function() use ($world, $x, $y, $z, $name) : void{
                 $current = $world->getBlock($x, $y, $z);
 

@@ -4,10 +4,14 @@ declare(strict_types=1);
 
 namespace raspberry\command\defaults;
 
-use raspberry\command\Command;
-use raspberry\command\CommandOutput;
-use raspberry\command\CommandParameter;
+use raspberry\command\CommandBuilder;
 use raspberry\command\CommandSender;
+use raspberry\command\ParameterBuilder;
+
+use raspberry\command\argument\PositionArgument;
+use raspberry\command\argument\TargetArgument;
+
+use raspberry\lang\Translation;
 
 use raspberry\player\Player;
 
@@ -15,16 +19,21 @@ use function array_map;
 use function count;
 use function implode;
 
-class SpawnpointCommand extends Command{
+class SpawnpointCommand extends CommandBuilder{
 
-    public function __construct(){
-        parent::__construct("spawnpoint", "commands.spawnpoint.description", "raspberry.command.spawnpoint");
+    protected function configure() : void{
+        $this->setName("spawnpoint");
+        $this->setDescription("commands.spawnpoint.description");
+        $this->setPermission("raspberry.command.spawnpoint");
 
-        $this->addOverload(CommandParameter::target("player", true), CommandParameter::position("spawnPos", true));
+        $builder = new ParameterBuilder(0);
+        $builder->addArgument(0, new TargetArgument("player", true));
+        $builder->addArgument(1, new PositionArgument("spawnPos", true));
+        $this->addParameterBuilder($builder);
     }
 
-    public function onSent(CommandSender $sender, CommandOutput $output, array $args) : void{
-        $players = $this->playersOrSelf($sender, $args, "player");
+    public function onSent(CommandSender $sender, string $label, array $args) : void{
+        $players = $this->targetsOrSelf($sender, $args, "player");
 
         foreach($players as $player){
             $position = $args["spawnPos"] ?? $player->getPosition();
@@ -34,13 +43,14 @@ class SpawnpointCommand extends Command{
 
         $position = $args["spawnPos"] ?? $players[0]->getPosition();
         $coordinates = [$position->getFloorX(), $position->getFloorY(), $position->getFloorZ()];
+        $names = implode(", ", array_map(fn(Player $player) => $player->getName(), $players));
 
         if(count($players) === 1){
-            $output->success("commands.spawnpoint.success.single", [$players[0]->getName(), ...$coordinates]);
+            $this->success(new Translation("commands.spawnpoint.success.single", [$players[0]->getName(), ...$coordinates]));
         }elseif(isset($args["spawnPos"])){
-            $output->success("commands.spawnpoint.success.multiple.specific", [implode(", ", array_map(fn(Player $player) => $player->getName(), $players)), ...$coordinates]);
+            $this->success(new Translation("commands.spawnpoint.success.multiple.specific", [$names, ...$coordinates]));
         }else{
-            $output->success("commands.spawnpoint.success.multiple.generic", [implode(", ", array_map(fn(Player $player) => $player->getName(), $players))]);
+            $this->success(new Translation("commands.spawnpoint.success.multiple.generic", [$names]));
         }
     }
 }

@@ -6,12 +6,15 @@ namespace raspberry\command\defaults;
 
 use raspberry\Server;
 
-use raspberry\command\Command;
+use raspberry\command\CommandBuilder;
 use raspberry\command\CommandEnum;
 use raspberry\command\CommandException;
-use raspberry\command\CommandOutput;
-use raspberry\command\CommandParameter;
 use raspberry\command\CommandSender;
+use raspberry\command\ParameterBuilder;
+
+use raspberry\command\argument\EnumArgument;
+use raspberry\command\argument\IntArgument;
+use raspberry\command\argument\KeywordArgument;
 
 use raspberry\lang\Translation;
 
@@ -21,24 +24,32 @@ use raspberry\world\Weather;
 
 use function mt_rand;
 
-class WeatherCommand extends Command{
+class WeatherCommand extends CommandBuilder{
 
     public const int MAX_DURATION = 1000000;
 
-    public function __construct(){
-        parent::__construct("weather", "commands.weather.description", "raspberry.command.weather");
+    protected function configure() : void{
+        $this->setName("weather");
+        $this->setDescription("commands.weather.description");
+        $this->setPermission("raspberry.command.weather");
 
-        $this->addOverload(CommandParameter::enum("type", new CommandEnum("WeatherType", ["clear", "rain", "thunder"])), CommandParameter::int("duration", true));
-        $this->addOverload(CommandParameter::enum("query", new CommandEnum("WeatherQuery", ["query"])));
+        $change = new ParameterBuilder(0);
+        $change->addArgument(0, new EnumArgument("type", new CommandEnum("WeatherType", ["clear", "rain", "thunder"])));
+        $change->addArgument(1, new IntArgument("duration", true));
+        $this->addParameterBuilder($change);
+
+        $query = new ParameterBuilder(1);
+        $query->addArgument(0, new KeywordArgument("query", "WeatherQuery", ["query"]));
+        $this->addParameterBuilder($query);
     }
 
-    public function onSent(CommandSender $sender, CommandOutput $output, array $args) : void{
+    public function onSent(CommandSender $sender, string $label, array $args) : void{
         $world = $sender instanceof Player ? $sender->getWorld() : Server::getInstance()->getWorldManager()->getDefaultWorld();
         $weather = $world->getWeather();
 
         if(isset($args["query"])){
             $state = $weather->isThundering() ? "thunder" : ($weather->isRaining() ? "rain" : "clear");
-            $output->success("commands.weather.query", [new Translation("commands.weather.query." . $state)]);
+            $this->success(new Translation("commands.weather.query", [new Translation("commands.weather.query." . $state)]));
             return;
         }
 
@@ -62,6 +73,6 @@ class WeatherCommand extends Command{
             default => $weather->setThunder($duration)
         };
 
-        $output->success("commands.weather." . $args["type"]);
+        $this->success(new Translation("commands.weather." . $args["type"]));
     }
 }

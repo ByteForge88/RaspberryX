@@ -11,6 +11,7 @@ use raspberry\block\BlockProperties;
 
 use raspberry\crafting\FurnaceData;
 
+use raspberry\entity\object\ChestBoat;
 use raspberry\entity\object\ItemEntity;
 
 use raspberry\inventory\Inventory;
@@ -89,7 +90,7 @@ class Hopper extends ContainerBlockEntity implements TickableBlockEntity{
         $target = self::getContainer($world, $this->getX() + $dx, $this->getY() + $dy, $this->getZ() + $dz);
 
         if($target === null){
-            return false;
+            return $this->feedChestBoat(ChestBoat::findAt($world, $this->getX() + $dx, $this->getY() + $dy, $this->getZ() + $dz));
         }
 
         foreach($this->getInventory()->getContents() as $slot => $item){
@@ -122,6 +123,12 @@ class Hopper extends ContainerBlockEntity implements TickableBlockEntity{
             return false;
         }
 
+        $boat = ChestBoat::findAt($world, $this->getX(), $this->getY() + 1, $this->getZ());
+
+        if($boat !== null){
+            return $this->siphonChestBoat($boat);
+        }
+
         if($this->getY() + 1 <= Chunk::MAX_Y && BlockCollision::isFullCube($world->getBlock($this->getX(), $this->getY() + 1, $this->getZ()))){
             return false;
         }
@@ -144,7 +151,6 @@ class Hopper extends ContainerBlockEntity implements TickableBlockEntity{
                 continue;
             }
 
-            //what did not fit stays on the hopper
             $entity->close();
 
             if($left !== null){
@@ -152,6 +158,35 @@ class Hopper extends ContainerBlockEntity implements TickableBlockEntity{
             }
 
             return true;
+        }
+
+        return false;
+    }
+
+    private function feedChestBoat(?ChestBoat $boat) : bool{
+        if($boat === null){
+            return false;
+        }
+
+        foreach($this->getInventory()->getContents() as $slot => $item){
+            if(self::insertInto($boat->getCargo(), self::allSlots($boat->getCargo()), (clone $item)->setCount(1))){
+                $this->getInventory()->setItem($slot, $item->getCount() > 1 ? (clone $item)->setCount($item->getCount() - 1) : Item::air());
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function siphonChestBoat(ChestBoat $boat) : bool{
+        $cargo = $boat->getCargo();
+
+        foreach($cargo->getContents() as $slot => $item){
+            if($this->getInventory()->canAddItem((clone $item)->setCount(1))){
+                $this->getInventory()->addItem((clone $item)->setCount(1));
+                $cargo->setItem($slot, $item->getCount() > 1 ? (clone $item)->setCount($item->getCount() - 1) : Item::air());
+                return true;
+            }
         }
 
         return false;

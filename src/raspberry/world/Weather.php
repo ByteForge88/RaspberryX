@@ -15,7 +15,6 @@ use raspberry\block\growth\Nearby;
 use raspberry\entity\Living;
 use raspberry\entity\object\LightningBolt;
 
-use raspberry\event\block\BlockFormEvent;
 use raspberry\event\world\LightningStrikeEvent;
 use raspberry\event\world\WeatherChangeEvent;
 

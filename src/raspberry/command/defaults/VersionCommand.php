@@ -4,24 +4,24 @@ declare(strict_types=1);
 
 namespace raspberry\command\defaults;
 
-use raspberry\command\Command;
-use raspberry\command\CommandOutput;
+use raspberry\command\CommandBuilder;
 use raspberry\command\CommandSender;
 
 use raspberry\network\mcpe\protocol\ProtocolInfo;
 
 use raspberry\ServerInfo;
 
-class VersionCommand extends Command{
+class VersionCommand extends CommandBuilder{
 
-    public function __construct(){
-        parent::__construct("version", "", "raspberry.command.version", ["ver", "about"]);
-
+    protected function configure() : void{
+        $this->setName("version");
         $this->setDescription($this->text("command.version.description"));
+        $this->setPermission("raspberry.command.version");
+        $this->setAliases(["ver", "about"]);
     }
 
-    public function onSent(CommandSender $sender, CommandOutput $output, array $args) : void{
-        $output->successText($this->text("command.version.info", [
+    public function onSent(CommandSender $sender, string $label, array $args) : void{
+        $this->success($this->text("command.version.info", [
             "name" => ServerInfo::NAME,
             "version" => ServerInfo::VERSION,
             "minecraft" => ProtocolInfo::MINECRAFT_VERSION,

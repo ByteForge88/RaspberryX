@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace raspberry\command;
 
 use raspberry\lang\Language;
+use raspberry\lang\Translation;
 
 use raspberry\permission\PermissibleTrait;
 use raspberry\permission\PermissionLevel;
@@ -36,9 +37,9 @@ class ConsoleCommandSender implements CommandSender{
         $this->logger->info($message);
     }
 
-    public function sendCommandOutput(CommandOutput $output) : void{
-        foreach($output->getMessages() as $message){
-            $this->logger->info(($message->isSuccess() ? "" : TextFormat::RED) . $message->toText($this->language));
+    public function sendCommandFeedback(CommandFeedback $feedback) : void{
+        foreach($feedback->getMessages() as [$message, $success]){
+            $this->logger->info(($success ? "" : TextFormat::RED) . ($message instanceof Translation ? $this->language->translateObject($message) : $message));
         }
     }
 
