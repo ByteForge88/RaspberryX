@@ -11,7 +11,7 @@ use raspberry\block\BlockProperties;
 
 use raspberry\crafting\FurnaceData;
 
-use raspberry\entity\object\ChestBoat;
+use raspberry\entity\CargoCarrier;
 use raspberry\entity\object\ItemEntity;
 
 use raspberry\inventory\Inventory;
@@ -34,7 +34,7 @@ use function preg_match;
 
 class Hopper extends ContainerBlockEntity implements TickableBlockEntity{
 
-    public const TRANSFER_COOLDOWN = 8;
+    public const int TRANSFER_COOLDOWN = 8;
 
     private int $cooldown = 0;
 
@@ -90,7 +90,7 @@ class Hopper extends ContainerBlockEntity implements TickableBlockEntity{
         $target = self::getContainer($world, $this->getX() + $dx, $this->getY() + $dy, $this->getZ() + $dz);
 
         if($target === null){
-            return $this->feedChestBoat(ChestBoat::findAt($world, $this->getX() + $dx, $this->getY() + $dy, $this->getZ() + $dz));
+            return $this->feedCarrier(self::findCarrier($world, $this->getX() + $dx, $this->getY() + $dy, $this->getZ() + $dz));
         }
 
         foreach($this->getInventory()->getContents() as $slot => $item){
@@ -110,23 +110,13 @@ class Hopper extends ContainerBlockEntity implements TickableBlockEntity{
         $source = self::getContainer($world, $this->getX(), $this->getY() + 1, $this->getZ());
 
         if($source !== null){
-            foreach(self::getExtractSlots($source) as $slot){
-                $item = $source->getInventory()->getItem($slot);
-
-                if(!$item->isNull() && $this->getInventory()->canAddItem((clone $item)->setCount(1))){
-                    $this->getInventory()->addItem((clone $item)->setCount(1));
-                    $source->getInventory()->setItem($slot, $item->getCount() > 1 ? (clone $item)->setCount($item->getCount() - 1) : Item::air());
-                    return true;
-                }
-            }
-
-            return false;
+            return self::takeOne($source, $this->getInventory());
         }
 
-        $boat = ChestBoat::findAt($world, $this->getX(), $this->getY() + 1, $this->getZ());
+        $carrier = self::findCarrier($world, $this->getX(), $this->getY() + 1, $this->getZ());
 
-        if($boat !== null){
-            return $this->siphonChestBoat($boat);
+        if($carrier !== null){
+            return $this->siphonCarrier($carrier);
         }
 
         if($this->getY() + 1 <= Chunk::MAX_Y && BlockCollision::isFullCube($world->getBlock($this->getX(), $this->getY() + 1, $this->getZ()))){
@@ -163,13 +153,13 @@ class Hopper extends ContainerBlockEntity implements TickableBlockEntity{
         return false;
     }
 
-    private function feedChestBoat(?ChestBoat $boat) : bool{
-        if($boat === null){
+    private function feedCarrier(?CargoCarrier $carrier) : bool{
+        if($carrier === null){
             return false;
         }
 
         foreach($this->getInventory()->getContents() as $slot => $item){
-            if(self::insertInto($boat->getCargo(), self::allSlots($boat->getCargo()), (clone $item)->setCount(1))){
+            if(self::insertInto($carrier->getCargo(), self::allSlots($carrier->getCargo()), (clone $item)->setCount(1))){
                 $this->getInventory()->setItem($slot, $item->getCount() > 1 ? (clone $item)->setCount($item->getCount() - 1) : Item::air());
                 return true;
             }
@@ -178,8 +168,8 @@ class Hopper extends ContainerBlockEntity implements TickableBlockEntity{
         return false;
     }
 
-    private function siphonChestBoat(ChestBoat $boat) : bool{
-        $cargo = $boat->getCargo();
+    private function siphonCarrier(CargoCarrier $carrier) : bool{
+        $cargo = $carrier->getCargo();
 
         foreach($cargo->getContents() as $slot => $item){
             if($this->getInventory()->canAddItem((clone $item)->setCount(1))){
@@ -190,6 +180,30 @@ class Hopper extends ContainerBlockEntity implements TickableBlockEntity{
         }
 
         return false;
+    }
+
+    public static function takeOne(ContainerBlockEntity $source, Inventory $into) : bool{
+        foreach(self::getExtractSlots($source) as $slot){
+            $item = $source->getInventory()->getItem($slot);
+
+            if(!$item->isNull() && $into->canAddItem((clone $item)->setCount(1))){
+                $into->addItem((clone $item)->setCount(1));
+                $source->getInventory()->setItem($slot, $item->getCount() > 1 ? (clone $item)->setCount($item->getCount() - 1) : Item::air());
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public static function findCarrier(World $world, int $x, int $y, int $z) : ?CargoCarrier{
+        foreach($world->getEntities() as $entity){
+            if($entity instanceof CargoCarrier && $entity->touchesBlock($x, $y, $z)){
+                return $entity;
+            }
+        }
+
+        return null;
     }
 
     public static function getContainer(World $world, int $x, int $y, int $z) : ?ContainerBlockEntity{

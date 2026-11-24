@@ -683,6 +683,7 @@
     "minecraft:infested_cracked_stone_bricks": {},
     "minecraft:infested_deepslate": {"pillar_axis": ["y", "x", "z"]},
     "minecraft:infested_mossy_stone_bricks": {},
+    "minecraft:moving_block": {},
     "minecraft:infested_stone": {},
     "minecraft:infested_stone_bricks": {},
     "minecraft:iron_bars": {"minecraft:connection_east": [false, true], "minecraft:connection_north": [false, true], "minecraft:connection_south": [false, true], "minecraft:connection_west": [false, true]},

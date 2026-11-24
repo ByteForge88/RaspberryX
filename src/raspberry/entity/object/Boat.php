@@ -8,8 +8,8 @@ use raspberry\block\BlockCollision;
 use raspberry\block\BlockIds;
 use raspberry\block\BlockProperties;
 
-use raspberry\entity\Entity;
 use raspberry\entity\EntityIds;
+use raspberry\entity\Vehicle;
 
 use raspberry\item\Item;
 use raspberry\item\ItemIds;
@@ -18,8 +18,6 @@ use raspberry\math\Vector3;
 
 use raspberry\nbt\tag\CompoundTag;
 
-use raspberry\network\mcpe\protocol\SetActorDataPacket;
-use raspberry\network\mcpe\protocol\SetActorLinkPacket;
 use raspberry\network\mcpe\protocol\types\EntityMetadata;
 
 use raspberry\player\Player;
@@ -30,19 +28,15 @@ use raspberry\world\World;
 
 use function abs;
 use function array_search;
-use function array_values;
 use function ceil;
 use function count;
-use function cos;
-use function deg2rad;
 use function floor;
 use function fmod;
 use function max;
-use function sin;
 
 use const M_PI;
 
-class Boat extends Entity{
+class Boat extends Vehicle{
 
     protected const array ITEMS = [
         ItemIds::OAK_BOAT,
@@ -72,12 +66,6 @@ class Boat extends Entity{
     public const float RIDER_ROTATION_LOCK = 90.0;
     public const float RIDER_ROTATION_OFFSET = -90.0;
 
-    public const float PLAYER_SEAT_LIFT = 1.22001;
-
-    private const float BREAK_DAMAGE = 40.0;
-
-    private const int HURT_TICKS = 10;
-
     private const float LAVA_DAMAGE = 4.0;
 
     private const int UNDERWATER_EJECT_TICKS = 60;
@@ -95,15 +83,6 @@ class Boat extends Entity{
     private Vector3 $motion;
 
     private bool $onGround = false;
-
-    private float $damage = 0.0;
-
-    private int $hurtTime = 0;
-
-    private int $hurtDirection = 1;
-
-    /** @var list<Player> front seat first */
-    private array $passengers = [];
 
     private float $paddleLeft = 0.0;
     private float $paddleRight = 0.0;
@@ -191,15 +170,16 @@ class Boat extends Entity{
         return $this->onGround;
     }
 
-    /**
-     * @return list<Player>
-     */
-    public function getPassengers() : array{
-        return $this->passengers;
+    public function getMaxPassengers() : int{
+        return static::MAX_PASSENGERS;
     }
 
-    public function getDriver() : ?Player{
-        return $this->passengers[0] ?? null;
+    public function getRiderRotationLock() : ?float{
+        return self::RIDER_ROTATION_LOCK;
+    }
+
+    public function getRiderRotationOffset() : float{
+        return self::RIDER_ROTATION_OFFSET;
     }
 
     public function createMetadata() : EntityMetadata{
@@ -220,7 +200,6 @@ class Boat extends Entity{
         $metadata->setByte(EntityMetadata::KEY_CONTROLLING_RIDER_SEAT, 0);
         $metadata->setByte(EntityMetadata::KEY_IS_BUOYANT, 1);
         $metadata->setString(EntityMetadata::KEY_BUOYANCY_DATA, self::BUOYANCY);
-
         return $metadata;
     }
 
@@ -235,82 +214,17 @@ class Boat extends Entity{
     }
 
     public function canBoard(Player $player) : bool{
-        return !$this->closed && count($this->passengers) < static::MAX_PASSENGERS && $player->getVehicle() === null && !$this->isUnderwater() && $player->getWorld() === $this->world;
+        return parent::canBoard($player) && !$this->isUnderwater();
     }
 
-    public function addPassenger(Player $player) : bool{
-        if(!$this->canBoard($player)){
-            return false;
-        }
-
-        $this->passengers[] = $player;
-        $player->setVehicle($this);
-        $this->sendLink($player, count($this->passengers) === 1 ? SetActorLinkPacket::TYPE_RIDER : SetActorLinkPacket::TYPE_PASSENGER);
-        $this->updatePassengers();
-        return true;
+    public function getInteractText(Player $player) : string{
+        return $this->canBoard($player) ? "action.interact.ride.boat" : "";
     }
 
-    public function removePassenger(Player $player, ?Vector3 $at = null, bool $immediate = false) : void{
-        $index = array_search($player, $this->passengers, true);
-
-        if($index === false){
-            return;
+    public function interact(Player $player) : void{
+        if(!$player->isSneaking()){
+            $this->addPassenger($player);
         }
-
-        unset($this->passengers[$index]);
-        $this->passengers = array_values($this->passengers);
-        $player->setVehicle(null);
-        $this->sendLink($player, SetActorLinkPacket::TYPE_REMOVE, $immediate);
-
-        foreach($this->passengers as $seat => $rider){
-            $this->sendLink($rider, $seat === 0 ? SetActorLinkPacket::TYPE_RIDER : SetActorLinkPacket::TYPE_PASSENGER);
-        }
-
-        $this->updatePassengers();
-
-        if(!$player->isClosed() && $player->isAlive()){
-            $player->teleport($this->findDismountSpot($at));
-        }
-    }
-
-    public function removePassengers(bool $immediate = false) : void{
-        foreach($this->passengers as $passenger){
-            $this->removePassenger($passenger, null, $immediate);
-        }
-    }
-
-    public function sendLinksTo(Player $viewer) : void{
-        foreach($this->passengers as $seat => $rider){
-            if($rider === $viewer || isset($rider->getViewers()[$viewer->getId()])){
-                $viewer->getNetworkSession()->sendDataPacket(
-                    SetActorLinkPacket::create(
-                        $this->id,
-                        $rider->getId(),
-                        $seat === 0 ? SetActorLinkPacket::TYPE_RIDER : SetActorLinkPacket::TYPE_PASSENGER,
-                        false,
-                        true
-                    )
-                );
-            }
-        }
-    }
-
-    public function hurt(float $amount, ?Player $attacker = null) : void{
-        if($this->closed){
-            return;
-        }
-
-        $this->hurtDirection = -$this->hurtDirection;
-        $this->hurtTime = self::HURT_TICKS;
-        $this->damage += $amount * 10;
-        $creative = $attacker !== null && $attacker->getGameMode()->hasInstantBuild();
-
-        if($creative || $this->damage > self::BREAK_DAMAGE){
-            $this->destroy(!$creative);
-            return;
-        }
-
-        $this->broadcastMetadata();
     }
 
     public function destroy(bool $drop) : void{
@@ -325,14 +239,6 @@ class Boat extends Entity{
         }
 
         $this->close();
-    }
-
-    public function close() : void{
-        if(!$this->closed){
-            $this->removePassengers(true);
-        }
-
-        parent::close();
     }
 
     public function moveByDriver(Player $driver, Vector3 $position, float $yaw, bool $paddleLeft, bool $paddleRight) : bool{
@@ -387,23 +293,8 @@ class Boat extends Entity{
             $this->updateViewers();
         }
 
-        foreach($this->passengers as $passenger){
-            if($passenger->isClosed() || !$passenger->isAlive() || $passenger->getWorld() !== $this->world){
-                $this->removePassenger($passenger, null, true);
-            }
-        }
-
-        $changed = false;
-
-        if($this->hurtTime > 0){
-            --$this->hurtTime;
-            $changed = true;
-        }
-
-        if($this->damage > 0){
-            $this->damage = max(0.0, $this->damage - 1);
-            $changed = true;
-        }
+        $this->dropLostPassengers();
+        $changed = $this->recover();
 
         if($this->isInLava()){
             $this->hurt(self::LAVA_DAMAGE);
@@ -512,59 +403,6 @@ class Boat extends Entity{
         $this->move(new Vector3($x, $y, $z), $this->yaw, 0.0);
     }
 
-    private function updatePassengers() : void{
-        $yaw = deg2rad($this->yaw);
-
-        foreach($this->passengers as $passenger){
-            $seat = $this->getSeat($passenger);
-            $passenger->setPosition(new Vector3(
-                $this->position->x + $seat->x * cos($yaw),
-                $this->position->y + $seat->y + self::NETWORK_OFFSET,
-                $this->position->z + $seat->x * sin($yaw)
-            ));
-            $passenger->onVehicleMoved();
-        }
-    }
-
-    private function findDismountSpot(?Vector3 $at) : Vector3{
-        if($at !== null && $at->distanceSquared($this->position) <= 9.0 && !self::spaceBlocked($this->world, $at)){
-            return $at;
-        }
-
-        $yaw = deg2rad($this->yaw);
-
-        foreach([1, -1] as $side){
-            $spot = new Vector3($this->position->x - sin($yaw) * $side * 1.2, $this->position->y, $this->position->z + cos($yaw) * $side * 1.2);
-
-            if(!self::spaceBlocked($this->world, $spot) && self::spaceBlocked($this->world, $spot->add(0, -1, 0))){
-                return $spot;
-            }
-        }
-
-        return $this->position->add(0, self::HEIGHT, 0);
-    }
-
-    private function sendLink(Player $rider, int $type, bool $immediate = false) : void{
-        $packet = SetActorLinkPacket::create($this->id, $rider->getId(), $type, $immediate, true);
-        $rider->getNetworkSession()->sendDataPacket($packet);
-
-        foreach($this->viewers as $viewer){
-            if($viewer !== $rider && isset($rider->getViewers()[$viewer->getId()])){
-                $viewer->getNetworkSession()->sendDataPacket($packet);
-            }
-        }
-    }
-
-    private function broadcastMetadata(?Player $except = null) : void{
-        $packet = SetActorDataPacket::create($this->id, $this->createMetadata(), 0);
-
-        foreach($this->viewers as $viewer){
-            if($viewer !== $except){
-                $viewer->getNetworkSession()->sendDataPacket($packet);
-            }
-        }
-    }
-
     private function getWaterLevel() : ?float{
         $level = null;
         $half = self::WIDTH / 2;
@@ -644,19 +482,6 @@ class Boat extends Entity{
                         return true;
                     }
                 }
-            }
-        }
-
-        return false;
-    }
-
-    private static function spaceBlocked(World $world, Vector3 $at) : bool{
-        $x = $at->getFloorX();
-        $z = $at->getFloorZ();
-
-        for($y = (int) floor($at->y); $y <= (int) floor($at->y + 1.8); ++$y){
-            if(!$world->isChunkLoaded($x >> 4, $z >> 4) || BlockCollision::isSolid($world->getBlock($x, $y, $z))){
-                return true;
             }
         }
 

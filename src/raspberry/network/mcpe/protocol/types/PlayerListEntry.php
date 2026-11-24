@@ -6,13 +6,13 @@ namespace raspberry\network\mcpe\protocol\types;
 
 use raspberry\entity\Skin;
 
-use raspberry\utils\Uuid;
+use raspberry\utils\UUID;
 
 class PlayerListEntry{
 
     public bool $add;
 
-    public Uuid $uuid;
+    public UUID $uuid;
 
     public int $actorUniqueId = 0;
 
@@ -25,12 +25,12 @@ class PlayerListEntry{
 
     public ?Skin $skin = null;
 
-    private function __construct(bool $add, Uuid $uuid){
+    private function __construct(bool $add, UUID $uuid){
         $this->add = $add;
         $this->uuid = $uuid;
     }
 
-    public static function add(Uuid $uuid, int $actorUniqueId, string $username, string $xuid, int $buildPlatform, Skin $skin) : self{
+    public static function add(UUID $uuid, int $actorUniqueId, string $username, string $xuid, int $buildPlatform, Skin $skin) : self{
         $entry = new self(true, $uuid);
         $entry->actorUniqueId = $actorUniqueId;
         $entry->username = $username;
@@ -40,7 +40,7 @@ class PlayerListEntry{
         return $entry;
     }
 
-    public static function remove(Uuid $uuid) : self{
+    public static function remove(UUID $uuid) : self{
         return new self(false, $uuid);
     }
 }

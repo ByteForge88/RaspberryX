@@ -683,6 +683,7 @@
     "minecraft:infested_cracked_stone_bricks": {"hardness": 0.75, "tool": "pickaxe", "tier": null, "drops": []},
     "minecraft:infested_deepslate": {"hardness": 0.75, "tool": "pickaxe", "tier": null, "drops": []},
     "minecraft:infested_mossy_stone_bricks": {"hardness": 0.75, "tool": "pickaxe", "tier": null, "drops": []},
+    "minecraft:moving_block": {"hardness": -1, "tool": null, "tier": null, "drops": []},
     "minecraft:infested_stone": {"hardness": 0.75, "tool": "pickaxe", "tier": null, "drops": []},
     "minecraft:infested_stone_bricks": {"hardness": 0.75, "tool": "pickaxe", "tier": null, "drops": []},
     "minecraft:iron_bars": {"hardness": 5, "tool": "pickaxe", "tier": "wooden", "drops": [{"item": "minecraft:iron_bars", "min": 1, "max": 1}]},

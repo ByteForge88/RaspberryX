@@ -25,7 +25,7 @@ use raspberry\network\mcpe\protocol\types\recipe\SmithingRecipeData;
 use raspberry\network\mcpe\protocol\types\ItemStack;
 use raspberry\network\mcpe\serializer\ItemStackSerializer;
 
-use raspberry\utils\Uuid;
+use raspberry\utils\UUID;
 
 use function array_map;
 use function count;
@@ -168,7 +168,7 @@ class ItemTranslator{
             $shaped ? $recipe->getHeight() : 0,
             array_map(fn(?RecipeIngredient $ingredient) => $ingredient === null ? ItemDescriptor::empty() : $this->toDescriptor($ingredient), $input),
             $output,
-            Uuid::random(),
+            UUID::random(),
             $recipe->getBlock(),
             $recipe->getPriority(),
             $unlock?->getContext(),

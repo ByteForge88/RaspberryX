@@ -21,6 +21,8 @@ use function implode;
 use function is_string;
 use function ksort;
 use function ltrim;
+use function str_contains;
+use function str_replace;
 use function str_starts_with;
 use function strtolower;
 use function trim;
@@ -31,53 +33,69 @@ class CommandMap{
 
     private TargetSelector $targetSelector;
 
-    /** @var array<string, CommandBuilder> label => command */
+    /** @var array<string, CommandBuilder> */
     private array $commands = [];
 
-    /** @var array<string, CommandBuilder> alias => command */
-    private array $aliases = [];
+    /** @var array<string, CommandBuilder> */
+    private array $known = [];
 
     public function __construct(Server $server){
         $this->server = $server;
         $this->targetSelector = new TargetSelector($server);
     }
 
-    public function registerCommand(string $name, CommandBuilder $command) : void{
-        $label = strtolower($name);
+    /**
+     * @param string $fallbackPrefix
+     * @param CommandBuilder $command
+     * @param string|null $label
+     * @return bool
+     */
+    public function register(string $fallbackPrefix, CommandBuilder $command, ?string $label = null) : bool{
+        $prefix = self::checkPrefix($fallbackPrefix);
+        $label = strtolower(trim($label ?? $command->getName()));
+        $prefixed = "{$prefix}:{$label}";
 
-        if(isset($this->commands[$label]) || isset($this->aliases[$label])){
-            throw new InvalidArgumentException("A command named \"{$label}\" is already registered");
+        if($label === "" || isset($this->known[$prefixed])){
+            throw new InvalidArgumentException("A command named \"{$prefixed}\" is already registered");
         }
 
-        $command->register($label);
-        $this->commands[$label] = $command;
+        $free = !isset($this->known[$label]);
+        $command->register($free ? $label : $prefixed);
+
+        $this->commands[$command->getLabel()] = $command;
+        $this->known[$prefixed] = $command;
+
+        if($free){
+            $this->known[$label] = $command;
+        }
 
         foreach($command->getAliases() as $alias){
-            if(!isset($this->commands[$alias]) && !isset($this->aliases[$alias])){
-                $this->aliases[$alias] = $command;
-            }
+            $this->known["{$prefix}:{$alias}"] ??= $command;
+            $this->known[$alias] ??= $command;
         }
 
         ksort($this->commands);
+
+        return $free;
     }
 
     /**
      * @param array<int|string, CommandBuilder> $commands
      */
-    public function registerAllCommands(array $commands) : void{
-        foreach($commands as $name => $command){
-            $this->registerCommand(is_string($name) ? $name : $command->getName(), $command);
+    public function registerAll(string $fallbackPrefix, array $commands) : void{
+        foreach($commands as $label => $command){
+            $this->register($fallbackPrefix, $command, is_string($label) ? $label : null);
         }
     }
 
-    public function unregisterCommand(CommandBuilder $command) : void{
+    public function unregister(CommandBuilder $command) : void{
         if(($this->commands[$command->getLabel()] ?? null) === $command){
             unset($this->commands[$command->getLabel()]);
         }
 
-        foreach($this->aliases as $alias => $aliased){
-            if($aliased === $command){
-                unset($this->aliases[$alias]);
+        foreach($this->known as $name => $known){
+            if($known === $command){
+                unset($this->known[$name]);
             }
         }
 
@@ -85,9 +103,7 @@ class CommandMap{
     }
 
     public function getCommand(string $name) : ?CommandBuilder{
-        $name = strtolower($name);
-
-        return $this->commands[$name] ?? $this->aliases[$name] ?? null;
+        return $this->known[strtolower($name)] ?? null;
     }
 
     /**
@@ -152,6 +168,16 @@ class CommandMap{
         $player = $this->server->getPlayerByPrefix($target);
 
         return $player === null ? [] : [$player];
+    }
+
+    private static function checkPrefix(string $prefix) : string{
+        $prefix = str_replace(" ", "_", strtolower(trim($prefix)));
+
+        if($prefix === "" || str_contains($prefix, ":")){
+            throw new InvalidArgumentException("Invalid command prefix \"{$prefix}\": it cannot be empty or contain a colon");
+        }
+
+        return $prefix;
     }
 
     /**

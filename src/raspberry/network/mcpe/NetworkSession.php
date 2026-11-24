@@ -83,16 +83,18 @@ use raspberry\block\BlockState;
 use raspberry\command\CommandFeedback;
 
 use raspberry\entity\Entity;
+use raspberry\entity\CargoCarrier;
 use raspberry\entity\EntityProperties;
 use raspberry\entity\Human;
 use raspberry\entity\Living;
 use raspberry\entity\Mob;
+use raspberry\entity\Vehicle;
 use raspberry\entity\effect\Effect;
 use raspberry\entity\effect\EffectInstance;
 use raspberry\entity\object\AreaEffectCloud;
 use raspberry\entity\object\Boat;
-use raspberry\entity\object\ChestBoat;
 use raspberry\entity\object\ItemEntity;
+use raspberry\entity\object\Minecart;
 use raspberry\entity\object\ThrownPotion;
 use raspberry\entity\object\FallingBlock;
 use raspberry\entity\object\LightningBolt;
@@ -808,8 +810,8 @@ class NetworkSession{
             return;
         }
 
-        if($entity instanceof Boat){
-            $this->spawnBoat($entity);
+        if($entity instanceof Vehicle){
+            $this->spawnVehicle($entity);
             return;
         }
 
@@ -875,26 +877,26 @@ class NetworkSession{
         }
     }
 
-    private function spawnBoat(Boat $boat) : void{
-        $position = $boat->getPosition();
-        $motion = $boat->getMotion();
-
+    private function spawnVehicle(Vehicle $vehicle) : void{
+        $position = $vehicle->getPosition();
+        $motion = $vehicle->getMotion();
         $packet = new AddActorPacket();
-        $packet->actorRuntimeId = $boat->getId();
-        $packet->type = $boat->getNetworkTypeId();
+
+        $packet->actorRuntimeId = $vehicle->getId();
+        $packet->type = $vehicle->getNetworkTypeId();
         $packet->x = $position->x;
-        $packet->y = $position->y + $boat->getNetworkOffset();
+        $packet->y = $position->y + $vehicle->getNetworkOffset();
         $packet->z = $position->z;
         $packet->motionX = $motion->x;
         $packet->motionY = $motion->y;
         $packet->motionZ = $motion->z;
-        $packet->yaw = $boat->getYaw();
-        $packet->metadata = $boat->createMetadata();
+        $packet->yaw = $vehicle->getYaw();
+        $packet->metadata = $vehicle->createMetadata();
 
         $this->sendDataPacket($packet);
 
         if($this->player !== null){
-            $boat->sendLinksTo($this->player);
+            $vehicle->sendLinksTo($this->player);
         }
     }
 
@@ -1159,12 +1161,17 @@ class NetworkSession{
 
         if($vehicle !== null){
             $seat = $vehicle->getSeat($human);
+            $lock = $vehicle->getRiderRotationLock();
             $metadata->setFlag(EntityMetadata::FLAG_RIDING);
-            $metadata->setVector3(EntityMetadata::KEY_RIDER_SEAT_POSITION, $seat->x, $seat->y + Boat::PLAYER_SEAT_LIFT, $seat->z);
-            $metadata->setByte(EntityMetadata::KEY_RIDER_ROTATION_LOCKED, 1);
-            $metadata->setFloat(EntityMetadata::KEY_RIDER_MAX_ROTATION, Boat::RIDER_ROTATION_LOCK);
-            $metadata->setFloat(EntityMetadata::KEY_RIDER_MIN_ROTATION, -Boat::RIDER_ROTATION_LOCK);
-            $metadata->setFloat(EntityMetadata::KEY_RIDER_SEAT_ROTATION_OFFSET, Boat::RIDER_ROTATION_OFFSET);
+            $metadata->setVector3(EntityMetadata::KEY_RIDER_SEAT_POSITION, $seat->x, $seat->y + Vehicle::PLAYER_SEAT_LIFT, $seat->z);
+            $metadata->setByte(EntityMetadata::KEY_RIDER_ROTATION_LOCKED, $lock === null ? 0 : 1);
+
+            if($lock !== null){
+                $metadata->setFloat(EntityMetadata::KEY_RIDER_MAX_ROTATION, $lock);
+                $metadata->setFloat(EntityMetadata::KEY_RIDER_MIN_ROTATION, -$lock);
+            }
+
+            $metadata->setFloat(EntityMetadata::KEY_RIDER_SEAT_ROTATION_OFFSET, $vehicle->getRiderRotationOffset());
         }
 
         $metadata->setString(EntityMetadata::KEY_NAME, $human->getNameTag());
@@ -1248,8 +1255,7 @@ class NetworkSession{
             $target = $player->getWorld()->getEntity($packet->targetActorRuntimeId);
             $player->setInteractText(match(true){
                 $target instanceof Mob && $this->canInteractWith($player, $target) => $target->getInteractText($player),
-                $target instanceof ChestBoat && ($player->isSneaking() || !$target->canBoard($player)) => "action.interact.opencontainer",
-                $target instanceof Boat && $target->canBoard($player) => "action.interact.ride.boat",
+                $target instanceof Vehicle => $target->getInteractText($player),
                 default => ""
             });
             return;
@@ -1267,7 +1273,7 @@ class NetworkSession{
 
         $vehicle = $player->getVehicle();
 
-        if($packet->action === InteractPacket::ACTION_OPEN_INVENTORY && $vehicle instanceof ChestBoat && $packet->targetActorRuntimeId === $vehicle->getId()){
+        if($packet->action === InteractPacket::ACTION_OPEN_INVENTORY && $vehicle instanceof CargoCarrier && $packet->targetActorRuntimeId === $vehicle->getId()){
             $vehicle->rummage($player);
             return;
         }
@@ -1364,14 +1370,14 @@ class NetworkSession{
 
         if($data->action === UseItemOnEntityData::ACTION_ATTACK){
             $player->attackEntity($target);
-        }elseif($data->action === UseItemOnEntityData::ACTION_INTERACT && $target instanceof Boat){
+        }elseif($data->action === UseItemOnEntityData::ACTION_INTERACT && $target instanceof Vehicle){
             if($player->isDead() || !$player->getGameMode()->allowsInteraction() || $target->distanceToBox($player->getEyePosition()) > Mob::INTERACT_REACH){
                 return;
             }
 
-            if($target instanceof ChestBoat && ($player->isSneaking() || !$target->canBoard($player))){
-                $target->rummage($player);
-            }elseif(!$player->isSneaking() && $target->addPassenger($player)){
+            $target->interact($player);
+
+            if($player->getVehicle() === $target){
                 $player->setInteractText("");
             }
         }elseif($data->action === UseItemOnEntityData::ACTION_INTERACT && $target instanceof Mob && $this->canInteractWith($player, $target)){
@@ -1907,17 +1913,19 @@ class NetworkSession{
         $this->updateChunkQueue(false);
     }
 
-    private function handleRiding(Player $player, Boat $boat, PlayerAuthInputPacket $packet) : void{
+    private function handleRiding(Player $player, Vehicle $vehicle, PlayerAuthInputPacket $packet) : void{
         if($packet->hasFlag(PlayerAuthInputPacket::FLAG_START_SNEAKING)){
-            $boat->removePassenger($player);
+            $vehicle->removePassenger($player);
             return;
         }
 
         $player->setRotation($packet->yaw, $packet->pitch);
 
-        if($boat->getDriver() === $player && $packet->hasFlag(PlayerAuthInputPacket::FLAG_IN_CLIENT_PREDICTED_VEHICLE) && $packet->predictedVehicleId === $boat->getId()){
-            $boat->moveByDriver($player, new Vector3($packet->x, $packet->y - $boat->getNetworkOffset(), $packet->z), $packet->vehicleYaw ?? $boat->getYaw(),
+        if($vehicle instanceof Boat && $vehicle->getDriver() === $player && $packet->hasFlag(PlayerAuthInputPacket::FLAG_IN_CLIENT_PREDICTED_VEHICLE) && $packet->predictedVehicleId === $vehicle->getId()){
+            $vehicle->moveByDriver($player, new Vector3($packet->x, $packet->y - $vehicle->getNetworkOffset(), $packet->z), $packet->vehicleYaw ?? $vehicle->getYaw(),
                 $packet->hasFlag(PlayerAuthInputPacket::FLAG_PADDLING_LEFT), $packet->hasFlag(PlayerAuthInputPacket::FLAG_PADDLING_RIGHT));
+        }elseif($vehicle instanceof Minecart){
+            $vehicle->steer($player, $packet->headYaw, $packet->moveX, $packet->moveZ);
         }
 
         $this->handleBlockActions($player, $packet);

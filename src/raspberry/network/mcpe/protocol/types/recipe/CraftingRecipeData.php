@@ -6,7 +6,7 @@ namespace raspberry\network\mcpe\protocol\types\recipe;
 
 use raspberry\network\mcpe\protocol\types\ItemStack;
 
-use raspberry\utils\Uuid;
+use raspberry\utils\UUID;
 
 class CraftingRecipeData{
 
@@ -22,7 +22,7 @@ class CraftingRecipeData{
     /** @var list<ItemStack> */
     public array $output;
 
-    public Uuid $uuid;
+    public UUID $uuid;
 
     public string $block;
 
@@ -40,7 +40,7 @@ class CraftingRecipeData{
      * @param list<ItemStack>      $output
      * @param list<ItemDescriptor> $unlockItems
      */
-    public function __construct(string $id, int $width, int $height, array $input, array $output, Uuid $uuid, string $block, int $priority, ?int $unlockContext, array $unlockItems, int $networkId){
+    public function __construct(string $id, int $width, int $height, array $input, array $output, UUID $uuid, string $block, int $priority, ?int $unlockContext, array $unlockItems, int $networkId){
         $this->id = $id;
         $this->width = $width;
         $this->height = $height;

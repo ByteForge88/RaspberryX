@@ -7,17 +7,28 @@ namespace raspberry\block\redstone;
 use raspberry\Server;
 
 use raspberry\block\TNT;
+use raspberry\block\Rails;
+use raspberry\block\RailTrack;
+use raspberry\block\Pistons;
+use raspberry\block\RedstoneOre;
+use raspberry\block\Tripwire;
+use raspberry\block\LightningRods;
+use raspberry\block\NoteBlocks;
+use raspberry\block\Bells;
 use raspberry\block\BlockIds;
 use raspberry\block\BlockState;
 use raspberry\block\BlockStateIds;
 use raspberry\block\BlockBreakInfo;
 use raspberry\block\BlockCollision;
 use raspberry\block\BlockProperties;
+use raspberry\block\BlockSupport;
 use raspberry\block\entity\Crafter;
 use raspberry\block\entity\Dispenser;
 use raspberry\block\entity\Comparator;
 use raspberry\block\entity\BlockEntityFactory;
 
+use raspberry\entity\Entity;
+use raspberry\entity\Living;
 use raspberry\entity\object\ItemEntity;
 
 use raspberry\item\Item;
@@ -34,6 +45,7 @@ use raspberry\player\Player;
 use raspberry\world\World;
 use raspberry\world\Chunk;
 
+use function abs;
 use function array_fill;
 use function array_filter;
 use function array_key_first;
@@ -56,31 +68,34 @@ use const M_PI;
 class RedstoneUpdater{
 
     /** updates handled in one go at most, so a runaway machine cannot hang the server */
-    private const MAX_UPDATES = 100000;
+    private const int MAX_UPDATES = 100000;
 
     /** pieces of wire one network update looks at */
-    private const MAX_WIRES = 4096;
+    private const int MAX_WIRES = 4096;
 
-    private const TORCH_DELAY = 2;
-    private const COMPARATOR_DELAY = 2;
-    private const OBSERVER_DELAY = 2;
-    private const LAMP_OFF_DELAY = 4;
-    private const DISPENSER_DELAY = 4;
-    private const LECTERN_PULSE = 2;
+    private const int TORCH_DELAY = 2;
+    private const int COMPARATOR_DELAY = 2;
+    private const int OBSERVER_DELAY = 2;
+    private const int LAMP_OFF_DELAY = 4;
+    private const int DISPENSER_DELAY = 4;
+    private const int LECTERN_PULSE = 2;
+    private const int PISTON_DELAY = 1;
+    private const int TARGET_TICKS = 8;
+    private const int TARGET_ARROW_TICKS = 20;
 
     /** a torch that turns off this many times within TORCH_BURNOUT_TICKS stays off for a while */
-    private const TORCH_BURNOUT_COUNT = 8;
-    private const TORCH_BURNOUT_TICKS = 60;
-    private const TORCH_BURNOUT_COOLDOWN = 160;
+    private const int TORCH_BURNOUT_COUNT = 8;
+    private const int TORCH_BURNOUT_TICKS = 60;
+    private const int TORCH_BURNOUT_COOLDOWN = 160;
 
     /** how long a pressure plate stays down after nothing is on it */
-    private const PLATE_DELAY = 20;
-    private const WEIGHTED_PLATE_DELAY = 10;
+    private const int PLATE_DELAY = 20;
+    private const int WEIGHTED_PLATE_DELAY = 10;
 
     /** daylight sensors look at the sky this often */
-    private const DAYLIGHT_TICKS = 20;
+    private const int DAYLIGHT_TICKS = 20;
 
-    private const WIRE_SIDES = [
+    private const array WIRE_SIDES = [
         Facing::NORTH => BlockProperties::REDSTONE_NORTH,
         Facing::SOUTH => BlockProperties::REDSTONE_SOUTH,
         Facing::WEST => BlockProperties::REDSTONE_WEST,
@@ -88,15 +103,19 @@ class RedstoneUpdater{
     ];
 
     /** blocks whose change can change the power of blocks two away */
-    private const POWER_BLOCKS = '/^minecraft:(redstone_wire|redstone_block|(unlit_)?redstone_torch|lever|\w+_button|\w+_pressure_plate|(powered|unpowered)_(repeater|comparator)|observer|daylight_detector(_inverted)?|trapped_chest|lectern)$/D';
+    private const string POWER_BLOCKS = '/^minecraft:(redstone_wire|redstone_block|(unlit_)?redstone_torch|lever|\w+_button|\w+_pressure_plate|(powered|unpowered)_(repeater|comparator)|observer|daylight_detector(_inverted)?|trapped_chest|lectern|detector_rail|target|tripwire_hook|(waxed_)?((exposed|weathered|oxidized)_)?lightning_rod)$/D';
 
-    private const COPPER_BULB = '/^minecraft:(waxed_)?((exposed|weathered|oxidized)_)?copper_bulb$/D';
+    private const string COPPER_BULB = '/^minecraft:(waxed_)?((exposed|weathered|oxidized)_)?copper_bulb$/D';
 
     private static ?BlockState $air = null;
 
     private World $world;
 
     private RedstoneSignal $signal;
+
+    private Tripwire $tripwire;
+
+    private LightningRods $lightningRods;
 
     /** @var array<string, array{int, int, int}> */
     private array $queue = [];
@@ -114,11 +133,17 @@ class RedstoneUpdater{
     /** @var array<string, bool> */
     private array $openablePowered = [];
 
+    /** @var array<string, true> */
+    private array $railsPowered = [];
+
     /** @var array<string, list<int>> */
     private array $torchOffs = [];
 
     /** @var array<string, array{int, int, int, int}> */
     private array $plates = [];
+
+    /** @var array<string, int> */
+    private array $targets = [];
 
     /** @var array<string, array<string, array{int, int, int}>> */
     private array $daylightDetectors = [];
@@ -129,6 +154,8 @@ class RedstoneUpdater{
     public function __construct(World $world){
         $this->world = $world;
         $this->signal = new RedstoneSignal($world);
+        $this->tripwire = new Tripwire($world, $this->signal, fn(int $x, int $y, int $z) => $this->schedule($x, $y, $z, Tripwire::HOOK_DELAY));
+        $this->lightningRods = new LightningRods($world, fn(int $x, int $y, int $z) => $this->schedule($x, $y, $z, LightningRods::POWER_TICKS));
     }
 
     public static function air() : BlockState{
@@ -143,6 +170,20 @@ class RedstoneUpdater{
      * Called after a block changed.
      */
     public function onBlockChanged(int $x, int $y, int $z, BlockState $old, BlockState $new) : void{
+        Pistons::onBlockChanged($this->world, $x, $y, $z, $old, $new);
+        $this->tripwire->onBlockChanged($x, $y, $z, $old, $new);
+        $this->lightningRods->onBlockChanged($x, $y, $z, $old, $new);
+
+        if($old->getName() !== $new->getName() && Rails::isRail($new->getName())){
+            (new RailTrack($this->world, $x, $y, $z, $new))->place($this->signal->getReceivedPower($x, $y, $z) > 0, true);
+        }elseif($old->getName() === BlockIds::RAIL && $new->getName() !== BlockIds::RAIL){
+            unset($this->railsPowered[self::key($x, $y, $z)]);
+        }
+
+        if($old->getName() === BlockIds::TARGET && $new->getName() !== BlockIds::TARGET){
+            unset($this->targets[self::key($x, $y, $z)]);
+        }
+
         $far = preg_match(self::POWER_BLOCKS, $old->getName()) === 1 || preg_match(self::POWER_BLOCKS, $new->getName()) === 1 || $this->signal->isConductor($old) !== $this->signal->isConductor($new);
 
         $this->notify($x, $y, $z, $far);
@@ -173,7 +214,14 @@ class RedstoneUpdater{
         foreach($this->world->getEntities() as $entity){
             $isItem = $entity instanceof ItemEntity;
 
-            if($entity->isClosed() || (!$isItem && (!$entity instanceof Player || $entity->isDead() || $entity->getGameMode() === GameMode::SPECTATOR))){
+            if($entity->isClosed()){
+                continue;
+            }
+
+            $this->stepOnOre($entity);
+            $this->tripwire->touch($entity, $currentTick);
+
+            if(!$isItem && (!$entity instanceof Player || $entity->isDead() || $entity->getGameMode() === GameMode::SPECTATOR)){
                 continue;
             }
 
@@ -189,6 +237,8 @@ class RedstoneUpdater{
             $found[$key] ??= [$x, $y, $z, 0];
             ++$found[$key][3];
         }
+
+        $this->tripwire->release($currentTick);
 
         foreach($found as $key => [$x, $y, $z, $count]){
             $this->setPlate($x, $y, $z, $count);
@@ -270,8 +320,66 @@ class RedstoneUpdater{
             $name === BlockIds::DISPENSER, $name === BlockIds::DROPPER, $name === BlockIds::CRAFTER => $this->updateTriggered($x, $y, $z, $block),
             $name === BlockIds::HOPPER => $this->updateHopper($x, $y, $z, $block),
             $name === BlockIds::TNT => $this->updateTNT($x, $y, $z),
+            Rails::isRail($name) => $this->updateRail($x, $y, $z, $block),
+            Pistons::isPiston($name) => $this->updatePiston($x, $y, $z, $block),
+            Tripwire::isWire($name) => $this->tripwire->updateShape($x, $y, $z, $block),
+            $name === BlockIds::NOTEBLOCK => NoteBlocks::updatePower($this->world, $x, $y, $z, $this->signal->getReceivedPower($x, $y, $z) > 0),
+            $name === BlockIds::BELL => Bells::updatePower($this->world, $x, $y, $z, $block, $this->signal->getReceivedPower($x, $y, $z) > 0),
             default => null
         };
+    }
+
+    private function updatePiston(int $x, int $y, int $z, BlockState $piston) : void{
+        if(Pistons::wantsToMove($this->world, $this->signal, $x, $y, $z, $piston)){
+            $this->schedule($x, $y, $z, self::PISTON_DELAY);
+        }
+    }
+
+    private function updateRail(int $x, int $y, int $z, BlockState $rail) : void{
+        if(!Rails::canStay($this->world, $x, $y, $z, $rail)){
+            BlockSupport::popOff($this->world, $x, $y, $z, $rail);
+            return;
+        }
+
+        $name = $rail->getName();
+
+        if($name === BlockIds::GOLDEN_RAIL || $name === BlockIds::ACTIVATOR_RAIL){
+            $powered = Rails::receivesPower($this->world, $this->signal, $x, $y, $z, $rail);
+
+            if($powered !== Rails::isPowered($rail)){
+                $this->world->setBlock($x, $y, $z, $rail->withProperty(BlockProperties::RAIL_DATA_BIT, $powered));
+                $this->notify($x, $y - 1, $z, false);
+
+                if(Rails::isAscending(Rails::shapeOf($rail))){
+                    $this->notify($x, $y + 1, $z, false);
+                }
+            }
+
+            return;
+        }
+
+        if($name !== BlockIds::RAIL){
+            return;
+        }
+
+        $key = self::key($x, $y, $z);
+        $powered = $this->signal->getReceivedPower($x, $y, $z) > 0;
+
+        if($powered === isset($this->railsPowered[$key])){
+            return;
+        }
+
+        if($powered){
+            $this->railsPowered[$key] = true;
+        }else{
+            unset($this->railsPowered[$key]);
+        }
+
+        $track = new RailTrack($this->world, $x, $y, $z, $rail);
+
+        if($track->countPotentialConnections() === 3){
+            $track->place($powered, false);
+        }
     }
 
     /**
@@ -493,7 +601,6 @@ class RedstoneUpdater{
             $this->world->setBlock($x, $y, $z, self::rename($block, BlockIds::UNLIT_REDSTONE_TORCH));
         }elseif(!$lit && !$powered){
             if(count($offs) >= self::TORCH_BURNOUT_COUNT){
-                //burnt out: try again later
                 $this->schedule($x, $y, $z, self::TORCH_BURNOUT_COOLDOWN);
             }else{
                 $this->world->setBlock($x, $y, $z, self::rename($block, BlockIds::REDSTONE_TORCH));
@@ -567,6 +674,11 @@ class RedstoneUpdater{
 
     public function forgetChunk(int $chunkX, int $chunkZ) : void{
         unset($this->daylightDetectors[self::chunkKey($chunkX, $chunkZ)]);
+        $this->lightningRods->forget($chunkX, $chunkZ);
+    }
+
+    public function getLightningRods() : LightningRods{
+        return $this->lightningRods;
     }
 
     private function updateDaylightDetectors() : void{
@@ -792,6 +904,10 @@ class RedstoneUpdater{
                 $name === BlockIds::OBSERVER => $this->tickObserver($x, $y, $z, $block),
                 $name === BlockIds::DISPENSER, $name === BlockIds::DROPPER, $name === BlockIds::CRAFTER => $this->tickTriggered($x, $y, $z),
                 $name === BlockIds::LECTERN => $this->world->setBlock($x, $y, $z, $block->withProperty(BlockProperties::POWERED_BIT, false)),
+                Pistons::isPiston($name) => Pistons::act($this->world, $this->signal, $x, $y, $z, $block),
+                $name === BlockIds::TARGET => $this->tickTarget($x, $y, $z),
+                Tripwire::isHook($name) => $this->tripwire->tickHook($x, $y, $z, $block),
+                LightningRods::isRod($name) => $this->lightningRods->unpower($x, $y, $z, $block),
                 default => null
             };
 
@@ -849,6 +965,86 @@ class RedstoneUpdater{
         }
 
         return $state;
+    }
+
+    public function getTargetPower(int $x, int $y, int $z) : int{
+        return $this->targets[self::key($x, $y, $z)] ?? 0;
+    }
+
+    public function hitTarget(int $x, int $y, int $z, Vector3 $from, Vector3 $to, bool $arrow) : void{
+        $key = self::key($x, $y, $z);
+
+        if(isset($this->targets[$key]) || $this->signal->getBlock($x, $y, $z)->getName() !== BlockIds::TARGET){
+            return;
+        }
+
+        $this->targets[$key] = self::getTargetStrength($x, $y, $z, $from, $to);
+        $this->notify($x, $y, $z, true);
+        $this->schedule($x, $y, $z, $arrow ? self::TARGET_ARROW_TICKS : self::TARGET_TICKS);
+        $this->run();
+    }
+
+    private function tickTarget(int $x, int $y, int $z) : void{
+        unset($this->targets[self::key($x, $y, $z)]);
+        $this->notify($x, $y, $z, true);
+    }
+
+    private function stepOnOre(Entity $entity) : void{
+        if($entity instanceof Player && ($entity->isSneaking() || $entity->isDead() || $entity->getGameMode() === GameMode::SPECTATOR)){
+            return;
+        }
+
+        if((!$entity instanceof Living || !$entity->isAlive()) && !$entity instanceof ItemEntity){
+            return;
+        }
+
+        $position = $entity->getPosition();
+        $feet = floor($position->y);
+
+        if($position->y - $feet > 0.01){
+            return;
+        }
+
+        [$x, $y, $z] = [(int) floor($position->x), (int) $feet - 1, (int) floor($position->z)];
+
+        if(RedstoneOre::isUnlit($this->signal->getBlock($x, $y, $z)->getName())){
+            RedstoneOre::light($this->world, $x, $y, $z);
+        }
+    }
+
+    private static function getTargetStrength(int $x, int $y, int $z, Vector3 $from, Vector3 $to) : int{
+        $start = [$from->x - $x, $from->y - $y, $from->z - $z];
+        $delta = [$to->x - $from->x, $to->y - $from->y, $to->z - $from->z];
+        $enter = 0.0;
+        $axis = 1;
+
+        for($i = 0; $i < 3; ++$i){
+            if($delta[$i] === 0.0){
+                continue;
+            }
+
+            $near = min(-$start[$i] / $delta[$i], (1 - $start[$i]) / $delta[$i]);
+
+            if($near > $enter){
+                $enter = $near;
+                $axis = $i;
+            }
+        }
+
+        $enter = min($enter, 1.0);
+        $off = [];
+
+        for($i = 0; $i < 3; ++$i){
+            $off[$i] = abs($start[$i] + $delta[$i] * $enter - 0.5);
+        }
+
+        $distance = match($axis){
+            0 => max($off[1], $off[2]),
+            1 => max($off[0], $off[2]),
+            default => max($off[0], $off[1])
+        };
+
+        return max(1, (int) ceil(15 * max(0.0, min(1.0, (0.5 - $distance) / 0.5))));
     }
 
     /**

@@ -8,8 +8,8 @@ use raspberry\entity\Entity;
 use raspberry\entity\Human;
 use raspberry\entity\Living;
 use raspberry\entity\Skin;
+use raspberry\entity\Vehicle;
 use raspberry\entity\damage\DamageSource;
-use raspberry\entity\object\Boat;
 use raspberry\entity\object\ExperienceOrb;
 use raspberry\entity\object\ItemEntity;
 use raspberry\entity\object\Painting;
@@ -83,7 +83,7 @@ use raspberry\permission\PermissionLevel;
 use raspberry\permission\PermissibleTrait;
 use raspberry\permission\PermissionManager;
 
-use raspberry\utils\Uuid;
+use raspberry\utils\UUID;
 
 use raspberry\world\Chunk;
 use raspberry\world\World;
@@ -272,7 +272,7 @@ class Player extends Human implements CommandSender{
 
     private ?FishingHook $fishingHook = null;
 
-    private ?Boat $vehicle = null;
+    private ?Vehicle $vehicle = null;
 
     private ?MovementCheck $movementCheck = null;
 
@@ -297,7 +297,7 @@ class Player extends Human implements CommandSender{
             $inventory->addListener($this->recipeBook);
         }
 
-        parent::__construct($world, $position, $skin, Uuid::fromXuid($identity->xuid));
+        parent::__construct($world, $position, $skin, UUID::fromXuid($identity->xuid));
     }
 
     /**
@@ -540,14 +540,14 @@ class Player extends Human implements CommandSender{
         $this->fishingHook = $hook;
     }
 
-    public function getVehicle() : ?Boat{
+    public function getVehicle() : ?Vehicle{
         return $this->vehicle;
     }
 
     /**
      * @internal
      */
-    public function setVehicle(?Boat $vehicle) : void{
+    public function setVehicle(?Vehicle $vehicle) : void{
         $this->vehicle = $vehicle;
         $this->fallDistance = 0.0;
         $this->broadcastEffectVisuals();
@@ -1345,15 +1345,15 @@ class Player extends Human implements CommandSender{
         return true;
     }
 
-    private function hitBoat(Boat $boat) : bool{
+    private function hitVehicle(Vehicle $vehicle) : bool{
         $reach = ($this->gameMode === GameMode::CREATIVE ? self::CREATIVE_ATTACK_REACH : self::ATTACK_REACH) + self::REACH_LEEWAY;
 
-        if($this->dead || !$this->gameMode->allowsInteraction() || $boat->isClosed() || $boat->getWorld() !== $this->world || $boat->distanceToBox($this->getEyePosition()) > $reach){
+        if($this->dead || !$this->gameMode->allowsInteraction() || $vehicle->isClosed() || $vehicle->getWorld() !== $this->world || $vehicle->distanceToBox($this->getEyePosition()) > $reach){
             return false;
         }
 
         $this->swingArm(AnimatePacket::SWING_ATTACK);
-        $boat->hurt(min(4.0, ToolInfo::getAttackDamage($this->inventory->getItemInHand()->getId())), $this);
+        $vehicle->hurt(min(4.0, ToolInfo::getAttackDamage($this->inventory->getItemInHand()->getId())), $this);
         return true;
     }
 
@@ -1362,8 +1362,8 @@ class Player extends Human implements CommandSender{
             return $this->breakPainting($target);
         }
 
-        if($target instanceof Boat){
-            return $this->hitBoat($target);
+        if($target instanceof Vehicle){
+            return $this->hitVehicle($target);
         }
 
         if($this->dead || !$this->gameMode->allowsInteraction() || $target === $this || !$target instanceof Living || !$target->isAlive() || $target->isClosed() || $target->getWorld() !== $this->world){

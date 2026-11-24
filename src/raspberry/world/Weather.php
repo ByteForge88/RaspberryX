@@ -224,9 +224,10 @@ class Weather{
             return;
         }
 
+        $rod = $this->world->getRedstoneUpdater()->getLightningRods()->findTarget(new Vector3($x + 0.5, $y, $z + 0.5));
         $targets = [];
 
-        foreach($this->world->getEntities() as $entity){
+        foreach($rod === null ? $this->world->getEntities() : [] as $entity){
             $position = $entity->getPosition();
 
             if($entity instanceof Living && !$entity->isClosed() && $entity->isAlive() && $position->y >= $y - 3 && abs($position->x - $x - 0.5) <= 3.5 && abs($position->z - $z - 0.5) <= 3.5 && $this->world->canSeeSky($position->getFloorX(), $position->getFloorY(), $position->getFloorZ())){
@@ -234,7 +235,7 @@ class Weather{
             }
         }
 
-        $target = $targets === [] ? new Vector3($x + 0.5, $y, $z + 0.5) : array_values($targets)[mt_rand(0, count($targets) - 1)];
+        $target = $rod ?? ($targets === [] ? new Vector3($x + 0.5, $y, $z + 0.5) : array_values($targets)[mt_rand(0, count($targets) - 1)]);
 
         if(!$this->isRainingAt($target->getFloorX(), $target->getFloorY(), $target->getFloorZ())){
             return;

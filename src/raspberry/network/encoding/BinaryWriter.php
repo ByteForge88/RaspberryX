@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace raspberry\network\encoding;
 
-use raspberry\utils\Uuid;
+use raspberry\utils\UUID;
 
 use InvalidArgumentException;
 
@@ -111,7 +111,7 @@ final class BinaryWriter{
     /**
      * A UUID as Bedrock sends it: both 8-byte halves in little-endian order.
      */
-    public function writeUuid(Uuid $uuid) : void{
+    public function writeUuid(UUID $uuid) : void{
         $bytes = $uuid->getBytes();
         $this->buffer .= strrev(substr($bytes, 0, 8)) . strrev(substr($bytes, 8, 8));
     }

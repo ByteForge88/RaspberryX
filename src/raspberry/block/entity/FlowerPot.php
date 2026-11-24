@@ -6,6 +6,7 @@ namespace raspberry\block\entity;
 
 use raspberry\Server;
 
+use raspberry\block\BlockNBT;
 use raspberry\block\BlockState;
 
 use raspberry\item\Item;
@@ -14,9 +15,6 @@ use raspberry\nbt\tag\CompoundTag;
 
 use raspberry\world\World;
 
-use function explode;
-use function is_bool;
-use function is_int;
 use function preg_match;
 
 class FlowerPot extends BlockEntity{
@@ -55,36 +53,12 @@ class FlowerPot extends BlockEntity{
             return;
         }
 
-        $states = new CompoundTag();
-
-        foreach($this->plant->getProperties() as $property => $value){
-            match(true){
-                is_bool($value) => $states->setByte($property, $value ? 1 : 0),
-                is_int($value) => $states->setInt($property, $value),
-                default => $states->setString($property, $value)
-            };
-        }
-
-        $nbt->setTag("PlantBlock", (new CompoundTag())
-            ->setString("name", $this->plant->getName())
-            ->setTag("states", $states)
-            ->setInt("version", self::getStateVersion()));
+        $nbt->setTag("PlantBlock", BlockNBT::write($this->plant));
     }
 
     public function onBreak(World $world) : array{
         $plant = $this->plant;
         $this->plant = null;
-
         return $plant === null ? [] : [new Item($plant->getName())];
-    }
-
-    private static function getStateVersion() : int{
-        $version = 0;
-
-        foreach(explode(".", Server::getInstance()->getBlockStateRegistry()->getVersion()) as $part){
-            $version = $version << 8 | ((int) $part & 0xff);
-        }
-
-        return $version;
     }
 }

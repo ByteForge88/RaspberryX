@@ -11,7 +11,7 @@ use raspberry\network\mcpe\protocol\types\EntityMetadata;
 use raspberry\network\mcpe\protocol\types\ItemInstance;
 use raspberry\network\mcpe\serializer\ItemStackSerializer;
 
-use raspberry\utils\Uuid;
+use raspberry\utils\UUID;
 
 use UnexpectedValueException;
 
@@ -24,7 +24,7 @@ class AddPlayerPacket implements Packet{
 
     private const int ABILITY_LAYER_BASE = 1;
 
-    public Uuid $uuid;
+    public UUID $uuid;
 
     public string $username = "";
 
@@ -48,7 +48,7 @@ class AddPlayerPacket implements Packet{
     public int $buildPlatform = -1;
 
     public function __construct(){
-        $this->uuid = new Uuid(str_repeat("\x00", 16));
+        $this->uuid = new UUID(str_repeat("\x00", 16));
         $this->metadata = new EntityMetadata();
         $this->heldItem = ItemInstance::empty();
     }

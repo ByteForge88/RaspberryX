@@ -4,12 +4,15 @@ declare(strict_types=1);
 
 namespace raspberry\entity\projectile;
 
+use raspberry\block\BlockIds;
+use raspberry\block\Bells;
 use raspberry\block\BlockCollision;
 
 use raspberry\entity\Entity;
 use raspberry\entity\Human;
 use raspberry\entity\Living;
 
+use raspberry\math\Facing;
 use raspberry\math\Vector3;
 
 use raspberry\network\mcpe\protocol\types\EntityMetadata;
@@ -20,6 +23,7 @@ use raspberry\player\Player;
 use raspberry\world\Chunk;
 use raspberry\world\World;
 
+use function abs;
 use function atan2;
 use function ceil;
 use function cos;
@@ -182,6 +186,16 @@ abstract class Projectile extends Entity{
             [$bx, $by, $bz] = [(int) floor($point->x), (int) floor($point->y), (int) floor($point->z)];
 
             if($this->isSolidAt($bx, $by, $bz)){
+                $hit = $this->world->getBlock($bx, $by, $bz)->getName();
+
+                if($hit === BlockIds::TARGET){
+                    $from = $this->position->add($this->motion->x * ($step - 1) / $steps, $this->motion->y * ($step - 1) / $steps, $this->motion->z * ($step - 1) / $steps);
+                    $this->world->getRedstoneUpdater()->hitTarget($bx, $by, $bz, $from, $point, $this instanceof Arrow);
+                }elseif($hit === BlockIds::BELL){
+                    $face = abs($this->motion->x) > abs($this->motion->z) ? ($this->motion->x > 0 ? Facing::WEST : Facing::EAST) : ($this->motion->z > 0 ? Facing::NORTH : Facing::SOUTH);
+                    Bells::ring($this->world, $bx, $by, $bz, $face);
+                }
+
                 $this->onHitBlock($bx, $by, $bz, $point);
                 return;
             }

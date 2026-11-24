@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace raspberry\network\mcpe\convert;
 
+use raspberry\command\CommandBuilder;
 use raspberry\command\CommandMap;
 use raspberry\command\CommandSender;
 
@@ -30,10 +31,9 @@ class CommandDataAdapter{
         foreach($commandMap->getCommands() as $command){
             if($command->canUse($sender)){
                 $commands[] = $command;
-                $names[] = $command->getLabel();
 
-                foreach($command->getAliases() as $alias){
-                    $names[] = $alias;
+                foreach(self::getNames($commandMap, $command) as $name){
+                    $names[] = $name;
                 }
             }
         }
@@ -51,11 +51,11 @@ class CommandDataAdapter{
         foreach($commands as $command){
             $data = new CommandData($command->getLabel(), $command->getDescription());
 
-            if($command->getAliases() !== []){
-                $aliases = array_values(array_unique([...$command->getAliases(), $command->getLabel()]));
+            $aliases = self::getNames($commandMap, $command);
 
+            if(count($aliases) > 1){
                 $data->aliasesEnumIndex = count($packet->enums);
-                $packet->enums[] = new CommandEnumData($command->getLabel() . "Aliases", $aliases);
+                $packet->enums[] = new CommandEnumData($command->getLabel() . "CommandAliases", $aliases);
             }
 
             foreach($command->getOverloads($sender) as $overload){
@@ -76,6 +76,21 @@ class CommandDataAdapter{
         }
 
         return $packet;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private static function getNames(CommandMap $commandMap, CommandBuilder $command) : array{
+        $names = [$command->getLabel()];
+
+        foreach($command->getAliases() as $alias){
+            if($alias !== $command->getLabel() && $commandMap->getCommand($alias) === $command){
+                $names[] = $alias;
+            }
+        }
+
+        return $names;
     }
 
     /**

@@ -20,7 +20,7 @@ use function strlen;
 use function vsprintf;
 use function str_split;
 
-class Uuid{
+class UUID{
 
     private string $bytes;
 

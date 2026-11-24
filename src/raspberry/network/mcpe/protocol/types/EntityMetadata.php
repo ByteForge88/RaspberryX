@@ -32,6 +32,9 @@ class EntityMetadata{
     public const int KEY_AUX_VALUE_DATA = 36;
     public const int KEY_SCALE = 38;
     public const int KEY_AIR_SUPPLY_MAX = 42;
+    public const int KEY_CONTAINER_TYPE = 44;
+    public const int KEY_CONTAINER_SIZE = 45;
+    public const int KEY_CONTAINER_STRENGTH_MODIFIER = 46;
     public const int KEY_WIDTH = 53;
     public const int KEY_HEIGHT = 54;
     public const int KEY_FUSE_TIME = 55;

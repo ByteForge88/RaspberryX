@@ -287,20 +287,11 @@ class PluginManager{
     }
 
     private function registerCommands(PluginBase $plugin) : void{
-        $commandMap = $this->server->getCommandMap();
-
         foreach($plugin->getDescription()->getCommands() as $name => $properties){
             $command = new PluginCommand($name, $plugin, $properties["description"], $properties["permission"], $properties["aliases"], $properties["usage"]);
-            $label = $name;
-
-            if($commandMap->getCommand($label) !== null){
-                $label = strtolower(str_replace(" ", "_", $plugin->getName())) . ":" . $name;
-                $this->server->getLogger()->warning($this->server->getLanguage()->translate("plugin.commandTaken", ["plugin" => $plugin->getName(), "command" => $name, "label" => $label]));
-            }
 
             try{
-                $commandMap->registerCommand($label, $command);
-                $this->registeredCommands[strtolower($plugin->getName())][] = $command;
+                $this->addCommand($plugin, $command, $name);
             }catch(Throwable $exception){
                 $this->error($plugin->getName(), "could not register /{$name}: " . $exception->getMessage());
             }
@@ -315,6 +306,9 @@ class PluginManager{
      * Registers a command the plugin made itself. When its name is taken it gets the plugin's
      * name in front, like /urplugin:heal. It is removed when the plugin is disabled.
      *
+     * @param PluginBase $plugin
+     * @param CommandBuilder $command
+     * @param string|null $label
      * @return string
      */
     public function registerCommand(PluginBase $plugin, CommandBuilder $command, ?string $label = null) : string{
@@ -322,19 +316,20 @@ class PluginManager{
             throw new PluginException("/{$command->getName()} belongs to {$command->getOwningPlugin()->getName()}, not {$plugin->getName()}");
         }
 
-        $commandMap = $this->server->getCommandMap();
-        $label = strtolower($label ?? $command->getName());
-
-        if($commandMap->getCommand($label) !== null){
-            $taken = $label;
-            $label = strtolower(str_replace(" ", "_", $plugin->getName())) . ":" . $label;
-            $this->server->getLogger()->warning($this->server->getLanguage()->translate("plugin.commandTaken", ["plugin" => $plugin->getName(), "command" => $taken, "label" => $label]));
-        }
-
-        $commandMap->registerCommand($label, $command);
-        $this->registeredCommands[strtolower($plugin->getName())][] = $command;
+        $label = $this->addCommand($plugin, $command, $label);
         $this->resendCommands();
         return $label;
+    }
+
+    private function addCommand(PluginBase $plugin, CommandBuilder $command, ?string $label) : string{
+        $taken = strtolower($label ?? $command->getName());
+
+        if(!$this->server->getCommandMap()->register($plugin->getName(), $command, $label)){
+            $this->server->getLogger()->warning($this->server->getLanguage()->translate("plugin.commandTaken", ["plugin" => $plugin->getName(), "command" => $taken, "label" => $command->getLabel()]));
+        }
+
+        $this->registeredCommands[strtolower($plugin->getName())][] = $command;
+        return $command->getLabel();
     }
 
     /**
@@ -351,7 +346,7 @@ class PluginManager{
         $removed = false;
 
         foreach($this->registeredCommands[strtolower($plugin->getName())] ?? [] as $command){
-            $commandMap->unregisterCommand($command);
+            $commandMap->unregister($command);
             $removed = true;
         }
 
@@ -359,7 +354,7 @@ class PluginManager{
 
         foreach($commandMap->getCommands() as $command){
             if($command instanceof PluginOwned && $command->getOwningPlugin() === $plugin){
-                $commandMap->unregisterCommand($command);
+                $commandMap->unregister($command);
                 $removed = true;
             }
         }

@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace raspberry\network\encoding;
 
-use raspberry\utils\Uuid;
+use raspberry\utils\UUID;
 
 use InvalidArgumentException;
 use UnexpectedValueException;
@@ -151,9 +151,9 @@ final class BinaryReader{
         return (($value >> 1) & PHP_INT_MAX) ^ -($value & 1);
     }
 
-    public function readUuid() : Uuid{
+    public function readUuid() : UUID{
         $bytes = $this->readBytes(16);
-        return new Uuid(strrev(substr($bytes, 0, 8)) . strrev(substr($bytes, 8, 8)));
+        return new UUID(strrev(substr($bytes, 0, 8)) . strrev(substr($bytes, 8, 8)));
     }
 
     public function readString(int $maxBytes = 1048576) : string{

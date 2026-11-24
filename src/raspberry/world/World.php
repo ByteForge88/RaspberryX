@@ -517,6 +517,7 @@ class World{
         $this->liquids->addChunk($chunk);
         $this->mobEngine->setChunk($chunk->getX(), $chunk->getZ(), $chunk);
         $this->redstoneUpdater->findDaylightDetectors($chunk);
+        $this->redstoneUpdater->getLightningRods()->findIn($chunk);
 
         foreach($chunk->getSavedEntities() as $tag){
             EntityFactory::load($this, $tag);

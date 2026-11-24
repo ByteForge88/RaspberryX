@@ -7,7 +7,7 @@ namespace raspberry\network\mcpe\protocol\types\command;
 use raspberry\network\encoding\BinaryReader;
 use raspberry\network\encoding\BinaryWriter;
 
-use raspberry\utils\Uuid;
+use raspberry\utils\UUID;
 
 class CommandOriginData{
 
@@ -30,7 +30,7 @@ class CommandOriginData{
 
     public string $type = self::TYPE_PLAYER;
 
-    public Uuid $uuid;
+    public UUID $uuid;
 
     public string $requestId = "";
 

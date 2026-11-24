@@ -83,6 +83,7 @@ class LightningBolt extends Entity{
             $this->updateViewers();
             $this->world->broadcastPacket($this->position->getFloorX(), $this->position->getFloorZ(), LevelSoundEventPacket::create(LevelSoundEvent::THUNDER, $this->position->x, $this->position->y, $this->position->z));
             $this->clearCopper();
+            $this->powerRod();
             $this->spawnFire(4);
         }
 
@@ -150,6 +151,10 @@ class LightningBolt extends Entity{
                 BlockIgniteEvent::ignite($this->world, $fx, $fy, $fz, Fire::stateAt($this->world, $fx, $fy, $fz), BlockIgniteEvent::CAUSE_LIGHTNING);
             }
         }
+    }
+
+    private function powerRod() : void{
+        $this->world->getRedstoneUpdater()->getLightningRods()->strike((int) floor($this->position->x), (int) floor($this->position->y - 0.000001), (int) floor($this->position->z));
     }
 
     /**

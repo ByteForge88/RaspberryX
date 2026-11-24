@@ -16,6 +16,10 @@ use raspberry\entity\monster\CaveSpider;
 use raspberry\entity\object\ItemEntity;
 use raspberry\entity\object\Boat;
 use raspberry\entity\object\ChestBoat;
+use raspberry\entity\object\Minecart;
+use raspberry\entity\object\ChestMinecart;
+use raspberry\entity\object\HopperMinecart;
+use raspberry\entity\object\TNTMinecart;
 use raspberry\entity\object\ExperienceOrb;
 use raspberry\entity\object\Painting;
 
@@ -107,6 +111,18 @@ class EntityFactory{
             return ChestBoat::fromSave($world, $tag);
         }
 
+        $cart = match($name){
+            EntityIds::MINECART => Minecart::fromSave($world, $tag),
+            EntityIds::CHEST_MINECART => ChestMinecart::fromSave($world, $tag),
+            EntityIds::HOPPER_MINECART => HopperMinecart::fromSave($world, $tag),
+            EntityIds::TNT_MINECART => TNTMinecart::fromSave($world, $tag),
+            default => false
+        };
+
+        if($cart !== false){
+            return $cart;
+        }
+
         [$x, $y, $z] = [$tag->getDouble("X"), $tag->getDouble("Y"), $tag->getDouble("Z")];
 
         if($x === null || $y === null || $z === null || !self::isRegistered($name)){
@@ -115,7 +131,6 @@ class EntityFactory{
 
         $mob = self::create($name, $world, new Vector3($x, $y, $z), $tag->getFloat("Yaw", 0.0));
         $mob?->load($tag);
-
         return $mob;
     }
 

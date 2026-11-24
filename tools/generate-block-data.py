@@ -110,6 +110,14 @@ VALUE_OVERRIDES = {
     "minecraft:nether_wart": {"age": [0, 1, 2, 3]},
 }
 
+TECHNICAL_BLOCKS = {
+    "minecraft:moving_block": {},
+}
+
+TECHNICAL_LIGHT = {
+    "minecraft:moving_block": [0, 0],
+}
+
 ITEM_ID_OVERRIDES = {
     "minecraft:air": -158,
 }
@@ -198,6 +206,9 @@ def read_blocks(source, properties):
         for property_name in overrides:
             if property_name not in blocks.get(name, {}):
                 fail(f"override {name}.{property_name} no longer matches Mojang's data, please review it")
+
+    for name, states in TECHNICAL_BLOCKS.items():
+        blocks.setdefault(name, states)
 
     return dict(sorted(blocks.items()))
 
@@ -413,6 +424,10 @@ def read_block_light(blocks, source):
 
     for name in sorted(blocks):
         entry = known.get(name)
+
+        if entry is None and name in TECHNICAL_LIGHT:
+            light[name] = TECHNICAL_LIGHT[name]
+            continue
 
         if entry is None:
             missing.append(name)

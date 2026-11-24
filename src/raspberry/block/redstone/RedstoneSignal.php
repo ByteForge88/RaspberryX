@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace raspberry\block\redstone;
 
+use raspberry\block\Rails;
+use raspberry\block\Tripwire;
+use raspberry\block\LightningRods;
 use raspberry\block\BlockIds;
 use raspberry\block\BlockState;
 use raspberry\block\BlockCollision;
@@ -14,6 +17,10 @@ use raspberry\block\entity\Jukebox;
 use raspberry\block\entity\Lectern;
 use raspberry\block\entity\Comparator;
 use raspberry\block\entity\ContainerBlockEntity;
+
+use raspberry\entity\CargoCarrier;
+
+use raspberry\inventory\Inventory;
 
 use raspberry\math\Facing;
 
@@ -31,11 +38,11 @@ use function str_starts_with;
 class RedstoneSignal{
 
     /** full cubes that do not carry power */
-    private const NOT_CONDUCTIVE = '/^minecraft:(redstone_block|observer|(sticky_)?piston|glowstone|sea_lantern|barrier)$/D';
+    private const string NOT_CONDUCTIVE = '/^minecraft:(redstone_block|observer|(sticky_)?piston|glowstone|sea_lantern|barrier)$/D';
 
-    private const BUTTON = '/_button$/D';
+    private const string BUTTON = '/_button$/D';
 
-    private const PRESSURE_PLATE = '/_pressure_plate$/D';
+    private const string PRESSURE_PLATE = '/_pressure_plate$/D';
 
     private World $world;
 
@@ -81,6 +88,10 @@ class RedstoneSignal{
             $name === BlockIds::OBSERVER => $block->getProperty(BlockProperties::POWERED_BIT) === true && $direction === Facing::opposite(self::getObserverFacing($block)) ? 15 : 0,
             $name === BlockIds::TRAPPED_CHEST => $this->getTrappedChestPower($x, $y, $z),
             $name === BlockIds::LECTERN => $block->getProperty(BlockProperties::POWERED_BIT) === true ? 15 : 0,
+            $name === BlockIds::DETECTOR_RAIL => Rails::isPowered($block) ? 15 : 0,
+            $name === BlockIds::TARGET => $this->world->getRedstoneUpdater()->getTargetPower($x, $y, $z),
+            $name === BlockIds::TRIPWIRE_HOOK => Tripwire::isPowered($block) ? 15 : 0,
+            LightningRods::isRod($name) => LightningRods::isPowered($block) ? 15 : 0,
             default => 0
         };
     }
@@ -96,8 +107,10 @@ class RedstoneSignal{
         return match(true){
             $name === BlockIds::REDSTONE_TORCH => $direction === Facing::UP ? 15 : 0,
             $name === BlockIds::LEVER, preg_match(self::BUTTON, $name) === 1 => $direction === self::getAttachment($block) ? $this->emit($x, $y, $z, $direction) : 0,
-            preg_match(self::PRESSURE_PLATE, $name) === 1, $name === BlockIds::TRAPPED_CHEST, $name === BlockIds::LECTERN => $direction === Facing::DOWN ? $this->emit($x, $y, $z, $direction) : 0,
+            preg_match(self::PRESSURE_PLATE, $name) === 1, $name === BlockIds::TRAPPED_CHEST, $name === BlockIds::LECTERN, $name === BlockIds::DETECTOR_RAIL => $direction === Facing::DOWN ? $this->emit($x, $y, $z, $direction) : 0,
             $name === BlockIds::POWERED_REPEATER, $name === BlockIds::POWERED_COMPARATOR, $name === BlockIds::UNPOWERED_COMPARATOR, $name === BlockIds::OBSERVER => $this->emit($x, $y, $z, $direction),
+            $name === BlockIds::TRIPWIRE_HOOK => $direction === Facing::opposite(Tripwire::getHookFacing($block)) ? $this->emit($x, $y, $z, $direction) : 0,
+            LightningRods::isRod($name) => $direction === Facing::opposite(LightningRods::getFacing($block)) ? $this->emit($x, $y, $z, $direction) : 0,
             default => 0
         };
     }
@@ -260,8 +273,8 @@ class RedstoneSignal{
 
         return match(true){
             $name === BlockIds::REDSTONE_WIRE, $name === BlockIds::REDSTONE_BLOCK, $name === BlockIds::REDSTONE_TORCH, $name === BlockIds::UNLIT_REDSTONE_TORCH,
-                $name === BlockIds::LEVER, $name === BlockIds::DAYLIGHT_DETECTOR, $name === BlockIds::DAYLIGHT_DETECTOR_INVERTED, $name === BlockIds::TARGET,
-                $name === BlockIds::TRAPPED_CHEST, preg_match(self::BUTTON, $name) === 1, preg_match(self::PRESSURE_PLATE, $name) === 1,
+            $name === BlockIds::LEVER, $name === BlockIds::DAYLIGHT_DETECTOR, $name === BlockIds::DAYLIGHT_DETECTOR_INVERTED, $name === BlockIds::TARGET,
+            $name === BlockIds::TRAPPED_CHEST, $name === BlockIds::DETECTOR_RAIL, $name === BlockIds::TRIPWIRE_HOOK, LightningRods::isRod($name), preg_match(self::BUTTON, $name) === 1, preg_match(self::PRESSURE_PLATE, $name) === 1,
             str_ends_with($name, "_comparator") => true,
             str_ends_with($name, "_repeater") => Facing::axis(self::getFacing($block)) === Facing::axis($face),
             $name === BlockIds::OBSERVER => Facing::opposite(self::getObserverFacing($block)) === $face,
@@ -289,6 +302,10 @@ class RedstoneSignal{
             return $block->getProperty(BlockProperties::END_PORTAL_EYE_BIT) === true ? 15 : 0;
         }
 
+        if($name === BlockIds::DETECTOR_RAIL){
+            return $this->getDetectorSignal($x, $y, $z, $block);
+        }
+
         $entity = $this->world->isChunkLoaded($x >> 4, $z >> 4) ? $this->world->getBlockEntity($x, $y, $z) : null;
 
         if($entity instanceof Jukebox || $entity instanceof Lectern || $entity instanceof Crafter){
@@ -309,6 +326,13 @@ class RedstoneSignal{
             }
         }
 
+        return self::getFullness($inventories);
+    }
+
+    /**
+     * @param list<Inventory> $inventories
+     */
+    public static function getFullness(array $inventories) : int{
         $fullness = 0.0;
         $slots = 0;
         $any = false;
@@ -322,12 +346,25 @@ class RedstoneSignal{
             }
         }
 
-        return $any ? (int) floor(1 + $fullness / $slots * 14) : 0;
+        return $any && $slots > 0 ? (int) floor(1 + $fullness / $slots * 14) : 0;
+    }
+
+    private function getDetectorSignal(int $x, int $y, int $z, BlockState $rail) : int{
+        if(!Rails::isPowered($rail)){
+            return 0;
+        }
+
+        foreach(Rails::findCarts($this->world, $x, $y, $z) as $cart){
+            if($cart instanceof CargoCarrier){
+                return self::getFullness([$cart->getCargo()]);
+            }
+        }
+
+        return 0;
     }
 
     public function getComparatorOutput(int $x, int $y, int $z) : int{
         $entity = $this->world->getBlockEntity($x, $y, $z);
-
         return $entity instanceof Comparator ? $entity->getOutput() : 0;
     }
 
@@ -352,7 +389,6 @@ class RedstoneSignal{
     public static function getAttachment(BlockState $block) : int{
         if($block->hasProperty(BlockProperties::TORCH_FACING_DIRECTION)){
             $value = (string) $block->getProperty(BlockProperties::TORCH_FACING_DIRECTION);
-
             return $value === "top" || $value === "unknown" ? Facing::DOWN : Facing::fromName($value);
         }
 
@@ -399,13 +435,11 @@ class RedstoneSignal{
             return true;
         }
 
-        //a line that ends here keeps going straight
         return count($connected) === 1 && $connected[0] === Facing::opposite($direction);
     }
 
     private function getTrappedChestPower(int $x, int $y, int $z) : int{
         $entity = $this->world->getBlockEntity($x, $y, $z);
-
         return $entity instanceof Chest ? min(count($entity->getViewers()), 15) : 0;
     }
 }

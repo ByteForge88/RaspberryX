@@ -9,6 +9,7 @@ use raspberry\block\Beds;
 use raspberry\block\BigDripleaf;
 use raspberry\block\BoneMeal;
 use raspberry\block\PointedDripstone;
+use raspberry\block\Rails;
 use raspberry\block\Scaffolding;
 use raspberry\block\ToolUse;
 use raspberry\block\Fire;
@@ -20,6 +21,9 @@ use raspberry\block\BlockState;
 use raspberry\block\BlockSupport;
 use raspberry\block\Cauldrons;
 use raspberry\block\ItemBlocks;
+use raspberry\block\RedstoneOre;
+use raspberry\block\NoteBlocks;
+use raspberry\block\Bells;
 use raspberry\block\StairsShape;
 use raspberry\block\entity\Sign;
 use raspberry\block\entity\Chest;
@@ -34,8 +38,13 @@ use raspberry\block\entity\BlockEntityFactory;
 use raspberry\entity\Human;
 use raspberry\entity\EntityFactory;
 use raspberry\entity\object\Boat;
+use raspberry\entity\object\Cart;
 use raspberry\entity\object\ChestBoat;
+use raspberry\entity\object\ChestMinecart;
+use raspberry\entity\object\HopperMinecart;
+use raspberry\entity\object\Minecart;
 use raspberry\entity\object\Painting;
+use raspberry\entity\object\TNTMinecart;
 
 use raspberry\event\block\BlockPlaceEvent;
 use raspberry\event\block\SignChangeEvent;
@@ -82,6 +91,14 @@ class BlockPlacer{
 
     /** two blocks tall plants (doors are found by their hinge) */
     private const string TALL = '/^minecraft:(tall_grass|large_fern|sunflower|lilac|rose_bush|peony|pitcher_plant|small_dripleaf_block)$/D';
+
+    /** @var array<string, class-string<Cart>> */
+    private const array CARTS = [
+        ItemIds::MINECART => Minecart::class,
+        ItemIds::CHEST_MINECART => ChestMinecart::class,
+        ItemIds::HOPPER_MINECART => HopperMinecart::class,
+        ItemIds::TNT_MINECART => TNTMinecart::class
+    ];
 
     /** sign text colors of the dyes, as RGB (black text is pure black) */
     private const array DYE_COLORS = [
@@ -143,6 +160,21 @@ class BlockPlacer{
         }
 
         if(!$player->isSneaking() || $held->isNull()){
+            if($clicked->getName() === BlockIds::BELL && Bells::canHit($face, $data->clickY)){
+                Bells::ring($world, $x, $y, $z, $face);
+                $player->swingArm(AnimatePacket::SWING_INTERACT);
+                return;
+            }
+
+            if(RedstoneOre::isOre($clicked->getName())){
+                RedstoneOre::light($world, $x, $y, $z);
+
+                if($held->isNull() || ItemBlocks::get($held->getId(), $player->getNetworkSession()->getServer()->getBlockStateRegistry()) === null){
+                    $player->swingArm(AnimatePacket::SWING_INTERACT);
+                    return;
+                }
+            }
+
             if($this->useBlock($x, $y, $z, $clicked)){
                 $player->swingArm(AnimatePacket::SWING_INTERACT);
                 return;
@@ -192,6 +224,17 @@ class BlockPlacer{
                 $this->useUpHeld($held);
             }
 
+            return;
+        }
+
+        $cart = self::CARTS[$held->getId()] ?? null;
+
+        if($cart !== null){
+            if(Rails::isRail($clicked->getName())){
+                $cart::place($world, $x, $y, $z, $clicked);
+                $player->swingArm(AnimatePacket::SWING_INTERACT);
+                $this->useUpHeld($held);
+            }
             return;
         }
 
@@ -284,6 +327,11 @@ class BlockPlacer{
 
         if($entity instanceof Sign){
             $this->useSign($entity, $block);
+            return true;
+        }
+
+        if($name === BlockIds::NOTEBLOCK){
+            NoteBlocks::tune($this->player->getWorld(), $x, $y, $z);
             return true;
         }
 

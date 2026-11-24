@@ -8,7 +8,7 @@ use raspberry\entity\damage\DamageSource;
 
 use raspberry\math\Vector3;
 
-use raspberry\utils\Uuid;
+use raspberry\utils\UUID;
 
 use raspberry\world\World;
 use raspberry\world\Difficulty;
@@ -42,7 +42,7 @@ class Human extends Living{
     /** the hunger cycle: slow healing and starvation happen once every 80 ticks (4 seconds) */
     private const int FOOD_TICKS = 80;
 
-    protected Uuid $uuid;
+    protected UUID $uuid;
 
     protected Skin $skin;
 
@@ -58,9 +58,9 @@ class Human extends Living{
     /**
      * @throws RandomException
      */
-    public function __construct(World $world, Vector3 $position, Skin $skin, ?Uuid $uuid = null){
+    public function __construct(World $world, Vector3 $position, Skin $skin, ?UUID $uuid = null){
         $this->skin = $skin;
-        $this->uuid = $uuid ?? Uuid::random();
+        $this->uuid = $uuid ?? UUID::random();
 
         parent::__construct($world, $position);
     }
@@ -81,7 +81,7 @@ class Human extends Living{
         return self::HEIGHT;
     }
 
-    public function getUuid() : Uuid{
+    public function getUuid() : UUID{
         return $this->uuid;
     }
 

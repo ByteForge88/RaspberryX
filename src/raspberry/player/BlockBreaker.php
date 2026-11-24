@@ -10,7 +10,10 @@ use raspberry\block\BlockLoot;
 use raspberry\block\BlockIds;
 use raspberry\block\BlockProperties;
 use raspberry\block\BlockState;
+use raspberry\block\RedstoneOre;
+use raspberry\block\NoteBlocks;
 use raspberry\block\StairsShape;
+use raspberry\block\Tripwire;
 use raspberry\block\entity\Lectern;
 
 use raspberry\entity\object\ExperienceOrb;
@@ -19,6 +22,7 @@ use raspberry\event\block\BlockBreakEvent;
 use raspberry\event\player\PlayerInteractEvent;
 
 use raspberry\item\Item;
+use raspberry\item\ItemIds;
 use raspberry\item\ToolInfo;
 use raspberry\item\enchantment\Enchantment;
 
@@ -152,6 +156,12 @@ class BlockBreaker{
 
         if($this->takeBook($x, $y, $z)){
             return;
+        }
+
+        RedstoneOre::light($this->player->getWorld(), $x, $y, $z);
+
+        if($block->getName() === BlockIds::NOTEBLOCK){
+            NoteBlocks::play($this->player->getWorld(), $x, $y, $z);
         }
 
         $this->target = [$x, $y, $z];
@@ -311,6 +321,10 @@ class BlockBreaker{
         if($event->isCancelled()){
             $player->getNetworkSession()->sendBlock($x, $y, $z, $block);
             return;
+        }
+
+        if(Tripwire::isWire($block->getName()) && $held->getId() === ItemIds::SHEARS){
+            Tripwire::disarm($world, $x, $y, $z);
         }
 
         $world->setBlock($x, $y, $z, $this->air());

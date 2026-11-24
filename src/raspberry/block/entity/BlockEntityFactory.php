@@ -18,8 +18,13 @@ class BlockEntityFactory{
      */
     public static function create(string $blockName, int $x, int $y, int $z) : ?BlockEntity{
         $id = self::getSaveId($blockName);
+        $entity = $id === null ? null : self::make($id, $x, $y, $z);
 
-        return $id === null ? null : self::make($id, $x, $y, $z);
+        if($entity instanceof PistonArm){
+            $entity->setSticky($blockName === "minecraft:sticky_piston");
+        }
+
+        return $entity;
     }
 
     /**
@@ -53,6 +58,10 @@ class BlockEntityFactory{
             $blockName === "minecraft:beacon" => "Beacon",
             $blockName === "minecraft:cauldron" => "Cauldron",
             $blockName === "minecraft:mob_spawner" => Spawner::ID,
+            $blockName === "minecraft:piston" || $blockName === "minecraft:sticky_piston" => PistonArm::ID,
+            $blockName === "minecraft:moving_block" => MovingBlock::ID,
+            $blockName === "minecraft:noteblock" => NoteBlock::ID,
+            $blockName === "minecraft:bell" => Bell::ID,
             default => null
         };
     }
@@ -100,6 +109,10 @@ class BlockEntityFactory{
             "Beacon" => new Beacon($x, $y, $z),
             "Cauldron" => new Cauldron($x, $y, $z),
             Spawner::ID => new Spawner($x, $y, $z),
+            PistonArm::ID => new PistonArm($x, $y, $z),
+            MovingBlock::ID => new MovingBlock($x, $y, $z),
+            NoteBlock::ID => new NoteBlock($x, $y, $z),
+            Bell::ID => new Bell($x, $y, $z),
             default => null
         };
     }

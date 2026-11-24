@@ -979,7 +979,7 @@ class Server{
     }
 
     private function registerCommands() : void{
-        $this->commandMap->registerAllCommands([
+        $this->commandMap->registerAll("raspberryx", [
             new HelpCommand(),
             new ListCommand(),
             new SayCommand(),

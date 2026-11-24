@@ -870,6 +870,7 @@ class BlockIds{
     public const string MOSSY_STONE_BRICK_WALL = "minecraft:mossy_stone_brick_wall";
     public const string MOSS_BLOCK = "minecraft:moss_block";
     public const string MOSS_CARPET = "minecraft:moss_carpet";
+    public const string MOVING_BLOCK = "minecraft:moving_block";
     public const string MUD = "minecraft:mud";
     public const string MUDDY_MANGROVE_ROOTS = "minecraft:muddy_mangrove_roots";
     public const string MUD_BRICKS = "minecraft:mud_bricks";

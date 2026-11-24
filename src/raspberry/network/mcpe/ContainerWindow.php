@@ -25,6 +25,8 @@ class ContainerWindow{
     public const int TYPE_DISPENSER = 6;
     public const int TYPE_DROPPER = 7;
     public const int TYPE_HOPPER = 8;
+    public const int TYPE_MINECART_CHEST = 10;
+    public const int TYPE_MINECART_HOPPER = 11;
     public const int TYPE_BEACON = 13;
     public const int TYPE_LOOM = 24;
     public const int TYPE_LECTERN = 25;

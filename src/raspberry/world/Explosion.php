@@ -14,9 +14,9 @@ use raspberry\block\TNT;
 
 use raspberry\entity\Entity;
 use raspberry\entity\Living;
+use raspberry\entity\Vehicle;
 use raspberry\entity\damage\DamageSource;
 use raspberry\entity\object\FallingBlock;
-use raspberry\entity\object\Boat;
 use raspberry\entity\object\ItemEntity;
 use raspberry\entity\object\Painting;
 use raspberry\entity\object\PrimedTNT;
@@ -251,8 +251,8 @@ class Explosion{
             return;
         }
 
-        if($entity instanceof Boat){
-            $entity->hurt((float) (int) (($impact * $impact + $impact) / 2 * 7 * $diameter + 1));
+        if($entity instanceof Vehicle){
+            $entity->hurtByExplosion((float) (int) (($impact * $impact + $impact) / 2 * 7 * $diameter + 1));
             return;
         }
 
