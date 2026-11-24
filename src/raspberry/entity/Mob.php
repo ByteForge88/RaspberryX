@@ -69,6 +69,7 @@ abstract class Mob extends Living{
     public const int AI_AQUATIC = 256;
     public const int AI_DAYTIME = 512;
     public const int AI_CALM = 1024;
+    public const int AI_JUMPER = 2048;
 
     public const int EVENT_FALL = 1;
     public const int EVENT_EAT_START = 2;

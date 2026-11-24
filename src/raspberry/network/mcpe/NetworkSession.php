@@ -1467,6 +1467,11 @@ class NetworkSession{
         $this->sendDataPacket(MobEquipmentPacket::create($holder->getId(), $this->toItemInstance($inventory->getItemInHand()), $inventory->getHeldSlot(), InventoryContentPacket::WINDOW_INVENTORY));
     }
 
+    public function sendMobEquipment(Mob $mob) : void{
+        $this->sendDataPacket(MobEquipmentPacket::create($mob->getId(), $this->toItemInstance($mob->getHeldItem() ?? Item::air()), 0, InventoryContentPacket::WINDOW_INVENTORY));
+        $this->sendDataPacket(MobEquipmentPacket::create($mob->getId(), $this->toItemInstance($mob->getOffhandItem() ?? Item::air()), 0, InventoryContentPacket::WINDOW_OFFHAND));
+    }
+
     public function sendOffHandItem(Player $holder) : void{
         $this->sendDataPacket(MobEquipmentPacket::create($holder->getId(), $this->toItemInstance($holder->getOffHandInventory()->getItem(0)), 0, InventoryContentPacket::WINDOW_OFFHAND));
     }

@@ -3,7 +3,6 @@ vendor/*
 native/target/*
 bin/*
 worlds/*
-native/*
 data/server-identity.pem
 RaspberryX.phar
 .RaspberryX-build-*.phar

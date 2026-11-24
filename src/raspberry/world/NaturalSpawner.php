@@ -15,6 +15,7 @@ use raspberry\entity\EntityIds;
 use raspberry\entity\Mob;
 use raspberry\entity\animal\Animal;
 use raspberry\entity\monster\Monster;
+use raspberry\entity\monster\Slime;
 
 use raspberry\math\Vector3;
 
@@ -23,6 +24,8 @@ use raspberry\player\Player;
 
 use raspberry\world\spawn\SpawnCondition;
 use raspberry\world\spawn\SpawnRules;
+
+use JsonException;
 
 use function count;
 use function floor;
@@ -81,6 +84,9 @@ class NaturalSpawner{
     private function __construct(){
     }
 
+    /**
+     * @throws JsonException
+     */
     public static function tick(World $world) : void{
         if(!$world->getGameRules()->getBool(GameRules::DO_MOB_SPAWNING)){
             return;
@@ -161,6 +167,7 @@ class NaturalSpawner{
 
     /**
      * @return array{array<int, int>, array<string, int>}
+     * @throws JsonException
      */
     private static function countMobs(World $world) : array{
         $counts = [self::MONSTER => 0, self::CREATURE => 0];
@@ -194,6 +201,7 @@ class NaturalSpawner{
     /**
      * @param list<Player> $players
      * @param array<string, int> $density
+     * @throws JsonException
      */
     private static function spawnInChunk(World $world, Chunk $chunk, int $category, array $players, array &$density) : int{
         $x = $chunk->getX() * 16 + mt_rand(0, 15);
@@ -247,6 +255,7 @@ class NaturalSpawner{
     /**
      * @param list<Player> $players
      * @param array<string, int> $density
+     * @throws JsonException
      */
     private static function spawnHerd(World $world, int $category, string $place, int $x, int $y, int $z, array $players, array &$density) : int{
         if($y <= Chunk::MIN_Y || $y + 1 > Chunk::MAX_Y || BlockCollision::isFullCube($world->getBlock($x, $y, $z))){
@@ -326,6 +335,7 @@ class NaturalSpawner{
 
     /**
      * @param array<string, int> $density
+     * @throws JsonException
      */
     private static function pick(World $world, int $category, string $place, int $x, int $y, int $z, array $density) : ?SpawnCondition{
         $biome = $world->getBiome($x, $y, $z);
@@ -340,7 +350,7 @@ class NaturalSpawner{
                 continue;
             }
 
-            if(!$condition->allowsDifficulty($difficulty) || !$condition->allowsHeight($y) || !$condition->allowsBiome($biome, $y) || !$condition->allowsGround($below)){
+            if(!$condition->allowsDifficulty($difficulty) || !$condition->allowsHeight($y) || !$condition->allowsBiome($biome, $y) || !$condition->allowsGround($below) || !self::passesBuiltInRules($world, $condition->getType(), $x, $y, $z, false)){
                 continue;
             }
 
@@ -408,6 +418,9 @@ class NaturalSpawner{
         return $nearest;
     }
 
+    /**
+     * @throws JsonException
+     */
     private static function canSpawnAt(World $world, SpawnCondition $condition, string $type, string $column, int $x, int $y, int $z) : bool{
         if($y <= Chunk::MIN_Y || $y + 1 > Chunk::MAX_Y || !$world->isChunkLoaded($x >> 4, $z >> 4) || !$condition->allowsHeight($y)){
             return false;
@@ -417,7 +430,7 @@ class NaturalSpawner{
         $at = $world->getBlock($x, $y, $z);
         $medium = self::getMedium($at);
 
-        if(!$condition->allowsPlace($column, $medium) || !$condition->allowsGround($below) || !$condition->allowsBrightness($world, $x, $y, $z)){
+        if(!$condition->allowsPlace($column, $medium) || !$condition->allowsGround($below) || !$condition->allowsBrightness($world, $x, $y, $z) || !self::passesBuiltInRules($world, $type, $x, $y, $z, true)){
             return false;
         }
 
@@ -427,6 +440,13 @@ class NaturalSpawner{
 
         [$width, $height] = self::getSize($type);
         return self::hasRoom($world, $x + 0.5, $y, $z + 0.5, $width, $height, $medium !== SpawnCondition::AIR);
+    }
+
+    private static function passesBuiltInRules(World $world, string $type, int $x, int $y, int $z, bool $roll) : bool{
+        return match($type){
+            EntityIds::SLIME => Slime::canSpawnNaturally($world, $x, $y, $z, $roll),
+            default => true
+        };
     }
 
     public static function canSpawnOn(BlockState $block) : bool{
@@ -453,6 +473,7 @@ class NaturalSpawner{
 
     /**
      * @return array{float, float}
+     * @throws JsonException
      */
     public static function getSize(string $type) : array{
         return SpawnRules::getSize($type);

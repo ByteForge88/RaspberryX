@@ -6,6 +6,8 @@ namespace raspberry\world\spawn;
 
 use raspberry\block\BlockState;
 
+use raspberry\entity\EntityIds;
+
 use raspberry\world\Difficulty;
 use raspberry\world\World;
 use raspberry\world\biome\Biome;
@@ -24,6 +26,8 @@ class SpawnCondition{
     public const string AIR = "air";
 
     public const string ENTITY_BORN = "minecraft:entity_born";
+
+    private const array ANY_BLOCK_LIGHT = [EntityIds::SLIME];
 
     private string $type;
 
@@ -210,7 +214,7 @@ class SpawnCondition{
     public function allowsBrightness(World $world, int $x, int $y, int $z) : bool{
         $block = $world->getBlockLight($x, $y, $z);
 
-        if($this->population === SpawnRules::MONSTER && $block > 0){
+        if($this->population === SpawnRules::MONSTER && $block > 0 && !in_array($this->type, self::ANY_BLOCK_LIGHT, true)){
             return false;
         }
 

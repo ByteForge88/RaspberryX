@@ -30,6 +30,7 @@ pub const CLIMBER: u32 = 128;
 pub const AQUATIC: u32 = 256;
 pub const DAYTIME: u32 = 512;
 pub const CALM: u32 = 1024;
+pub const JUMPER: u32 = 2048;
 
 pub const ON_GROUND: u32 = 1;
 pub const IN_WATER: u32 = 2;
@@ -61,6 +62,9 @@ const WATER_DRAG: f64 = 0.8;
 const LAVA_DRAG: f64 = 0.5;
 const AIR_DRAG: f64 = 0.91;
 const GROUND_DRAG: f64 = 0.6 * 0.91;
+
+const HOP_CALM: (i32, i32) = (10, 30);
+const HOP_AGGRESSIVE: (i32, i32) = (3, 10);
 
 const AQUATIC_PUSH: f64 = 0.09;
 const SWIM_RISE: f64 = 0.1;
@@ -112,6 +116,7 @@ pub struct Mob {
     pub fall: f64,
     pub hurt: i32,
     pub jump_delay: i32,
+    pub hop: i32,
     pub target: u64,
     pub hurt_by: u64,
     pub hurt_count: u32,
@@ -274,6 +279,23 @@ impl Mob {
         let speed = self.speed * self.nav.speed;
         self.my += dy / length * speed as f64 * SWIM_RISE;
         speed
+    }
+
+    fn hop(&mut self, random: &mut JavaRandom) -> f32 {
+        if !self.is(ON_GROUND) {
+            return self.speed;
+        }
+
+        if self.hop > 0 {
+            self.hop -= 1;
+            return 0.0;
+        }
+
+        let (min, max) = if self.target != 0 { HOP_AGGRESSIVE } else { HOP_CALM };
+
+        self.hop = min + random.next_int_bounded(max - min);
+        self.my = physics::JUMP;
+        self.speed
     }
 
     fn turn_head(&mut self, moving: bool) {
@@ -682,6 +704,7 @@ impl World {
                         fall: 0.0,
                         hurt: 0,
                         jump_delay: 0,
+                        hop: 0,
                         target: 0,
                         hurt_by: 0,
                         hurt_count: 0,
@@ -827,6 +850,7 @@ impl World {
 
                 forward = match mob.nav.wanted {
                     Some(spot) if mob.swimming => mob.swim(spot),
+                    _ if mob.has(JUMPER) => mob.hop(&mut self.random),
                     _ => mob.follow_path(view),
                 };
 

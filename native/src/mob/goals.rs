@@ -26,6 +26,8 @@ pub const LEAP_AT_TARGET: u8 = 13;
 pub const SWELL: u8 = 14;
 pub const RANGED_BOW_ATTACK: u8 = 15;
 pub const RANGED_ATTACK: u8 = 16;
+pub const SLIME_ATTACK: u8 = 17;
+pub const SLIME_RANDOM_DIRECTION: u8 = 18;
 
 const ONLY_IN_DARK: f32 = 1.0;
 const IN_WATER_BY_DAY: f32 = 2.0;
@@ -238,7 +240,8 @@ impl Goal {
             MELEE_ATTACK => MOVE | LOOK,
             LEAP_AT_TARGET => MOVE | JUMP,
             SWELL => MOVE,
-            RANGED_BOW_ATTACK | RANGED_ATTACK => MOVE | LOOK,
+            RANGED_BOW_ATTACK | RANGED_ATTACK | SLIME_ATTACK => MOVE | LOOK,
+            SLIME_RANDOM_DIRECTION => LOOK,
             NEAREST_ATTACKABLE_TARGET | HURT_BY_TARGET => TARGET,
             _ => 0,
         }
@@ -470,6 +473,8 @@ impl Goal {
             }
             RANGED_BOW_ATTACK => context.target(mob.target).is_some(),
             RANGED_ATTACK => context.target(mob.target).is_some() && !self.too_close(mob, context),
+            SLIME_ATTACK => context.target(mob.target).is_some(),
+            SLIME_RANDOM_DIRECTION => mob.target == 0 && mob.is(ON_GROUND | IN_WATER | IN_LAVA),
             MELEE_ATTACK => {
                 if self.delay > 0 {
                     self.delay -= 1;
@@ -648,6 +653,8 @@ impl Goal {
                 context.target(mob.target).is_some() && !self.too_far(mob, context) && (self.params[1] > 0.0 || !mob.nav.is_done() || (mob.has(AQUATIC) && mob.is(IN_WATER)))
             }
             RANGED_ATTACK => context.target(mob.target).is_some() && !self.too_close(mob, context),
+            SLIME_ATTACK => context.target(mob.target).is_some(),
+            SLIME_RANDOM_DIRECTION => mob.target == 0,
             LEAP_AT_TARGET => !mob.is(ON_GROUND),
             RANGED_BOW_ATTACK => context.target(mob.target).is_some() || !mob.nav.is_done(),
             SWELL => self.count > 0 || context.target(mob.target).is_some_and(|target| mob.distance_sq(target.x, target.y, target.z) < 9.0),
@@ -705,6 +712,25 @@ impl Goal {
         match self.kind {
             RANGED_BOW_ATTACK => self.shoot_bow(mob, context),
             RANGED_ATTACK => self.throw(mob, context),
+            SLIME_ATTACK => {
+                if let Some(target) = context.target(mob.target) {
+                    let wanted = ((target.z - mob.z).atan2(target.x - mob.x).to_degrees() - 90.0) as f32;
+
+                    mob.yaw = turn(mob.yaw, wanted, 10.0);
+                    mob.head_yaw = mob.yaw;
+                }
+            }
+            SLIME_RANDOM_DIRECTION => {
+                self.timer -= 1;
+
+                if self.timer <= 0 {
+                    self.timer = 40 + context.random.next_int_bounded(60);
+                    self.count = context.random.next_int_bounded(360);
+                }
+
+                mob.yaw = turn(mob.yaw, self.count as f32, 90.0);
+                mob.head_yaw = mob.yaw;
+            }
             SWELL => {
                 let direction = match context.target(mob.target) {
                     Some(target) if mob.distance_sq(target.x, target.y, target.z) <= 49.0 && context.can_see(mob, &target) => 1,

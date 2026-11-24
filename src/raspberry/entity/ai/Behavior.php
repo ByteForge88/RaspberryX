@@ -24,6 +24,8 @@ class Behavior{
     private const int SWELL = 14;
     private const int RANGED_BOW_ATTACK = 15;
     private const int RANGED_ATTACK = 16;
+    private const int SLIME_ATTACK = 17;
+    private const int SLIME_RANDOM_DIRECTION = 18;
 
     private const float ONLY_IN_DARK = 1.0;
     private const float IN_WATER_BY_DAY = 2.0;
@@ -109,6 +111,14 @@ class Behavior{
 
     public static function leapAtTarget(int $priority, float $height) : self{
         return new self(self::LEAP_AT_TARGET, $priority, $height);
+    }
+
+    public static function slimeAttack(int $priority) : self{
+        return new self(self::SLIME_ATTACK, $priority);
+    }
+
+    public static function slimeRandomDirection(int $priority) : self{
+        return new self(self::SLIME_RANDOM_DIRECTION, $priority);
     }
 
     public static function swell(int $priority) : self{
