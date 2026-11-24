@@ -10,6 +10,7 @@ use raspberry\network\mcpe\protocol\BlockActorDataPacket;
 use raspberry\network\mcpe\protocol\ContainerClosePacket;
 use raspberry\network\mcpe\protocol\ContainerOpenPacket;
 use raspberry\network\mcpe\protocol\InteractPacket;
+use raspberry\network\mcpe\protocol\PacketBatch;
 use raspberry\network\mcpe\protocol\LecternUpdatePacket;
 use raspberry\network\mcpe\protocol\PlayerToggleCrafterSlotRequestPacket;
 use raspberry\network\mcpe\protocol\InventoryContentPacket;
@@ -141,6 +142,7 @@ use stdClass;
 use Throwable;
 use UnexpectedValueException;
 
+use function array_chunk;
 use function array_shift;
 use function ceil;
 use function count;
@@ -569,9 +571,10 @@ class NetworkSession{
             }
         }
 
-        $batch = $this->server->getPacketBatch()->encode($packets);
-
-        $this->server->getTransport()->sendReliable($this->id, $this->compression->encode($batch));
+        foreach(array_chunk($packets, PacketBatch::MAX_PACKETS) as $part){
+            $batch = $this->server->getPacketBatch()->encode($part);
+            $this->server->getTransport()->sendReliable($this->id, $this->compression->encode($batch));
+        }
     }
 
     /**
@@ -990,6 +993,12 @@ class NetworkSession{
 
         if($held !== null){
             $this->sendDataPacket(MobEquipmentPacket::create($mob->getId(), $this->toItemInstance($held), 0, InventoryContentPacket::WINDOW_INVENTORY));
+        }
+
+        $offhand = $mob->getOffhandItem();
+
+        if($offhand !== null){
+            $this->sendDataPacket(MobEquipmentPacket::create($mob->getId(), $this->toItemInstance($offhand), 0, InventoryContentPacket::WINDOW_OFFHAND));
         }
     }
 

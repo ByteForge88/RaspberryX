@@ -377,10 +377,14 @@ class World{
      * How much darker than full daylight the sky is, 0 at day to 11 at night. Rain and thunder
      * darken it too.
      */
-    public function getSkyDarken() : int{
+    public function getSkyDarken(bool $weather = true) : int{
         $brightness = 0.5 + 2.0 * max(-0.25, min(0.25, cos($this->getSunAngle())));
-        $brightness *= 1.0 - $this->weather->getRainLevel() * 5.0 / 16.0;
-        $brightness *= 1.0 - $this->weather->getThunderLevel() * 5.0 / 16.0;
+
+        if($weather){
+            $brightness *= 1.0 - $this->weather->getRainLevel() * 5.0 / 16.0;
+            $brightness *= 1.0 - $this->weather->getThunderLevel() * 5.0 / 16.0;
+        }
+
         return (int) ((1.0 - $brightness) * 11.0);
     }
 

@@ -23,18 +23,22 @@ class Behavior{
     private const int LEAP_AT_TARGET = 13;
     private const int SWELL = 14;
     private const int RANGED_BOW_ATTACK = 15;
+    private const int RANGED_ATTACK = 16;
+
+    private const float ONLY_IN_DARK = 1.0;
+    private const float IN_WATER_BY_DAY = 2.0;
 
     private int $type;
 
     private int $priority;
 
-    /** @var array{float, float, float, float} */
+    /** @var array{float, float, float, float, float, float} */
     private array $params;
 
-    private function __construct(int $type, int $priority, float $first = 0.0, float $second = 0.0, float $third = 0.0, float $fourth = 0.0){
+    private function __construct(int $type, int $priority, float $first = 0.0, float $second = 0.0, float $third = 0.0, float $fourth = 0.0, float $fifth = 0.0, float $sixth = 0.0){
         $this->type = $type;
         $this->priority = $priority;
-        $this->params = [$first, $second, $third, $fourth];
+        $this->params = [$first, $second, $third, $fourth, $fifth, $sixth];
     }
 
     /** swims up instead of sinking */
@@ -86,8 +90,8 @@ class Behavior{
      * Goes after the nearest player within $followRange, seen first when $mustSee. Looks once in
      * $interval ticks on average.
      */
-    public static function nearestAttackableTarget(int $priority, float $followRange, bool $mustSee = true, int $interval = 10, bool $onlyInDark = false) : self{
-        return new self(self::NEAREST_ATTACKABLE_TARGET, $priority, $followRange, $mustSee ? 1.0 : 0.0, (float) $interval, $onlyInDark ? 1.0 : 0.0);
+    public static function nearestAttackableTarget(int $priority, float $followRange, bool $mustSee = true, int $interval = 10, bool $onlyInDark = false, bool $inWaterByDay = false) : self{
+        return new self(self::NEAREST_ATTACKABLE_TARGET, $priority, $followRange, $mustSee ? 1.0 : 0.0, (float) $interval, $onlyInDark ? self::ONLY_IN_DARK : ($inWaterByDay ? self::IN_WATER_BY_DAY : 0.0));
     }
 
     /** goes after whoever hurt it */
@@ -99,8 +103,8 @@ class Behavior{
      * Walks up to its target and hits it once a second. Without $followUnseen it stops chasing
      * when it loses sight of it.
      */
-    public static function meleeAttack(int $priority, float $speed, bool $followUnseen = false, bool $givesUpInLight = false) : self{
-        return new self(self::MELEE_ATTACK, $priority, $speed, $followUnseen ? 1.0 : 0.0, $givesUpInLight ? 1.0 : 0.0);
+    public static function meleeAttack(int $priority, float $speed, bool $followUnseen = false, bool $givesUpInLight = false, float $maxRange = 0.0) : self{
+        return new self(self::MELEE_ATTACK, $priority, $speed, $followUnseen ? 1.0 : 0.0, $givesUpInLight ? 1.0 : 0.0, $maxRange);
     }
 
     public static function leapAtTarget(int $priority, float $height) : self{
@@ -115,7 +119,11 @@ class Behavior{
         return new self(self::RANGED_BOW_ATTACK, $priority, $speed, (float) $interval, $radius);
     }
 
+    public static function rangedAttack(int $priority, float $speed, int $minInterval, int $maxInterval, float $radius, float $minRange = 0.0) : self{
+        return new self(self::RANGED_ATTACK, $priority, $speed, (float) $minInterval, (float) $maxInterval, $radius, $minRange);
+    }
+
     public function encode() : string{
-        return pack("CCg4", $this->type, $this->priority, ...$this->params);
+        return pack("CCg6", $this->type, $this->priority, ...$this->params);
     }
 }

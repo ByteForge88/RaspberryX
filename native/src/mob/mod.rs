@@ -27,6 +27,8 @@ pub const ON_FIRE: u32 = 16;
 pub const AVOID_WATER: u32 = 32;
 pub const BRIGHT: u32 = 64;
 pub const CLIMBER: u32 = 128;
+pub const AQUATIC: u32 = 256;
+pub const DAYTIME: u32 = 512;
 
 pub const ON_GROUND: u32 = 1;
 pub const IN_WATER: u32 = 2;
@@ -59,6 +61,10 @@ const LAVA_DRAG: f64 = 0.5;
 const AIR_DRAG: f64 = 0.91;
 const GROUND_DRAG: f64 = 0.6 * 0.91;
 
+const AQUATIC_PUSH: f64 = 0.09;
+const SWIM_RISE: f64 = 0.1;
+const SWIM_SINK: f64 = 0.005;
+
 const PATH_RANGE: f32 = 24.0;
 const PATH_BUDGET: usize = 320;
 
@@ -67,6 +73,7 @@ pub struct Nav {
     pub path: Vec<Node>,
     pub index: usize,
     pub speed: f32,
+    pub wanted: Option<[f64; 3]>,
     stuck: i32,
     last: [f64; 3],
 }
@@ -79,6 +86,7 @@ impl Nav {
     pub fn stop(&mut self) {
         self.path.clear();
         self.index = 0;
+        self.wanted = None;
     }
 }
 
@@ -111,6 +119,7 @@ pub struct Mob {
     pub look: Option<[f64; 3]>,
     pub jump: bool,
     pub strafe: Option<(f32, f32)>,
+    pub swimming: bool,
     sent: Option<([f64; 3], [f32; 3], u32)>,
 }
 
@@ -128,7 +137,7 @@ impl Mob {
     }
 
     pub fn walker(&self) -> Walker {
-        Walker::new(self.height, self.has(AVOID_WATER))
+        Walker::new(self.height, self.has(AVOID_WATER), self.has(AQUATIC))
     }
 
     pub fn distance_sq(&self, x: f64, y: f64, z: f64) -> f64 {
@@ -148,6 +157,7 @@ impl Mob {
 
         self.nav.index = 0;
         self.nav.speed = speed;
+        self.nav.wanted = Some([x, y, z]);
         self.nav.stuck = 0;
         self.nav.last = [self.x, self.y, self.z];
 
@@ -240,6 +250,31 @@ impl Mob {
         0.0
     }
 
+    fn wants_to_swim(&self, view: &View) -> bool {
+        if !self.has(AQUATIC) || !self.is(IN_WATER) || self.target == 0 {
+            return false;
+        }
+
+        self.nav.wanted.is_some_and(|[x, y, z]| self.nav.is_done() || view.block(x.floor() as i32, (y + 0.4).floor() as i32, z.floor() as i32) & blocks::WATER != 0)
+    }
+
+    fn swim(&mut self, [x, y, z]: [f64; 3]) -> f32 {
+        let (dx, dy, dz) = (x - self.x, y - self.y, z - self.z);
+        let length = (dx * dx + dy * dy + dz * dz).sqrt();
+
+        if length < 0.25 {
+            return 0.0;
+        }
+
+        if dx * dx + dz * dz > 2.5e-7 {
+            self.yaw = turn(self.yaw, (dz.atan2(dx).to_degrees() - 90.0) as f32, 90.0);
+        }
+
+        let speed = self.speed * self.nav.speed;
+        self.my += dy / length * speed as f64 * SWIM_RISE;
+        speed
+    }
+
     fn turn_head(&mut self, moving: bool) {
         match self.look {
             Some([x, y, z]) => {
@@ -316,7 +351,14 @@ impl Mob {
         }
 
         if forward > 0.0 {
-            let push = if on_ground && !in_liquid { forward as f64 * (0.16277136 / (GROUND_DRAG * GROUND_DRAG * GROUND_DRAG)) } else { 0.02 };
+            let push = if on_ground && !in_liquid {
+                forward as f64 * (0.16277136 / (GROUND_DRAG * GROUND_DRAG * GROUND_DRAG))
+            } else if in_liquid && self.has(AQUATIC) {
+                AQUATIC_PUSH
+            } else {
+                0.02
+            };
+
             let radians = (self.yaw as f64).to_radians();
 
             self.mx -= radians.sin() * push * forward as f64;
@@ -422,7 +464,7 @@ impl Mob {
             self.mx *= drag;
             self.my *= drag;
             self.mz *= drag;
-            self.my -= 0.02;
+            self.my -= if self.swimming { SWIM_SINK } else { 0.02 };
 
             if self.hit_wall && physics::is_free(view, self.x + self.mx, self.y + self.my + 0.6, self.z + self.mz, self.width, self.height) {
                 self.my = 0.3;
@@ -610,7 +652,7 @@ impl World {
 
                     for _ in 0..reader.u8()? {
                         let (kind, priority) = (reader.u8()?, reader.u8()?);
-                        let params = [reader.f32()?, reader.f32()?, reader.f32()?, reader.f32()?];
+                        let params = [reader.f32()?, reader.f32()?, reader.f32()?, reader.f32()?, reader.f32()?, reader.f32()?];
 
                         goals.push(Goal::new(kind, priority, params));
                     }
@@ -647,6 +689,7 @@ impl World {
                         look: None,
                         jump: false,
                         strafe: None,
+                        swimming: false,
                         sent: None,
                     });
                 }
@@ -779,7 +822,13 @@ impl World {
                 let mut context = goals::Context { view, infos: &infos, index: &self.index, grid: &grid, players: &self.players, random: &mut self.random, events: &mut events, out_of_love: &mut out_of_love };
 
                 goals::tick(mob, &mut context);
-                forward = mob.follow_path(view);
+                mob.swimming = mob.wants_to_swim(view);
+
+                forward = match mob.nav.wanted {
+                    Some(spot) if mob.swimming => mob.swim(spot),
+                    _ => mob.follow_path(view),
+                };
+
                 mob.turn_head(forward > 0.0 || mob.strafe.is_some());
             }
 

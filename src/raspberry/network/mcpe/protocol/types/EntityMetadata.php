@@ -89,6 +89,7 @@ class EntityMetadata{
     public const int FLAG_SHEARED = 31;
     public const int FLAG_BREATHING = 35;
     public const int FLAG_STACKABLE = 37;
+    public const int FLAG_SHAKING = 40;
     public const int FLAG_HAS_COLLISION = 48;
     public const int FLAG_HAS_GRAVITY = 49;
     public const int FLAG_COLLIDABLE = 121;

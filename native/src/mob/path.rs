@@ -17,11 +17,12 @@ const DANGER_COST: f32 = 8.0;
 pub struct Walker {
     pub tall: i32,
     pub avoid_water: bool,
+    pub aquatic: bool,
 }
 
 impl Walker {
-    pub fn new(height: f64, avoid_water: bool) -> Self {
-        Walker { tall: (height.ceil() as i32).max(1), avoid_water }
+    pub fn new(height: f64, avoid_water: bool, aquatic: bool) -> Self {
+        Walker { tall: (height.ceil() as i32).max(1), avoid_water, aquatic }
     }
 
     pub fn fits(&self, view: &View, x: i32, y: i32, z: i32) -> bool {
@@ -38,7 +39,7 @@ impl Walker {
     pub fn has_floor(&self, view: &View, x: i32, y: i32, z: i32) -> bool {
         let below = view.block(x, y - 1, z);
 
-        (blocks::is_solid(below) && below & blocks::DAMAGE == 0) || view.block(x, y, z) & blocks::WATER != 0
+        (blocks::is_solid(below) && below & blocks::DAMAGE == 0) || (!self.aquatic && view.block(x, y, z) & blocks::WATER != 0)
     }
 
     pub fn can_stand(&self, view: &View, x: i32, y: i32, z: i32) -> bool {

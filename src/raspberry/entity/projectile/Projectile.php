@@ -77,6 +77,10 @@ abstract class Projectile extends Entity{
 
     abstract protected function onHitBlock(int $x, int $y, int $z, Vector3 $point) : void;
 
+    protected function hitsEntities() : bool{
+        return true;
+    }
+
     /** how much speed it keeps each tick */
     protected function getDrag() : float{
         return $this->isInWater() ? 0.8 : 0.99;
@@ -128,7 +132,6 @@ abstract class Projectile extends Entity{
     public static function aimFromRotation(float $yaw, float $pitch, float $velocity, float $inaccuracy) : Vector3{
         $yaw = deg2rad($yaw);
         $pitch = deg2rad($pitch);
-
         return self::aim(-sin($yaw) * cos($pitch), -sin($pitch), cos($yaw) * cos($pitch), $velocity, $inaccuracy);
     }
 
@@ -141,7 +144,6 @@ abstract class Projectile extends Entity{
         $metadata->setFloat(EntityMetadata::KEY_WIDTH, $this->getWidth());
         $metadata->setFloat(EntityMetadata::KEY_HEIGHT, $this->getHeight());
         $metadata->setLong(EntityMetadata::KEY_OWNER, $this->getOwner()?->getId() ?? -1);
-
         return $metadata;
     }
 
@@ -175,7 +177,7 @@ abstract class Projectile extends Entity{
 
         for($step = 1; $step <= $steps; ++$step){
             $point = $this->position->add($this->motion->x * $step / $steps, $this->motion->y * $step / $steps, $this->motion->z * $step / $steps);
-            $target = $this->getLivingAt($point);
+            $target = $this->hitsEntities() ? $this->getLivingAt($point) : null;
 
             if($target !== null){
                 $this->move($point, $this->yaw, $this->pitch);
@@ -209,7 +211,6 @@ abstract class Projectile extends Entity{
 
     protected function updateRotation() : void{
         $flat = sqrt($this->motion->x ** 2 + $this->motion->z ** 2);
-
         $this->setRotation(rad2deg(atan2($this->motion->x, $this->motion->z)), rad2deg(atan2($this->motion->y, $flat)));
     }
 

@@ -6,10 +6,14 @@ namespace raspberry\entity;
 
 use raspberry\entity\animal\Chicken;
 use raspberry\entity\animal\Cow;
+use raspberry\entity\animal\Mooshroom;
 use raspberry\entity\animal\Pig;
 use raspberry\entity\animal\Sheep;
 use raspberry\entity\monster\Zombie;
+use raspberry\entity\monster\Husk;
+use raspberry\entity\monster\Drowned;
 use raspberry\entity\monster\Skeleton;
+use raspberry\entity\monster\Stray;
 use raspberry\entity\monster\Creeper;
 use raspberry\entity\monster\Spider;
 use raspberry\entity\monster\CaveSpider;
@@ -53,13 +57,17 @@ class EntityFactory{
         return self::$mobs ??= [
             EntityIds::CHICKEN => fn(World $world, Vector3 $position, float $yaw) : Mob => new Chicken($world, $position, $yaw),
             EntityIds::COW => fn(World $world, Vector3 $position, float $yaw) : Mob => new Cow($world, $position, $yaw),
+            EntityIds::MOOSHROOM => fn(World $world, Vector3 $position, float $yaw) : Mob => new Mooshroom($world, $position, $yaw),
             EntityIds::PIG => fn(World $world, Vector3 $position, float $yaw) : Mob => new Pig($world, $position, $yaw),
             EntityIds::SHEEP => fn(World $world, Vector3 $position, float $yaw) : Mob => new Sheep($world, $position, $yaw),
             EntityIds::ZOMBIE => fn(World $world, Vector3 $position, float $yaw) : Mob => new Zombie($world, $position, $yaw),
+            EntityIds::HUSK => fn(World $world, Vector3 $position, float $yaw) : Mob => new Husk($world, $position, $yaw),
+            EntityIds::DROWNED => fn(World $world, Vector3 $position, float $yaw) : Mob => new Drowned($world, $position, $yaw),
             EntityIds::SPIDER => fn(World $world, Vector3 $position, float $yaw) : Mob => new Spider($world, $position, $yaw),
             EntityIds::CAVE_SPIDER => fn(World $world, Vector3 $position, float $yaw) : Mob => new CaveSpider($world, $position, $yaw),
             EntityIds::CREEPER => fn(World $world, Vector3 $position, float $yaw) : Mob => new Creeper($world, $position, $yaw),
-            EntityIds::SKELETON => fn(World $world, Vector3 $position, float $yaw) : Mob => new Skeleton($world, $position, $yaw)
+            EntityIds::SKELETON => fn(World $world, Vector3 $position, float $yaw) : Mob => new Skeleton($world, $position, $yaw),
+            EntityIds::STRAY => fn(World $world, Vector3 $position, float $yaw) : Mob => new Stray($world, $position, $yaw)
         ];
     }
 

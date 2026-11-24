@@ -8,7 +8,7 @@ use crate::random::JavaRandom;
 
 use super::blocks::{self, View};
 use super::path::Node;
-use super::{turn, Event, Grid, Info, Mob, Player, BABY, BRIGHT, EVENT_ATTACK, EVENT_SHOOT, EVENT_SWELL, EVENT_USE_ITEM, ON_GROUND, EVENT_BRED, EVENT_EAT_BLOCK, EVENT_EAT_START, EVENT_TARGET, IN_LAVA, IN_LOVE, IN_WATER, ON_FIRE, PLAYER_INVISIBLE, PLAYER_NO_TARGET, PLAYER_SNEAKING, PLAYER_SPECTATOR};
+use super::{turn, Event, Grid, Info, Mob, Player, AQUATIC, BABY, BRIGHT, DAYTIME, EVENT_ATTACK, EVENT_SHOOT, EVENT_SWELL, EVENT_USE_ITEM, ON_GROUND, EVENT_BRED, EVENT_EAT_BLOCK, EVENT_EAT_START, EVENT_TARGET, IN_LAVA, IN_LOVE, IN_WATER, ON_FIRE, PLAYER_INVISIBLE, PLAYER_NO_TARGET, PLAYER_SNEAKING, PLAYER_SPECTATOR};
 
 pub const FLOAT: u8 = 1;
 pub const PANIC: u8 = 2;
@@ -25,6 +25,10 @@ pub const MELEE_ATTACK: u8 = 12;
 pub const LEAP_AT_TARGET: u8 = 13;
 pub const SWELL: u8 = 14;
 pub const RANGED_BOW_ATTACK: u8 = 15;
+pub const RANGED_ATTACK: u8 = 16;
+
+const ONLY_IN_DARK: f32 = 1.0;
+const IN_WATER_BY_DAY: f32 = 2.0;
 
 const MOVE: u8 = 1;
 const LOOK: u8 = 2;
@@ -74,7 +78,7 @@ impl Target {
 pub struct Goal {
     pub kind: u8,
     pub priority: u8,
-    pub params: [f32; 4],
+    pub params: [f32; 6],
     running: bool,
     timer: i32,
     count: i32,
@@ -124,11 +128,18 @@ impl Context<'_> {
         }
     }
 
-    fn nearest_target(&self, mob: &Mob, range: f64, must_see: bool) -> Option<Target> {
+    fn in_water(&self, target: &Target) -> bool {
+        let (x, z) = (target.x.floor() as i32, target.z.floor() as i32);
+
+        (self.view.block(x, (target.y + 0.05).floor() as i32, z) | self.view.block(x, (target.y + 0.4).floor() as i32, z)) & blocks::WATER != 0
+    }
+
+    fn nearest_target(&self, mob: &Mob, range: f64, must_see: bool, in_water: bool) -> Option<Target> {
         self.players
             .iter()
             .filter(|player| player.flags & (PLAYER_SPECTATOR | PLAYER_NO_TARGET) == 0 && (player.y - mob.y).abs() <= 4.0 + mob.height)
             .map(Target::of)
+            .filter(|target| !in_water || self.in_water(target))
             .filter(|target| {
                 let reach = (range * target.visibility()).max(2.0);
                 mob.distance_sq(target.x, target.y, target.z) <= reach * reach
@@ -197,7 +208,7 @@ impl Context<'_> {
                 y -= 1;
             }
 
-            if !walker.can_stand(self.view, x, y, z) || self.view.block(x, y, z) & blocks::WATER != 0 {
+            if !walker.can_stand(self.view, x, y, z) || (!mob.has(AQUATIC) && self.view.block(x, y, z) & blocks::WATER != 0) {
                 continue;
             }
 
@@ -213,7 +224,7 @@ impl Context<'_> {
 }
 
 impl Goal {
-    pub fn new(kind: u8, priority: u8, params: [f32; 4]) -> Self {
+    pub fn new(kind: u8, priority: u8, params: [f32; 6]) -> Self {
         Goal { kind, priority, params, running: false, timer: 0, count: 0, delay: 0, charge: -1, strafe: (false, false), target: 0, spot: [0.0; 3] }
     }
 
@@ -227,7 +238,7 @@ impl Goal {
             MELEE_ATTACK => MOVE | LOOK,
             LEAP_AT_TARGET => MOVE | JUMP,
             SWELL => MOVE,
-            RANGED_BOW_ATTACK => MOVE | LOOK,
+            RANGED_BOW_ATTACK | RANGED_ATTACK => MOVE | LOOK,
             NEAREST_ATTACKABLE_TARGET | HURT_BY_TARGET => TARGET,
             _ => 0,
         }
@@ -259,11 +270,19 @@ impl Goal {
         (mob.x - target.x).abs() < reach && (mob.z - target.z).abs() < reach && target.y < mob.y + mob.height && target.y + target.height > mob.y
     }
 
+    fn wants_in_water(&self, mob: &Mob) -> bool {
+        self.kind == NEAREST_ATTACKABLE_TARGET && self.params[3] == IN_WATER_BY_DAY && mob.has(DAYTIME)
+    }
+
     fn keeps_target(&mut self, mob: &Mob, context: &Context) -> bool {
         let Some(target) = context.target(mob.target) else { return false };
         let range = self.params[0] as f64;
 
         if mob.target != self.target || mob.distance_sq(target.x, target.y, target.z) > range * range {
+            return false;
+        }
+
+        if self.wants_in_water(mob) && !context.in_water(&target) {
             return false;
         }
 
@@ -354,12 +373,65 @@ impl Goal {
         }
     }
 
+    fn throw(&mut self, mob: &mut Mob, context: &mut Context) {
+        let Some(target) = context.target(mob.target) else { return };
+        let distance = mob.distance_sq(target.x, target.y, target.z);
+        let radius = self.params[3] as f64;
+        let seen = context.can_see(mob, &target);
+
+        self.count = if seen { self.count + 1 } else { 0 };
+
+        if distance <= radius * radius && self.count >= 5 {
+            mob.nav.stop();
+        } else if self.delay <= 0 || mob.nav.is_done() {
+            self.delay = 10;
+            mob.move_to(context.view, target.x, target.y, target.z, self.params[0]);
+        }
+
+        self.delay -= 1;
+        mob.look = Some([target.x, target.y + target.eye, target.z]);
+
+        let wanted = ((target.z - mob.z).atan2(target.x - mob.x).to_degrees() - 90.0) as f32;
+        mob.yaw = turn(mob.yaw, wanted, 30.0);
+
+        self.timer -= 1;
+
+        if self.timer == 0 {
+            if seen {
+                let power = (distance.sqrt() / radius).clamp(0.1, 1.0) as f32;
+
+                context.events.push(Event { id: mob.id, kind: EVENT_SHOOT, value: power, block: [0; 3], other: target.id });
+                self.timer = self.next_interval(context);
+            }
+        } else if self.timer < 0 {
+            self.timer = self.next_interval(context);
+        }
+    }
+
+    fn next_interval(&self, context: &mut Context) -> i32 {
+        let (min, max) = (self.params[1] as i32, (self.params[2] as i32).max(self.params[1] as i32));
+
+        min + context.random.next_int_bounded(max - min + 1)
+    }
+
+    fn too_close(&self, mob: &Mob, context: &Context) -> bool {
+        let close = self.params[4] as f64;
+
+        close > 0.0 && context.target(mob.target).is_some_and(|target| mob.distance_sq(target.x, target.y, target.z) < close * close)
+    }
+
+    fn too_far(&self, mob: &Mob, context: &Context) -> bool {
+        let far = self.params[3] as f64;
+
+        far > 0.0 && context.target(mob.target).is_some_and(|target| mob.distance_sq(target.x, target.y, target.z) > far * far)
+    }
+
     fn can_start(&mut self, mob: &mut Mob, context: &mut Context) -> bool {
         match self.kind {
             NEAREST_ATTACKABLE_TARGET => {
                 let interval = self.params[2] as i32;
 
-                if self.params[3] > 0.0 && mob.has(BRIGHT) {
+                if self.params[3] == ONLY_IN_DARK && mob.has(BRIGHT) {
                     return false;
                 }
 
@@ -367,7 +439,7 @@ impl Goal {
                     return false;
                 }
 
-                match context.nearest_target(mob, self.params[0] as f64, self.params[1] > 0.0) {
+                match context.nearest_target(mob, self.params[0] as f64, self.params[1] > 0.0, self.wants_in_water(mob)) {
                     Some(target) => {
                         self.target = target.id;
                         true
@@ -393,6 +465,7 @@ impl Goal {
                 self.count > 0 || context.target(mob.target).is_some_and(|target| mob.distance_sq(target.x, target.y, target.z) < 9.0)
             }
             RANGED_BOW_ATTACK => context.target(mob.target).is_some(),
+            RANGED_ATTACK => context.target(mob.target).is_some() && !self.too_close(mob, context),
             MELEE_ATTACK => {
                 if self.delay > 0 {
                     self.delay -= 1;
@@ -403,7 +476,11 @@ impl Goal {
 
                 let Some(target) = context.target(mob.target) else { return false };
 
-                mob.move_to(context.view, target.x, target.y, target.z, self.params[0]) || Self::within_reach(mob, &target)
+                if self.too_far(mob, context) {
+                    return false;
+                }
+
+                mob.move_to(context.view, target.x, target.y, target.z, self.params[0]) || Self::within_reach(mob, &target) || (mob.has(AQUATIC) && mob.is(IN_WATER))
             }
             FLOAT => mob.is(IN_WATER | IN_LAVA),
             PANIC => {
@@ -536,6 +613,12 @@ impl Goal {
                 self.count = 0;
                 self.delay = -1;
             }
+            RANGED_ATTACK => {
+                self.timer = -1;
+                self.count = 0;
+                self.delay = 0;
+                context.events.push(Event { id: mob.id, kind: EVENT_USE_ITEM, value: 1.0, block: [0; 3], other: 0 });
+            }
             PANIC | RANDOM_STROLL => {
                 let [x, y, z] = self.spot;
                 mob.move_to(context.view, x, y, z, self.params[0]);
@@ -558,8 +641,9 @@ impl Goal {
                     return false;
                 }
 
-                context.target(mob.target).is_some() && (self.params[1] > 0.0 || !mob.nav.is_done())
+                context.target(mob.target).is_some() && !self.too_far(mob, context) && (self.params[1] > 0.0 || !mob.nav.is_done() || (mob.has(AQUATIC) && mob.is(IN_WATER)))
             }
+            RANGED_ATTACK => context.target(mob.target).is_some() && !self.too_close(mob, context),
             LEAP_AT_TARGET => !mob.is(ON_GROUND),
             RANGED_BOW_ATTACK => context.target(mob.target).is_some() || !mob.nav.is_done(),
             SWELL => self.count > 0 || context.target(mob.target).is_some_and(|target| mob.distance_sq(target.x, target.y, target.z) < 9.0),
@@ -587,6 +671,10 @@ impl Goal {
     fn stop(&mut self, mob: &mut Mob, context: &mut Context) {
         match self.kind {
             PANIC | RANDOM_STROLL | FOLLOW_PARENT | BREED | MELEE_ATTACK => mob.nav.stop(),
+            RANGED_ATTACK => {
+                mob.nav.stop();
+                context.events.push(Event { id: mob.id, kind: EVENT_USE_ITEM, value: 0.0, block: [0; 3], other: 0 });
+            }
             RANGED_BOW_ATTACK => {
                 self.count = 0;
                 self.timer = -1;
@@ -612,6 +700,7 @@ impl Goal {
     fn run(&mut self, mob: &mut Mob, context: &mut Context) {
         match self.kind {
             RANGED_BOW_ATTACK => self.shoot_bow(mob, context),
+            RANGED_ATTACK => self.throw(mob, context),
             SWELL => {
                 let direction = match context.target(mob.target) {
                     Some(target) if mob.distance_sq(target.x, target.y, target.z) <= 49.0 && context.can_see(mob, &target) => 1,

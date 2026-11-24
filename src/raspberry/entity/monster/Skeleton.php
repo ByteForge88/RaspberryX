@@ -67,12 +67,20 @@ class Skeleton extends Monster{
         return true;
     }
 
+    public function canBreatheUnderwater() : bool{
+        return true;
+    }
+
     protected function burnsInDaylight() : bool{
         return true;
     }
 
     public function getHeldItem() : ?Item{
         return new Item(ItemIds::BOW);
+    }
+
+    protected function getArrowPotion() : int{
+        return 0;
     }
 
     public function getBehaviors() : array{
@@ -125,9 +133,10 @@ class Skeleton extends Monster{
 
         $arrow = new Arrow($this->world, $from, Projectile::aim($dx, $dy + $flat * 0.2, $dz, 1.6, 14 - $difficulty * 4), $this);
         $arrow->setBaseDamage($power * 2.0 + $difficulty * 0.11 + (mt_rand() / mt_getrandmax() - mt_rand() / mt_getrandmax()) * 0.57425);
+        $arrow->setPotion($this->getArrowPotion());
 
         $packet = LevelSoundEventPacket::create(LevelSoundEvent::BOW, $from->x, $from->y, $from->z);
-        $packet->entityType = EntityIds::SKELETON;
+        $packet->entityType = $this->getNetworkTypeId();
         $this->world->broadcastPacket($from->getFloorX(), $from->getFloorZ(), $packet);
     }
 

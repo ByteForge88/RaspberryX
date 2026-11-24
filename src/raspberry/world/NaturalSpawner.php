@@ -21,13 +21,12 @@ use raspberry\math\Vector3;
 use raspberry\player\GameMode;
 use raspberry\player\Player;
 
-use raspberry\world\biome\BiomeTags;
+use raspberry\world\spawn\SpawnCondition;
+use raspberry\world\spawn\SpawnRules;
 
-use function ceil;
 use function count;
 use function floor;
 use function intdiv;
-use function max;
 use function min;
 use function mt_getrandmax;
 use function mt_rand;
@@ -41,6 +40,8 @@ class NaturalSpawner{
     public const int MONSTER = 0;
     public const int CREATURE = 1;
 
+    private const array POPULATIONS = [self::MONSTER => SpawnRules::MONSTER, self::CREATURE => SpawnRules::ANIMAL];
+
     private const array CAPS = [self::MONSTER => 70, self::CREATURE => 10];
     private const int CAP_CHUNKS = 289;
 
@@ -52,42 +53,17 @@ class NaturalSpawner{
 
     private const int CHUNK_RANGE = 128;
 
-    private const int MAX_CLUSTER = 4;
+    private const int HERD_SPREAD = 5;
 
-    private const array SPAWNS = [
-        self::MONSTER => [
-            [EntityIds::SPIDER, 100, 4, 4],
-            [EntityIds::ZOMBIE, 95, 4, 4],
-            [EntityIds::ZOMBIE_VILLAGER_V2, 5, 1, 1],
-            [EntityIds::SKELETON, 100, 4, 4],
-            [EntityIds::CREEPER, 100, 4, 4],
-            [EntityIds::SLIME, 100, 4, 4],
-            [EntityIds::ENDERMAN, 10, 1, 4],
-            [EntityIds::WITCH, 5, 1, 1]
-        ],
-        self::CREATURE => [
-            [EntityIds::SHEEP, 12, 4, 4],
-            [EntityIds::PIG, 10, 4, 4],
-            [EntityIds::CHICKEN, 10, 4, 4],
-            [EntityIds::COW, 8, 4, 4]
-        ]
-    ];
+    private const int HERD_TRIES = 4;
 
-    private const array SIZES = [
-        EntityIds::SPIDER => [1.4, 0.9],
-        EntityIds::ZOMBIE => [0.6, 1.95],
-        EntityIds::ZOMBIE_VILLAGER_V2 => [0.6, 1.95],
-        EntityIds::SKELETON => [0.6, 1.99],
-        EntityIds::CREEPER => [0.6, 1.7],
-        EntityIds::SLIME => [2.04, 2.04],
-        EntityIds::ENDERMAN => [0.6, 2.9],
-        EntityIds::WITCH => [0.6, 1.95],
-        EntityIds::CAVE_SPIDER => [0.7, 0.5],
-        EntityIds::SHEEP => [0.9, 1.3],
-        EntityIds::PIG => [0.9, 0.9],
-        EntityIds::CHICKEN => [0.4, 0.7],
-        EntityIds::COW => [0.9, 1.4]
-    ];
+    private const int SURFACE_SCAN = 64;
+
+    private const int BABY_CHANCE = 5;
+
+    private const string CHANGE_TO_SKELETON = "change_to_skeleton";
+
+    private const int CHANGE_TO_SKELETON_CHANCE = 20;
 
     private const string NO_SPAWN_ON = '/^minecraft:(bedrock|barrier|\w*glass|\w*leaves(_flowered)?|\w*ice|magma|glowstone|sea_lantern|shroomlight|\w+_froglight|lit_pumpkin|lit_redstone_lamp|beacon)$/D';
 
@@ -95,6 +71,12 @@ class NaturalSpawner{
     'fire|soul_fire|sweet_berry_bush|wither_rose|cactus|powder_snow|magma)$/D';
 
     private const string LIQUID = '/^minecraft:(flowing_)?(water|lava)$|^minecraft:bubble_column$/D';
+
+    private const string WATER = '/^minecraft:(flowing_)?water$|^minecraft:bubble_column$/D';
+
+    private const string LAVA = '/^minecraft:(flowing_)?lava$/D';
+
+    private const string LEAVES = '/^minecraft:\w*leaves(_flowered)?$/D';
 
     private function __construct(){
     }
@@ -144,7 +126,7 @@ class NaturalSpawner{
             return;
         }
 
-        $counts = self::countMobs($world);
+        [$counts, $density] = self::countMobs($world);
         $caps = [];
 
         foreach($categories as $category){
@@ -156,7 +138,7 @@ class NaturalSpawner{
         foreach($chunks as $chunk){
             foreach($categories as $category){
                 if($counts[$category] < $caps[$category]){
-                    $counts[$category] += self::spawnInChunk($world, $chunk, $category, $players);
+                    $counts[$category] += self::spawnInChunk($world, $chunk, $category, $players, $density);
                 }
             }
         }
@@ -178,10 +160,11 @@ class NaturalSpawner{
     }
 
     /**
-     * @return array<int, int>
+     * @return array{array<int, int>, array<string, int>}
      */
     private static function countMobs(World $world) : array{
         $counts = [self::MONSTER => 0, self::CREATURE => 0];
+        $density = [];
 
         foreach($world->getEntities() as $entity){
             if($entity->isClosed() || !$entity instanceof Mob || !$entity->isAlive()){
@@ -193,15 +176,26 @@ class NaturalSpawner{
             }elseif($entity instanceof Animal){
                 ++$counts[self::CREATURE];
             }
+
+            $type = $entity->getNetworkTypeId();
+
+            if(!SpawnRules::hasDensityLimit($type)){
+                continue;
+            }
+
+            $position = $entity->getPosition();
+            $key = $type . "|" . self::getColumn($world, $position->getFloorX(), $position->getFloorY(), $position->getFloorZ());
+            $density[$key] = ($density[$key] ?? 0) + 1;
         }
 
-        return $counts;
+        return [$counts, $density];
     }
 
     /**
      * @param list<Player> $players
+     * @param array<string, int> $density
      */
-    private static function spawnInChunk(World $world, Chunk $chunk, int $category, array $players) : int{
+    private static function spawnInChunk(World $world, Chunk $chunk, int $category, array $players, array &$density) : int{
         $x = $chunk->getX() * 16 + mt_rand(0, 15);
         $z = $chunk->getZ() * 16 + mt_rand(0, 15);
         $top = $world->getLightEngine()->getSkyBottom($x, $z);
@@ -210,74 +204,194 @@ class NaturalSpawner{
             return 0;
         }
 
-        $y = mt_rand(Chunk::MIN_Y, min(Chunk::MAX_Y, $top + 1));
+        $surface = self::getSurface($world, $x, $z, $top);
+        $spawned = self::spawnHerd($world, $category, SpawnCondition::SURFACE, $x, $surface, $z, $players, $density);
 
-        if($y <= Chunk::MIN_Y || BlockCollision::isFullCube($world->getBlock($x, $y, $z))){
-            return 0;
-        }
-
-        $spawn = $world->getSpawnPosition();
-        $spawned = 0;
-
-        for($pack = 0; $pack < 3; ++$pack){
-            $px = $x;
-            $pz = $z;
-            $entry = null;
-            $tries = (int) ceil(mt_rand() / mt_getrandmax() * 4.0);
-
-            for($try = 0; $try < $tries; ++$try){
-                $px += mt_rand(0, 5) - mt_rand(0, 5);
-                $pz += mt_rand(0, 5) - mt_rand(0, 5);
-                $sx = $px + 0.5;
-                $sz = $pz + 0.5;
-
-                $distance = self::nearestDistance($players, $sx, $y, $sz);
-
-                if($distance <= self::MIN_DISTANCE ** 2 || ($spawn->x - $sx) ** 2 + ($spawn->y - $y - 0.5) ** 2 + ($spawn->z - $sz) ** 2 < self::MIN_DISTANCE ** 2 || !$world->isChunkTicking($px >> 4, $pz >> 4)){
-                    continue;
-                }
-
-                if($entry === null){
-                    $entry = self::pick($world, $category, $px, $y, $pz);
-
-                    if($entry === null){
-                        break;
-                    }
-
-                    $tries = $entry[2] + mt_rand(0, $entry[3] - $entry[2]);
-                }
-
-                $type = $entry[0];
-
-                if(!EntityFactory::isRegistered($type)){
-                    break;
-                }
-
-                if(($category === self::MONSTER && $distance > self::DESPAWN_DISTANCE ** 2) || !self::canSpawnAt($world, $type, $category, $px, $y, $pz)){
-                    continue;
-                }
-
-                $mob = EntityFactory::create($type, $world, new Vector3($sx, $y, $sz), mt_rand() / mt_getrandmax() * 360.0);
-
-                if($mob === null){
-                    break;
-                }
-
-                if($mob instanceof Monster){
-                    $mob->setPersistent(false);
-                }elseif($mob instanceof Animal && $spawned > 0 && mt_rand(0, 99) < 5){
-                    $mob->setBaby(true);
-                }
-
-                $mob->onSpawnedNaturally();
-
-                if(++$spawned >= self::MAX_CLUSTER){
-                    return $spawned;
-                }
-            }
+        if($surface > Chunk::MIN_Y + 1){
+            $spawned += self::spawnHerd($world, $category, SpawnCondition::UNDERGROUND, $x, mt_rand(Chunk::MIN_Y + 1, $surface - 1), $z, $players, $density);
         }
 
         return $spawned;
+    }
+
+    private static function getSurface(World $world, int $x, int $z, int $top) : int{
+        $bottom = $top - self::SURFACE_SCAN;
+
+        for($y = $top; $y > Chunk::MIN_Y + 1 && $y > $bottom; --$y){
+            $below = $world->getBlock($x, $y - 1, $z);
+            $name = $below->getName();
+
+            if(BlockCollision::isSolid($below) && preg_match(self::LEAVES, $name) !== 1){
+                return $y;
+            }
+        }
+
+        return $top;
+    }
+
+    private static function getColumn(World $world, int $x, int $y, int $z) : string{
+        $top = $world->getLightEngine()->getSkyBottom($x, $z);
+        return $top !== null && $y >= self::getSurface($world, $x, $z, $top) ? SpawnCondition::SURFACE : SpawnCondition::UNDERGROUND;
+    }
+
+    private static function getMedium(BlockState $block) : string{
+        $name = $block->getName();
+
+        return match(true){
+            preg_match(self::WATER, $name) === 1 => SpawnCondition::UNDERWATER,
+            preg_match(self::LAVA, $name) === 1 => SpawnCondition::LAVA,
+            default => SpawnCondition::AIR
+        };
+    }
+
+    /**
+     * @param list<Player> $players
+     * @param array<string, int> $density
+     */
+    private static function spawnHerd(World $world, int $category, string $place, int $x, int $y, int $z, array $players, array &$density) : int{
+        if($y <= Chunk::MIN_Y || $y + 1 > Chunk::MAX_Y || BlockCollision::isFullCube($world->getBlock($x, $y, $z))){
+            return 0;
+        }
+
+        $condition = self::pick($world, $category, $place, $x, $y, $z, $density);
+
+        if($condition === null){
+            return 0;
+        }
+
+        $herd = $condition->pickHerd();
+        $size = mt_rand($herd["min"], $herd["max"]);
+        $spawn = $world->getSpawnPosition();
+        $spawned = 0;
+
+        for($try = 0; $try < $size * self::HERD_TRIES && $spawned < $size; ++$try){
+            [$px, $py, $pz] = [$x, $y, $z];
+
+            if($try > 0){
+                $px += mt_rand(0, self::HERD_SPREAD) - mt_rand(0, self::HERD_SPREAD);
+                $pz += mt_rand(0, self::HERD_SPREAD) - mt_rand(0, self::HERD_SPREAD);
+
+                if(!$world->isChunkTicking($px >> 4, $pz >> 4)){
+                    continue;
+                }
+
+                if($place === SpawnCondition::SURFACE){
+                    $top = $world->getLightEngine()->getSkyBottom($px, $pz);
+
+                    if($top === null){
+                        continue;
+                    }
+
+                    $py = self::getSurface($world, $px, $pz, $top);
+                }
+            }
+
+            $sx = $px + 0.5;
+            $sz = $pz + 0.5;
+            $distance = self::nearestDistance($players, $sx, $py, $sz);
+
+            if(!$condition->allowsDistance($distance, self::MIN_DISTANCE) || ($spawn->x - $sx) ** 2 + ($spawn->y - $py - 0.5) ** 2 + ($spawn->z - $sz) ** 2 < self::MIN_DISTANCE ** 2){
+                continue;
+            }
+
+            [$type] = $condition->pickType();
+            $type = self::applySpawnEvent($condition, $type, $place);
+
+            if(!EntityFactory::isRegistered($type) || ($category === self::MONSTER && $distance > self::DESPAWN_DISTANCE ** 2) || !self::canSpawnAt($world, $condition, $type, $place, $px, $py, $pz)){
+                continue;
+            }
+
+            $mob = EntityFactory::create($type, $world, new Vector3($sx, $py, $sz), mt_rand() / mt_getrandmax() * 360.0);
+
+            if($mob === null){
+                continue;
+            }
+
+            if($mob instanceof Monster){
+                $mob->setPersistent(false);
+            }elseif($mob instanceof Animal && mt_rand(0, 99) < self::BABY_CHANCE){
+                $mob->setBaby(true);
+            }
+
+            self::applyHerdEvent($mob, $herd, $spawned);
+            $mob->onSpawnedNaturally();
+
+            $key = $type . "|" . $place;
+            $density[$key] = ($density[$key] ?? 0) + 1;
+            ++$spawned;
+        }
+
+        return $spawned;
+    }
+
+    /**
+     * @param array<string, int> $density
+     */
+    private static function pick(World $world, int $category, string $place, int $x, int $y, int $z, array $density) : ?SpawnCondition{
+        $biome = $world->getBiome($x, $y, $z);
+        $below = $world->getBlock($x, $y - 1, $z);
+        $medium = self::getMedium($world->getBlock($x, $y, $z));
+        $difficulty = Server::getInstance()->getDifficulty();
+        $candidates = [];
+        $total = 0;
+
+        foreach(SpawnRules::getPopulation(self::POPULATIONS[$category]) as $condition){
+            if(!$condition->isSupported() || !$condition->allowsPlace($place, $medium) || !EntityFactory::isRegistered($condition->getType())){
+                continue;
+            }
+
+            if(!$condition->allowsDifficulty($difficulty) || !$condition->allowsHeight($y) || !$condition->allowsBiome($biome, $y) || !$condition->allowsGround($below)){
+                continue;
+            }
+
+            $limit = $condition->getDensityLimit($place);
+
+            if(($limit !== null && ($density[$condition->getType() . "|" . $place] ?? 0) >= $limit) || !$condition->allowsBrightness($world, $x, $y, $z) || !$condition->passesRarity()){
+                continue;
+            }
+
+            $candidates[] = $condition;
+            $total += $condition->getWeight();
+        }
+
+        if($total <= 0){
+            return null;
+        }
+
+        $roll = mt_rand(0, $total - 1);
+
+        foreach($candidates as $condition){
+            if(($roll -= $condition->getWeight()) < 0){
+                return $condition;
+            }
+        }
+
+        return null;
+    }
+
+    private static function applySpawnEvent(SpawnCondition $condition, string $type, string $place) : string{
+        if($condition->getEvent() === self::CHANGE_TO_SKELETON && ($place === SpawnCondition::UNDERGROUND || mt_rand(0, 99) < self::CHANGE_TO_SKELETON_CHANCE)){
+            return EntityIds::SKELETON;
+        }
+
+        return $type;
+    }
+
+    /**
+     * @param array{min: int, max: int, event?: string, skip?: int, initial_event?: string, initial_count?: int} $herd
+     */
+    private static function applyHerdEvent(Mob $mob, array $herd, int $index) : void{
+        $event = null;
+
+        if(isset($herd["initial_event"]) && $index < ($herd["initial_count"] ?? 0)){
+            $event = $herd["initial_event"];
+        }elseif(isset($herd["event"]) && $index >= ($herd["skip"] ?? 0)){
+            $event = $herd["event"];
+        }
+
+        if($event === SpawnCondition::ENTITY_BORN){
+            $mob->setBaby(true);
+        }
     }
 
     /**
@@ -294,68 +408,25 @@ class NaturalSpawner{
         return $nearest;
     }
 
-    /**
-     * @return array{string, int, int, int}|null
-     */
-    private static function pick(World $world, int $category, int $x, int $y, int $z) : ?array{
-        $biome = $world->getBiome($x, $y, $z);
-
-        if(!$biome->hasTag($category === self::MONSTER ? BiomeTags::MONSTER : BiomeTags::ANIMAL)){
-            return null;
-        }
-
-        $entries = self::SPAWNS[$category];
-        $total = 0;
-
-        foreach($entries as $entry){
-            $total += $entry[1];
-        }
-
-        $roll = mt_rand(0, $total - 1);
-
-        foreach($entries as $entry){
-            if(($roll -= $entry[1]) < 0){
-                return $entry;
-            }
-        }
-
-        return null;
-    }
-
-    public static function canSpawnAt(World $world, string $type, int $category, int $x, int $y, int $z) : bool{
-        if($y <= Chunk::MIN_Y || $y + 1 > Chunk::MAX_Y || !$world->isChunkLoaded($x >> 4, $z >> 4)){
+    private static function canSpawnAt(World $world, SpawnCondition $condition, string $type, string $column, int $x, int $y, int $z) : bool{
+        if($y <= Chunk::MIN_Y || $y + 1 > Chunk::MAX_Y || !$world->isChunkLoaded($x >> 4, $z >> 4) || !$condition->allowsHeight($y)){
             return false;
         }
 
         $below = $world->getBlock($x, $y - 1, $z);
+        $at = $world->getBlock($x, $y, $z);
+        $medium = self::getMedium($at);
 
-        if(!self::canSpawnOn($below) || !self::canSpawnIn($world->getBlock($x, $y, $z)) || !self::canSpawnIn($world->getBlock($x, $y + 1, $z))){
+        if(!$condition->allowsPlace($column, $medium) || !$condition->allowsGround($below) || !$condition->allowsBrightness($world, $x, $y, $z)){
             return false;
         }
 
-        if($category === self::MONSTER){
-            if(!self::isDarkEnough($world, $x, $y, $z)){
-                return false;
-            }
-        }elseif($below->getName() !== "minecraft:grass_block" || max($world->getSkyLight($x, $y, $z), $world->getBlockLight($x, $y, $z)) <= 8){
+        if($medium === SpawnCondition::AIR && (!self::canSpawnOn($below) || !self::canSpawnIn($at) || !self::canSpawnIn($world->getBlock($x, $y + 1, $z)))){
             return false;
         }
 
         [$width, $height] = self::getSize($type);
-
-        return self::hasRoom($world, $x + 0.5, $y, $z + 0.5, $width, $height);
-    }
-
-    public static function isDarkEnough(World $world, int $x, int $y, int $z) : bool{
-        $sky = $world->getSkyLight($x, $y, $z);
-
-        if($sky > mt_rand(0, 31) || $world->getBlockLight($x, $y, $z) > 0){
-            return false;
-        }
-
-        $darken = $world->getWeather()->isThundering() ? 10 : $world->getSkyDarken();
-
-        return max(0, $sky - $darken) <= mt_rand(0, 7);
+        return self::hasRoom($world, $x + 0.5, $y, $z + 0.5, $width, $height, $medium !== SpawnCondition::AIR);
     }
 
     public static function canSpawnOn(BlockState $block) : bool{
@@ -384,10 +455,10 @@ class NaturalSpawner{
      * @return array{float, float}
      */
     public static function getSize(string $type) : array{
-        return self::SIZES[$type] ?? [0.6, 1.8];
+        return SpawnRules::getSize($type);
     }
 
-    public static function hasRoom(World $world, float $x, float $y, float $z, float $width, float $height) : bool{
+    public static function hasRoom(World $world, float $x, float $y, float $z, float $width, float $height, bool $inLiquid = false) : bool{
         $half = $width / 2;
 
         for($bx = (int) floor($x - $half); $bx <= (int) floor($x + $half - 0.001); ++$bx){
@@ -399,7 +470,7 @@ class NaturalSpawner{
 
                     $block = $world->getBlock($bx, $by, $bz);
 
-                    if(BlockCollision::isSolid($block) || preg_match(self::LIQUID, $block->getName()) === 1){
+                    if(BlockCollision::isSolid($block) || (!$inLiquid && preg_match(self::LIQUID, $block->getName()) === 1)){
                         return false;
                     }
                 }

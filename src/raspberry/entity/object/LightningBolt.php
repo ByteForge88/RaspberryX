@@ -14,6 +14,7 @@ use raspberry\block\growth\Oxidation;
 use raspberry\entity\Living;
 use raspberry\entity\Entity;
 use raspberry\entity\EntityIds;
+use raspberry\entity\animal\Mooshroom;
 use raspberry\entity\damage\DamageSource;
 use raspberry\entity\monster\Creeper;
 
@@ -117,6 +118,11 @@ class LightningBolt extends Entity{
             }
 
             $this->hit[$entity->getId()] = true;
+
+            if($entity instanceof Mooshroom){
+                $entity->strikeByLightning();
+                continue;
+            }
 
             if($entity instanceof Creeper){
                 $entity->setPowered(true);

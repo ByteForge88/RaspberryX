@@ -64,6 +64,8 @@ abstract class Mob extends Living{
     public const int AI_AVOID_WATER = 32;
     public const int AI_BRIGHT = 64;
     public const int AI_CLIMBER = 128;
+    public const int AI_AQUATIC = 256;
+    public const int AI_DAYTIME = 512;
 
     public const int EVENT_FALL = 1;
     public const int EVENT_EAT_START = 2;
@@ -237,7 +239,6 @@ abstract class Mob extends Living{
         $metadata->setShort(EntityMetadata::KEY_AIR_SUPPLY_MAX, self::MAX_AIR);
         $metadata->setInt(EntityMetadata::KEY_VARIANT, 0);
         $metadata->setByte(EntityMetadata::KEY_COLOR_INDEX, 0);
-
         return $metadata;
     }
 
@@ -266,7 +267,6 @@ abstract class Mob extends Living{
         $packet = LevelSoundEventPacket::create($sound, $this->position->x, $this->position->y, $this->position->z);
         $packet->entityType = $this->getNetworkTypeId();
         $packet->babyMob = $this->baby;
-
         $this->world->broadcastPacket($this->position->getFloorX(), $this->position->getFloorZ(), $packet);
     }
 
@@ -440,6 +440,10 @@ abstract class Mob extends Living{
     }
 
     public function getHeldItem() : ?Item{
+        return null;
+    }
+
+    public function getOffhandItem() : ?Item{
         return null;
     }
 
