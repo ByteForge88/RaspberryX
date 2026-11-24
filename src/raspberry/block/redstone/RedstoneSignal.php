@@ -27,6 +27,7 @@ use raspberry\math\Facing;
 use raspberry\world\Chunk;
 use raspberry\world\World;
 
+use function ceil;
 use function count;
 use function floor;
 use function max;
@@ -43,6 +44,8 @@ class RedstoneSignal{
     private const string BUTTON = '/_button$/D';
 
     private const string PRESSURE_PLATE = '/_pressure_plate$/D';
+
+    private const string COPPER_BULB = '/^minecraft:(waxed_)?((exposed|weathered|oxidized)_)?copper_bulb$/D';
 
     private World $world;
 
@@ -296,6 +299,32 @@ class RedstoneSignal{
 
         if($name === BlockIds::COMPOSTER){
             return (int) $block->getProperty(BlockProperties::COMPOSTER_FILL_LEVEL);
+        }
+
+        if($name === BlockIds::CANDLE_CAKE || str_ends_with($name, "_candle_cake")){
+            return 14;
+        }
+
+        if($name === BlockIds::CAULDRON){
+            $level = (int) $block->getProperty(BlockProperties::FILL_LEVEL);
+
+            return match(true){
+                $level === 0 => 0,
+                $block->getProperty(BlockProperties::CAULDRON_LIQUID) === "lava" => 3,
+                default => (int) ceil($level / 2)
+            };
+        }
+
+        if($name === BlockIds::RESPAWN_ANCHOR){
+            return (int) floor((int) $block->getProperty(BlockProperties::RESPAWN_ANCHOR_CHARGE) / 4 * 15);
+        }
+
+        if($name === BlockIds::BEEHIVE || $name === BlockIds::BEE_NEST){
+            return (int) $block->getProperty(BlockProperties::HONEY_LEVEL);
+        }
+
+        if(preg_match(self::COPPER_BULB, $name) === 1){
+            return $block->getProperty(BlockProperties::LIT) === true ? 15 : 0;
         }
 
         if($name === BlockIds::END_PORTAL_FRAME){
