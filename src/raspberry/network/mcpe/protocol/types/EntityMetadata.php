@@ -27,6 +27,7 @@ class EntityMetadata{
     public const int KEY_PADDLE_TIME_RIGHT = 14;
     public const int KEY_EXPERIENCE_VALUE = 15;
     public const int KEY_CUSTOM_DISPLAY = 18;
+    public const int KEY_CARRY_BLOCK_STATE = 23;
     public const int KEY_PLAYER_FLAGS = 26;
     public const int KEY_PLAYER_BED_POSITION = 28;
     public const int KEY_AUX_VALUE_DATA = 36;
@@ -86,6 +87,7 @@ class EntityMetadata{
     public const int FLAG_ALWAYS_SHOW_NAME = 15;
     public const int FLAG_WALL_CLIMBING = 18;
     public const int FLAG_CAN_CLIMB = 19;
+    public const int FLAG_ANGRY = 25;
     public const int FLAG_SHEARED = 31;
     public const int FLAG_BREATHING = 35;
     public const int FLAG_STACKABLE = 37;

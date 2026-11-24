@@ -12,6 +12,7 @@ use raspberry\entity\animal\Sheep;
 use raspberry\entity\monster\Zombie;
 use raspberry\entity\monster\Husk;
 use raspberry\entity\monster\Drowned;
+use raspberry\entity\monster\Enderman;
 use raspberry\entity\monster\Skeleton;
 use raspberry\entity\monster\Stray;
 use raspberry\entity\monster\Creeper;
@@ -63,6 +64,7 @@ class EntityFactory{
             EntityIds::ZOMBIE => fn(World $world, Vector3 $position, float $yaw) : Mob => new Zombie($world, $position, $yaw),
             EntityIds::HUSK => fn(World $world, Vector3 $position, float $yaw) : Mob => new Husk($world, $position, $yaw),
             EntityIds::DROWNED => fn(World $world, Vector3 $position, float $yaw) : Mob => new Drowned($world, $position, $yaw),
+            EntityIds::ENDERMAN => fn(World $world, Vector3 $position, float $yaw) : Mob => new Enderman($world, $position, $yaw),
             EntityIds::SPIDER => fn(World $world, Vector3 $position, float $yaw) : Mob => new Spider($world, $position, $yaw),
             EntityIds::CAVE_SPIDER => fn(World $world, Vector3 $position, float $yaw) : Mob => new CaveSpider($world, $position, $yaw),
             EntityIds::CREEPER => fn(World $world, Vector3 $position, float $yaw) : Mob => new Creeper($world, $position, $yaw),

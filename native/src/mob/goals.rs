@@ -8,7 +8,7 @@ use crate::random::JavaRandom;
 
 use super::blocks::{self, View};
 use super::path::Node;
-use super::{turn, Event, Grid, Info, Mob, Player, AQUATIC, BABY, BRIGHT, DAYTIME, EVENT_ATTACK, EVENT_SHOOT, EVENT_SWELL, EVENT_USE_ITEM, ON_GROUND, EVENT_BRED, EVENT_EAT_BLOCK, EVENT_EAT_START, EVENT_TARGET, IN_LAVA, IN_LOVE, IN_WATER, ON_FIRE, PLAYER_INVISIBLE, PLAYER_NO_TARGET, PLAYER_SNEAKING, PLAYER_SPECTATOR};
+use super::{turn, Event, Grid, Info, Mob, Player, AQUATIC, BABY, BRIGHT, CALM, DAYTIME, EVENT_ATTACK, EVENT_SHOOT, EVENT_SWELL, EVENT_USE_ITEM, ON_GROUND, EVENT_BRED, EVENT_EAT_BLOCK, EVENT_EAT_START, EVENT_TARGET, IN_LAVA, IN_LOVE, IN_WATER, ON_FIRE, PLAYER_INVISIBLE, PLAYER_NO_TARGET, PLAYER_SNEAKING, PLAYER_SPECTATOR};
 
 pub const FLOAT: u8 = 1;
 pub const PANIC: u8 = 2;
@@ -275,6 +275,10 @@ impl Goal {
     }
 
     fn keeps_target(&mut self, mob: &Mob, context: &Context) -> bool {
+        if mob.has(CALM) {
+            return false;
+        }
+
         let Some(target) = context.target(mob.target) else { return false };
         let range = self.params[0] as f64;
 
@@ -431,7 +435,7 @@ impl Goal {
             NEAREST_ATTACKABLE_TARGET => {
                 let interval = self.params[2] as i32;
 
-                if self.params[3] == ONLY_IN_DARK && mob.has(BRIGHT) {
+                if mob.has(CALM) || (self.params[3] == ONLY_IN_DARK && mob.has(BRIGHT)) {
                     return false;
                 }
 
@@ -448,7 +452,7 @@ impl Goal {
                 }
             }
             HURT_BY_TARGET => {
-                if mob.hurt_count as i32 == self.delay || context.target(mob.hurt_by).is_none() {
+                if mob.has(CALM) || mob.hurt_count as i32 == self.delay || context.target(mob.hurt_by).is_none() {
                     return false;
                 }
 

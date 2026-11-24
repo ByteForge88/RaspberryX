@@ -20,7 +20,7 @@ use const PHP_OS_FAMILY;
 class Native{
 
     /** the library has to speak this version of the functions below */
-    public const int ABI_VERSION = 9;
+    public const int ABI_VERSION = 1;
 
     private const string HEADER = <<<'C'
         uint32_t rx_version(void);
@@ -84,7 +84,7 @@ class Native{
         int32_t rx_explode(const uint64_t* chunks, const int32_t* positions, size_t chunk_count, double x, double y, double z, float radius, int64_t seed, const double* boxes, size_t box_count, float* exposures, char** out, size_t* out_length);
         C;
 
-    /** @var (FFI&NativeLibrary)|null */
+    /** @var (FFI&NativeMethods)|null */
     private static ?FFI $ffi = null;
 
     private static ?string $error = "the native library was not loaded";
@@ -125,7 +125,7 @@ class Native{
         }
 
         try{
-            /** @var FFI&NativeLibrary $ffi */
+            /** @var FFI&NativeMethods $ffi */
             $ffi = FFI::cdef(self::HEADER, $path);
             $version = $ffi->rx_version();
         }catch(Throwable $exception){
@@ -134,7 +134,7 @@ class Native{
         }
 
         if($version !== self::ABI_VERSION){
-            self::$error = "$path is version $version but this RaspberryX needs version " . self::ABI_VERSION . ", build it again";
+            self::$error = "$path is version $version but this RaspberryX needs version " . self::ABI_VERSION . ", make sure you download the updated bin!";
             return false;
         }
 
@@ -152,9 +152,9 @@ class Native{
     }
 
     /**
-     * @internal
+     * @return FFI&NativeMethods
+     *@internal
      *
-     * @return FFI&NativeLibrary
      */
     public static function get() : FFI{
         return self::$ffi ?? throw new NativeException("The native library is not available: " . self::$error);
@@ -185,7 +185,7 @@ class Native{
             return 0;
         }
 
-        /** @var FFI&NativeLibrary $ffi */
+        /** @var FFI&NativeMethods $ffi */
         $ffi = self::$ffi;
         $id = $ffi->new("uint64_t");
         $out = $ffi->new("char*");

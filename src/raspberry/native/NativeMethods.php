@@ -60,6 +60,6 @@ use FFI\CData;
  * @method int rx_explode(?CData $chunks, ?CData $positions, int $chunk_count, float $x, float $y, float $z, float $radius, int $seed, ?CData $boxes, int $box_count, ?CData $exposures, ?CData $out, ?CData $out_length)
  */
 
-interface NativeLibrary{
+interface NativeMethods{
 
 }

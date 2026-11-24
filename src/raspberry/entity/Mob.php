@@ -35,6 +35,8 @@ use raspberry\world\World;
 
 use raspberry\event\entity\EntityDeathEvent;
 
+use JsonException;
+
 use function ceil;
 use function crc32;
 use function floor;
@@ -66,6 +68,7 @@ abstract class Mob extends Living{
     public const int AI_CLIMBER = 128;
     public const int AI_AQUATIC = 256;
     public const int AI_DAYTIME = 512;
+    public const int AI_CALM = 1024;
 
     public const int EVENT_FALL = 1;
     public const int EVENT_EAT_START = 2;
@@ -149,7 +152,6 @@ abstract class Mob extends Living{
         return 0;
     }
 
-    /** AI_ flags that are always set for this kind of mob */
     protected function getAiFlags() : int{
         return 0;
     }
@@ -158,7 +160,6 @@ abstract class Mob extends Living{
         return $this->getAiFlags() | ($this->baby ? self::AI_BABY : 0) | ($this->isOnFire() ? self::AI_ON_FIRE : 0);
     }
 
-    /** two mobs of one kind can breed, and babies follow adults of their kind */
     public function getKind() : int{
         return crc32($this->getNetworkTypeId());
     }
@@ -179,7 +180,6 @@ abstract class Mob extends Living{
         return $this->getHeight() * 0.85;
     }
 
-    /** mobs are sent standing on their position, not hanging from their eyes like players */
     public function getNetworkOffset() : float{
         return 0.0;
     }
@@ -270,11 +270,13 @@ abstract class Mob extends Living{
         $this->world->broadcastPacket($this->position->getFloorX(), $this->position->getFloorZ(), $packet);
     }
 
-    /** ticks until the next ambient sound: 8 seconds and up to 16 more */
     protected function nextAmbientDelay() : int{
         return 160 + mt_rand(0, 320);
     }
 
+    /**
+     * @throws JsonException
+     */
     public function tick(int $currentTick) : void{
         if($this->closed){
             return;
@@ -305,6 +307,8 @@ abstract class Mob extends Living{
 
     /**
      * Lava, fire, cactus and the like, the void, and being stuck in a block.
+     *
+     * @throws JsonException
      */
     protected function tickSurroundings() : void{
         if(($this->state & self::STATE_IN_LAVA) !== 0){
@@ -533,7 +537,6 @@ abstract class Mob extends Living{
         ExperienceOrb::award($this->world, $this->position, $event->getXp());
     }
 
-    /** baby animals drop nothing, baby monsters drop like adults */
     protected function dropsLootAsBaby() : bool{
         return false;
     }

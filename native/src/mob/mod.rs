@@ -29,6 +29,7 @@ pub const BRIGHT: u32 = 64;
 pub const CLIMBER: u32 = 128;
 pub const AQUATIC: u32 = 256;
 pub const DAYTIME: u32 = 512;
+pub const CALM: u32 = 1024;
 
 pub const ON_GROUND: u32 = 1;
 pub const IN_WATER: u32 = 2;
