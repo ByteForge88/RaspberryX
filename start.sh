@@ -14,10 +14,12 @@ done
 
 if [ -z "$PHP_BINARY" ]; then
     echo "[ERROR] PHP is missing from $PHP_DIR. Get it from https://github.com/ByteForge88/RaspberryX-PHPBinaries" >&2
-    exit 1
-fi
+        exit 1
+    fi
 
-PHP_ARGS=()
+    export RASPBERRY_PHP_DIR="$(cd "$PHP_DIR" && pwd)"
+
+    PHP_ARGS=()
 
 for ini in "$PHP_DIR/php.ini" "$PHP_DIR/bin/php.ini"; do
     if [ -f "$ini" ]; then
