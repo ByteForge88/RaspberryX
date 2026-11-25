@@ -8,6 +8,7 @@ use raspberry\entity\effect\Effect;
 use raspberry\entity\effect\EffectInstance;
 use raspberry\entity\effect\EffectManager;
 use raspberry\entity\damage\DamageSource;
+use raspberry\entity\monster\Silverfish;
 
 use raspberry\event\entity\EntityCombustEvent;
 use raspberry\event\entity\EntityDamageEvent;
@@ -22,6 +23,7 @@ use function deg2rad;
 use function intdiv;
 use function max;
 use function min;
+use function mt_getrandmax;
 use function mt_rand;
 use function sin;
 use function sqrt;
@@ -37,6 +39,8 @@ abstract class Living extends Entity{
     public const int MAX_AIR = 300;
 
     private const int AIR_REFILL = 4;
+
+    private const float INFESTED_CHANCE = 0.1;
 
     private const float DROWNING_DAMAGE = 2.0;
 
@@ -337,6 +341,7 @@ abstract class Living extends Entity{
         $this->lastDamageSource = $source;
         $this->lastHitFresh = $fresh;
         $this->onHurt($source);
+        $this->releaseInfestation();
 
         if($fresh){
             $this->onDamaged($source);
@@ -497,6 +502,16 @@ abstract class Living extends Entity{
      */
     protected function onDamaged(DamageSource $source) : void{
 
+    }
+
+    private function releaseInfestation() : void{
+        if(!$this->effects->has(Effect::INFESTED) || mt_rand() / mt_getrandmax() > self::INFESTED_CHANCE){
+            return;
+        }
+
+        for($i = mt_rand(1, 2); $i > 0; --$i){
+            new Silverfish($this->world, $this->position->add(0, $this->getHeight() / 2, 0), mt_rand(0, 359));
+        }
     }
 
     protected function onDeath() : void{

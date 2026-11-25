@@ -15,6 +15,8 @@ use raspberry\entity\monster\Drowned;
 use raspberry\entity\monster\Enderman;
 use raspberry\entity\monster\Slime;
 use raspberry\entity\monster\Witch;
+use raspberry\entity\monster\Silverfish;
+use raspberry\entity\monster\Endermite;
 use raspberry\entity\monster\Skeleton;
 use raspberry\entity\monster\Stray;
 use raspberry\entity\monster\Creeper;
@@ -69,6 +71,8 @@ class EntityFactory{
             EntityIds::ENDERMAN => fn(World $world, Vector3 $position, float $yaw) : Mob => new Enderman($world, $position, $yaw),
             EntityIds::SLIME => fn(World $world, Vector3 $position, float $yaw) : Mob => new Slime($world, $position, $yaw),
             EntityIds::WITCH => fn(World $world, Vector3 $position, float $yaw) : Mob => new Witch($world, $position, $yaw),
+            EntityIds::SILVERFISH => fn(World $world, Vector3 $position, float $yaw) : Mob => new Silverfish($world, $position, $yaw),
+            EntityIds::ENDERMITE => fn(World $world, Vector3 $position, float $yaw) : Mob => new Endermite($world, $position, $yaw),
             EntityIds::SPIDER => fn(World $world, Vector3 $position, float $yaw) : Mob => new Spider($world, $position, $yaw),
             EntityIds::CAVE_SPIDER => fn(World $world, Vector3 $position, float $yaw) : Mob => new CaveSpider($world, $position, $yaw),
             EntityIds::CREEPER => fn(World $world, Vector3 $position, float $yaw) : Mob => new Creeper($world, $position, $yaw),

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace raspberry\entity\ai;
 
+use function crc32;
 use function pack;
 
 class Behavior{
@@ -105,6 +106,11 @@ class Behavior{
      * Walks up to its target and hits it once a second. Without $followUnseen it stops chasing
      * when it loses sight of it.
      */
+    public static function nearestAttackableMob(int $priority, string $type, float $range, bool $mustSee = true, int $interval = 10) : self{
+        $kind = crc32($type);
+        return new self(self::NEAREST_ATTACKABLE_TARGET, $priority, $range, $mustSee ? 1.0 : 0.0, (float) $interval, 0.0, (float) ($kind >> 16), (float) ($kind & 0xffff));
+    }
+
     public static function meleeAttack(int $priority, float $speed, bool $followUnseen = false, bool $givesUpInLight = false, float $maxRange = 0.0) : self{
         return new self(self::MELEE_ATTACK, $priority, $speed, $followUnseen ? 1.0 : 0.0, $givesUpInLight ? 1.0 : 0.0, $maxRange);
     }

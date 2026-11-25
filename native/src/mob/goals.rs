@@ -62,6 +62,10 @@ impl Target {
         Target { id: player.id, x: player.x, y: player.y, z: player.z, width: 0.6, height, eye: player.eye, flags: player.flags }
     }
 
+    fn of_mob(info: &Info) -> Self {
+        Target { id: info.id, x: info.x, y: info.y, z: info.z, width: info.width, height: info.height, eye: info.height * 0.85, flags: 0 }
+    }
+
     fn visibility(&self) -> f64 {
         let mut visibility = 1.0;
 
@@ -116,7 +120,45 @@ impl Context<'_> {
     }
 
     fn target(&self, id: u64) -> Option<Target> {
-        self.players.iter().find(|player| player.id == id && player.flags & (PLAYER_SPECTATOR | PLAYER_NO_TARGET) == 0).map(Target::of)
+        if id == 0 {
+            return None;
+        }
+
+        match self.players.iter().find(|player| player.id == id) {
+            Some(player) if player.flags & (PLAYER_SPECTATOR | PLAYER_NO_TARGET) == 0 => Some(Target::of(player)),
+            Some(_) => None,
+            None => self.index.get(&id).map(|&index| Target::of_mob(&self.infos[index])),
+        }
+    }
+
+    fn is_player(&self, id: u64) -> bool {
+        self.players.iter().any(|player| player.id == id)
+    }
+
+    fn nearest_mob(&self, mob: &Mob, kind: u32, range: f64, must_see: bool) -> Option<Target> {
+        let mut best: Option<(f64, Target)> = None;
+
+        self.grid.near(mob.x, mob.z, range, |index| {
+            let other = &self.infos[index];
+
+            if other.id == mob.id || other.kind != kind || (other.y - mob.y).abs() > 4.0 + mob.height {
+                return;
+            }
+
+            let distance = mob.distance_sq(other.x, other.y, other.z);
+
+            if distance > range * range || best.as_ref().is_some_and(|(nearest, _)| *nearest <= distance) {
+                return;
+            }
+
+            let target = Target::of_mob(other);
+
+            if !must_see || self.can_see(mob, &target) {
+                best = Some((distance, target));
+            }
+        });
+
+        best.map(|(_, target)| target)
     }
 
     fn can_see(&self, mob: &Mob, target: &Target) -> bool {
@@ -277,8 +319,12 @@ impl Goal {
         self.kind == NEAREST_ATTACKABLE_TARGET && self.params[3] == IN_WATER_BY_DAY && mob.has(DAYTIME)
     }
 
+    fn target_kind(&self) -> u32 {
+        ((self.params[4] as u32) << 16) | self.params[5] as u32
+    }
+
     fn keeps_target(&mut self, mob: &Mob, context: &Context) -> bool {
-        if mob.has(CALM) {
+        if mob.has(CALM) && context.is_player(mob.target) {
             return false;
         }
 
@@ -438,7 +484,9 @@ impl Goal {
             NEAREST_ATTACKABLE_TARGET => {
                 let interval = self.params[2] as i32;
 
-                if mob.has(CALM) || (self.params[3] == ONLY_IN_DARK && mob.has(BRIGHT)) {
+                let kind = self.target_kind();
+
+                if (kind == 0 && mob.has(CALM)) || (self.params[3] == ONLY_IN_DARK && mob.has(BRIGHT)) {
                     return false;
                 }
 
@@ -446,7 +494,13 @@ impl Goal {
                     return false;
                 }
 
-                match context.nearest_target(mob, self.params[0] as f64, self.params[1] > 0.0, self.wants_in_water(mob)) {
+                let found = if kind == 0 {
+                    context.nearest_target(mob, self.params[0] as f64, self.params[1] > 0.0, self.wants_in_water(mob))
+                } else {
+                    context.nearest_mob(mob, kind, self.params[0] as f64, self.params[1] > 0.0)
+                };
+
+                match found {
                     Some(target) => {
                         self.target = target.id;
                         true
@@ -455,7 +509,7 @@ impl Goal {
                 }
             }
             HURT_BY_TARGET => {
-                if mob.has(CALM) || mob.hurt_count as i32 == self.delay || context.target(mob.hurt_by).is_none() {
+                if (mob.has(CALM) && context.is_player(mob.hurt_by)) || mob.hurt_count as i32 == self.delay || context.target(mob.hurt_by).is_none() {
                     return false;
                 }
 

@@ -10,6 +10,7 @@ use raspberry\block\BlockLoot;
 use raspberry\block\BlockIds;
 use raspberry\block\BlockProperties;
 use raspberry\block\BlockState;
+use raspberry\block\InfestedBlocks;
 use raspberry\block\RedstoneOre;
 use raspberry\block\NoteBlocks;
 use raspberry\block\StairsShape;
@@ -37,6 +38,7 @@ use raspberry\network\mcpe\protocol\types\LevelEvent;
 use raspberry\network\mcpe\protocol\types\LevelSoundEvent;
 
 use raspberry\world\Chunk;
+use raspberry\world\GameRules;
 
 use function intdiv;
 use function max;
@@ -356,6 +358,10 @@ class BlockBreaker{
         }
 
         $drops = $event->getDrops();
+
+        if(InfestedBlocks::isInfested($block) && $held->getEnchantmentLevel(Enchantment::SILK_TOUCH) === 0 && $world->getGameRules()->getBool(GameRules::DO_TILE_DROPS)){
+            InfestedBlocks::release($world, $x, $y, $z);
+        }
 
         foreach($entity?->getDrops($drops) ?? $drops as $drop){
             $world->dropItem(new Vector3($x + 0.5, $y + 0.5, $z + 0.5), $drop);

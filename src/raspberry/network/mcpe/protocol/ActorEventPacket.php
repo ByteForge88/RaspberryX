@@ -16,6 +16,7 @@ class ActorEventPacket implements Packet{
     public const int EAT_GRASS = 10;
     public const int RESPAWN = 18;
     public const int LOVE_PARTICLES = 21;
+    public const int SILVERFISH_MERGE = 27;
     public const int EATING_ITEM = 57;
     public const int BABY_ANIMAL_FEED = 60;
     public const int DEATH_SMOKE_CLOUD = 61;

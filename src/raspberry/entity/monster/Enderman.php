@@ -125,6 +125,7 @@ class Enderman extends Monster{
             Behavior::float(0),
             Behavior::meleeAttack(2, 1.0),
             Behavior::hurtByTarget(3, self::FOLLOW_RANGE),
+            Behavior::nearestAttackableMob(5, EntityIds::ENDERMITE, self::FOLLOW_RANGE),
             Behavior::randomStroll(7, 1.0),
             Behavior::lookAtPlayer(8, 8.0),
             Behavior::randomLookAround(8)

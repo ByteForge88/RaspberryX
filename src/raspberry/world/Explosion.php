@@ -10,6 +10,7 @@ use raspberry\block\BlockBreakInfo;
 use raspberry\block\BlockCollision;
 use raspberry\block\BlockIds;
 use raspberry\block\BlockStateIds;
+use raspberry\block\InfestedBlocks;
 use raspberry\block\TNT;
 
 use raspberry\entity\Entity;
@@ -306,5 +307,9 @@ class Explosion{
         }
 
         $world->setBlock($x, $y, $z, Server::getInstance()->getBlockStateRegistry()->getDefaultState(BlockIds::AIR));
+
+        if(InfestedBlocks::isInfested($block)){
+            InfestedBlocks::release($world, $x, $y, $z);
+        }
     }
 }
