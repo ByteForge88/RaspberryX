@@ -34,6 +34,9 @@
     ],
     "make-plugin": [
       "@php -d phar.readonly=0 build/make-plugin.php"
+    ],
+    "make-release": [
+      "@php build/make-release.php"
     ]
   }
 }

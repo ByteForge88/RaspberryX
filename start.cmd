@@ -17,6 +17,7 @@ for %%F in (
 ) do (
     if not exist "%%~F" (
         echo [ERROR] Missing file: "%%~F"
+        echo Get PHP from https://github.com/ByteForge88/RaspberryX-PHPBinaries and unzip it into bin\php
         popd
         pause
         exit /b 1

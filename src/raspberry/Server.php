@@ -1154,6 +1154,7 @@ class Server{
 
             $this->logger->info($this->language->translate("server.software", ["name" => ServerInfo::NAME, "version" => ServerInfo::VERSION]));
             $this->logger->info($this->language->translate("server.license", ["name" => ServerInfo::NAME, "license" => ServerInfo::LICENSE]));
+            ServerInfo::isDevelopmentBuild();
             $this->logger->info($this->language->translate("server.done", ["time" => sprintf("%.3f", (hrtime(true) - $this->startTime) / 1e9)]));
 
             $this->consoleReader = new ConsoleReader($this->logger, function(string $line) : void{

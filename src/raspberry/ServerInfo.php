@@ -10,7 +10,7 @@ class ServerInfo{
 
     public const string VERSION = "1.0.0-alpha1";
 
-    public const string PLUGIN_API = self::VERSION ?? "1.0.0-ALPHA1";
+    public const string PLUGIN_API = self::VERSION;
 
     public const string LICENSE = "GNU Lesser General Public License v3.0";
 
