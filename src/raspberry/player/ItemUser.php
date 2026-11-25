@@ -11,6 +11,7 @@ use raspberry\entity\effect\EffectInstance;
 use raspberry\entity\object\ThrownPotion;
 use raspberry\entity\projectile\Arrow;
 use raspberry\entity\projectile\Egg;
+use raspberry\entity\projectile\EnderPearl;
 use raspberry\entity\projectile\FishingHook;
 use raspberry\entity\projectile\Projectile;
 use raspberry\entity\projectile\Snowball;
@@ -30,6 +31,7 @@ use raspberry\item\enchantment\Enchantment;
 use raspberry\math\Vector3;
 
 use raspberry\network\mcpe\protocol\LevelSoundEventPacket;
+use raspberry\network\mcpe\protocol\PlayerStartItemCooldownPacket;
 use raspberry\network\mcpe\protocol\types\LevelSoundEvent;
 
 use raspberry\world\Chunk;
@@ -64,6 +66,9 @@ class ItemUser{
     private const int CHORUS_RANGE = 8;
     private const int CHORUS_TRIES = 16;
 
+    private const string PEARL_COOLDOWN = "ender_pearl";
+    private const int PEARL_COOLDOWN_TICKS = 20;
+
     /** suspicious stew meta => effect, ticks */
     private const array STEW_EFFECTS = [
         0 => [Effect::NIGHT_VISION, 100], //poppy
@@ -85,6 +90,9 @@ class ItemUser{
 
     /** @var array{int, string, int, int}|null */
     private ?array $using = null;
+
+    /** @var array<string, int> */
+    private array $cooldowns = [];
 
     public function __construct(Player $player){
         $this->player = $player;
@@ -116,7 +124,7 @@ class ItemUser{
             return;
         }
 
-        if($id === ItemIds::SNOWBALL || $id === ItemIds::EGG){
+        if($id === ItemIds::SNOWBALL || $id === ItemIds::EGG || $id === ItemIds::ENDER_PEARL){
             $this->throwItem($held);
             return;
         }
@@ -287,19 +295,31 @@ class ItemUser{
     }
 
     /**
-     * Snowballs and eggs fly straight where the player looks.
+     * Snowballs, eggs and ender pearls fly straight where the player looks. Pearls wait a
+     * second between throws.
      */
     private function throwItem(Item $held) : void{
         $player = $this->player;
-        $eyes = $player->getEyePosition();
-        $motion = Projectile::aimFromRotation($player->getYaw(), $player->getPitch(), Throwable::VELOCITY, 1.0);
-        $position = new Vector3($eyes->x, $eyes->y - 0.1, $eyes->z);
+        $id = $held->getId();
 
-        if($held->getId() === ItemIds::SNOWBALL){
-            new Snowball($player->getWorld(), $position, $motion, $player);
-        }else{
-            new Egg($player->getWorld(), $position, $motion, $player);
+        if($id === ItemIds::ENDER_PEARL){
+            if($this->isCoolingDown(self::PEARL_COOLDOWN)){
+                $player->getNetworkSession()->resendHeldItem();
+                return;
+            }
+
+            $this->startCooldown(self::PEARL_COOLDOWN, self::PEARL_COOLDOWN_TICKS);
         }
+
+        $eyes = $player->getEyePosition();
+        $position = new Vector3($eyes->x, $eyes->y - 0.1, $eyes->z);
+        $motion = Projectile::aimFromRotation($player->getYaw(), $player->getPitch(), $id === ItemIds::ENDER_PEARL ? EnderPearl::VELOCITY : Throwable::VELOCITY, 1.0);
+
+        match($id){
+            ItemIds::SNOWBALL => new Snowball($player->getWorld(), $position, $motion, $player),
+            ItemIds::ENDER_PEARL => new EnderPearl($player->getWorld(), $position, $motion, $player),
+            default => new Egg($player->getWorld(), $position, $motion, $player)
+        };
 
         $packet = LevelSoundEventPacket::create(LevelSoundEvent::THROW, $eyes->x, $eyes->y, $eyes->z);
         $packet->entityType = "minecraft:player";
@@ -439,6 +459,18 @@ class ItemUser{
                 }
             }
         }
+    }
+
+    /**
+     * Whether items of $category cannot be used yet, a few ticks early since the clocks drift.
+     */
+    private function isCoolingDown(string $category) : bool{
+        return ($this->cooldowns[$category] ?? 0) - self::TICK_TOLERANCE > $this->getTick();
+    }
+
+    private function startCooldown(string $category, int $ticks) : void{
+        $this->cooldowns[$category] = $this->getTick() + $ticks;
+        $this->player->getNetworkSession()->sendDataPacket(PlayerStartItemCooldownPacket::create($category, $ticks));
     }
 
     private function playSound(string $sound) : void{
