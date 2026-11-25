@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace raspberry\item;
 
+use function floor;
 use function preg_match;
 
 class ToolInfo{
@@ -62,6 +63,28 @@ class ToolInfo{
         }
 
         return self::HAND_DAMAGE;
+    }
+
+    /**
+     * The mace's falling attack damage, or null when the fall is too short to smash.
+     */
+    public static function getMaceSmashDamage(float $fallDistance, int $densityLevel = 0) : ?float{
+        if($fallDistance < 1.5){
+            return null;
+        }
+
+        $height = (int) floor($fallDistance);
+        $damage = 0;
+
+        for($i = 0; $i <= $height; ++$i){
+            $damage += match(true){
+                $i < 3 => 4,
+                $i < 8 => 2,
+                default => 1
+            };
+        }
+
+        return $damage + $fallDistance * 0.5 * $densityLevel;
     }
 
     /**

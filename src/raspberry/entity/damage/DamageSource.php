@@ -45,7 +45,9 @@ class DamageSource{
 
     private ?Entity $attacker;
 
-    public function __construct(int $cause, float $amount, ?Entity $attacker = null){
+    private float $armorEffectiveness;
+
+    public function __construct(int $cause, float $amount, ?Entity $attacker = null, float $armorEffectiveness = 1.0){
         if($cause < self::CAUSE_CONTACT || $cause > self::CAUSE_STALAGMITE){
             throw new InvalidArgumentException("Unknown damage cause {$cause}");
         }
@@ -54,9 +56,14 @@ class DamageSource{
             throw new InvalidArgumentException("Damage cannot be negative, got {$amount}");
         }
 
+        if($armorEffectiveness < 0.0 || $armorEffectiveness > 1.0){
+            throw new InvalidArgumentException("Armor effectiveness must be between 0 and 1, got {$armorEffectiveness}");
+        }
+
         $this->cause = $cause;
         $this->amount = $amount;
         $this->attacker = $attacker;
+        $this->armorEffectiveness = $armorEffectiveness;
     }
 
     public function getCause() : int{
@@ -77,6 +84,10 @@ class DamageSource{
 
     public function getAttacker() : ?Entity{
         return $this->attacker;
+    }
+
+    public function getArmorEffectiveness() : float{
+        return $this->armorEffectiveness;
     }
 
     public function bypassesGameMode() : bool{
