@@ -9,6 +9,7 @@ use raspberry\Server;
 use raspberry\block\BlockIds;
 use raspberry\block\BlockState;
 use raspberry\block\BlockSupport;
+use raspberry\block\NetherPortals;
 use raspberry\block\entity\BlockEntity;
 use raspberry\block\entity\BlockEntityFactory;
 use raspberry\block\entity\TickableBlockEntity;
@@ -54,6 +55,7 @@ use raspberry\network\mcpe\protocol\GameRulesChangedPacket;
 use raspberry\network\mcpe\protocol\SpawnParticleEffectPacket;
 
 use Closure;
+use JsonException;
 use InvalidArgumentException;
 
 use function cos;
@@ -128,6 +130,8 @@ class World{
 
     private TickingAreas $tickingAreas;
 
+    private PortalIndex $portals;
+
     /** @var array<string, Chunk> */
     private array $tickingChunks = [];
 
@@ -174,10 +178,15 @@ class World{
         $this->sleeping = new Sleeping($this);
         $this->gameRules = $overworld?->getGameRules() ?? new GameRules($metadata->gameRules);
         $this->tickingAreas = new TickingAreas($metadata);
+        $this->portals = new PortalIndex($metadata);
     }
 
     public function getTickingAreas() : TickingAreas{
         return $this->tickingAreas;
+    }
+
+    public function getPortals() : PortalIndex{
+        return $this->portals;
     }
 
     public function preloadTickingAreas() : void{
@@ -822,6 +831,9 @@ class World{
         return $saved;
     }
 
+    /**
+     * @throws JsonException
+     */
     public function getBiome(int $x, int $y, int $z) : Biome{
         return BiomeRegistry::get($this->loadChunk($x >> 4, $z >> 4)->getBiome($x & 15, $y, $z & 15));
     }
@@ -830,6 +842,9 @@ class World{
         return $this->loadChunk($x >> 4, $z >> 4)->getBlock($x & 15, $y, $z & 15);
     }
 
+    /**
+     * @throws JsonException
+     */
     public function setBlock(int $x, int $y, int $z, BlockState $block) : void{
         $chunk = $this->loadChunk($x >> 4, $z >> 4);
         $oldState = $chunk->getBlock($x & 15, $y, $z & 15);
@@ -855,6 +870,8 @@ class World{
             $this->liquids->onBlockChanged($x, $y, $z);
             $this->blockTicker->onBlockChanged($x, $y, $z, $oldState, $block);
             BlockSupport::onBlockChanged($this, $x, $y, $z, $oldState, $block);
+            $this->portals->onBlockChanged($x, $y, $z, $oldState, $block);
+            NetherPortals::onBlockChanged($this, $x, $y, $z, $oldState, $block);
         }
     }
 
@@ -1000,6 +1017,7 @@ class World{
     /**
      * Ticks block entities, runs scheduled updates and ticks every entity except players (their
      * session ticks them).
+     * @throws JsonException
      */
     public function tick(int $currentTick) : void{
         $this->currentTick = $currentTick;
@@ -1007,14 +1025,14 @@ class World{
 
         if($this->overworld === null){
             ++$this->level->gameTime;
-        }
 
-        if($this->gameRules->getBool(GameRules::DO_DAYLIGHT_CYCLE)){
-            ++$this->level->time;
-        }
+            if($this->gameRules->getBool(GameRules::DO_DAYLIGHT_CYCLE)){
+                ++$this->level->time;
 
-        if($this->level->gameTime % self::TIME_SYNC_TICKS === 0){
-            $this->broadcastToLevel(SetTimePacket::create($this->level->time));
+                if($this->level->gameTime % self::TIME_SYNC_TICKS === 0){
+                    $this->broadcastToLevel(SetTimePacket::create($this->level->time));
+                }
+            }
         }
 
         foreach($this->tickingChunks as $chunk){

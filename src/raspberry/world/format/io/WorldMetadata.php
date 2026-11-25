@@ -56,6 +56,9 @@ class WorldMetadata{
     /** @var list<array<string, mixed>> */
     public array $tickingAreas = [];
 
+    /** @var list<array{int, int, int}> */
+    public array $portals = [];
+
     /**
      * @return array<string, mixed>
      */
@@ -76,7 +79,8 @@ class WorldMetadata{
             "thundering" => $this->thundering,
             "thunderTime" => $this->thunderTime,
             "clearWeatherTime" => $this->clearWeatherTime,
-            "tickingAreas" => $this->tickingAreas
+            "tickingAreas" => $this->tickingAreas,
+            "portals" => $this->portals
         ] + ($this->spawn === null ? [] : ["spawn" => [$this->spawn->x, $this->spawn->y, $this->spawn->z]]);
     }
 
@@ -154,6 +158,18 @@ class WorldMetadata{
                 }
 
                 $metadata->tickingAreas[] = $area;
+            }
+        }
+
+        if(isset($data["portals"])){
+            if(!is_array($data["portals"])){
+                throw new UnexpectedValueException("World metadata 'portals' must be a list");
+            }
+
+            foreach($data["portals"] as $position){
+                if(is_array($position) && count($position) === 3 && is_int($position[0] ?? null) && is_int($position[1] ?? null) && is_int($position[2] ?? null)){
+                    $metadata->portals[] = [$position[0], $position[1], $position[2]];
+                }
             }
         }
 

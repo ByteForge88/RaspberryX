@@ -43,6 +43,7 @@ use raspberry\network\mcpe\protocol\ResourcePackClientResponsePacket;
 use raspberry\network\mcpe\protocol\SetLocalPlayerAsInitializedPacket;
 use raspberry\network\mcpe\protocol\StartGamePacket;
 use raspberry\network\mcpe\protocol\ChangeDimensionPacket;
+use raspberry\network\mcpe\protocol\ServerboundLoadingScreenPacket;
 use raspberry\network\mcpe\protocol\LevelEventPacket;
 use raspberry\network\mcpe\protocol\SetTimePacket;
 use raspberry\network\mcpe\protocol\VoxelShapesPacket;
@@ -194,6 +195,9 @@ class NetworkSession{
     /** chunks being encoded for this client at once */
     private const int CHUNKS_IN_FLIGHT = 16;
 
+    /** how long a dimension change's loading screen can last before the server stops waiting for it (30 seconds) */
+    private const int LOADING_SCREEN_TIMEOUT = 600;
+
     /** ticks to wait after a DisconnectPacket before closing, so the message reaches the client */
     private const int DISCONNECT_DELAY_TICKS = 10;
 
@@ -251,6 +255,9 @@ class NetworkSession{
 
     /** goes up with every dimension change, the client names it when its loading screen ends */
     private int $loadingScreenId = 0;
+
+    /** the server tick the client was sent into another dimension, null once its loading screen is gone */
+    private ?int $changingDimensionSince = null;
 
     /** where the client was teleported to, its movement is ignored until it arrives there */
     private ?Vector3 $pendingTeleport = null;
@@ -447,6 +454,12 @@ class NetworkSession{
             case ProtocolPacketIds::PLAYER_ACTION_PACKET:
                 if($this->state === self::STATE_IN_GAME){
                     $this->handlePlayerAction($this->decode($buffer, PlayerActionPacket::class));
+                }
+                return;
+
+            case ProtocolPacketIds::SERVERBOUND_LOADING_SCREEN_PACKET:
+                if($this->state === self::STATE_IN_GAME){
+                    $this->handleLoadingScreen($this->decode($buffer, ServerboundLoadingScreenPacket::class));
                 }
                 return;
 
@@ -1102,6 +1115,7 @@ class NetworkSession{
 
         $world = $player->getWorld();
         $this->dimension = $world->getDimension();
+        $this->changingDimensionSince = $this->server->getCurrentTick();
         $eyes = $player->getEyePosition();
 
         $status = new PlayStatusPacket();
@@ -1115,6 +1129,24 @@ class NetworkSession{
         ]);
 
         $this->sendWeather($world);
+    }
+
+    private function handleLoadingScreen(ServerboundLoadingScreenPacket $packet) : void{
+        if($packet->type === ServerboundLoadingScreenPacket::TYPE_END && ($packet->loadingScreenId === null || $packet->loadingScreenId === $this->loadingScreenId)){
+            $this->changingDimensionSince = null;
+        }
+    }
+
+    /**
+     * Whether the client still shows the loading screen of a dimension change. It stops counting
+     * after a while in case the client never says it is done.
+     */
+    public function isChangingDimension() : bool{
+        if($this->changingDimensionSince !== null && $this->server->getCurrentTick() - $this->changingDimensionSince > self::LOADING_SCREEN_TIMEOUT){
+            $this->changingDimensionSince = null;
+        }
+
+        return $this->changingDimensionSince !== null;
     }
 
     public function sendWeather(World $world) : void{

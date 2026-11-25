@@ -360,7 +360,7 @@ class Fire implements RandomTickBehavior{
             [$dx, $dy, $dz] = Facing::offset($face);
             [$x, $y, $z] = [$x + $dx, $y + $dy, $z + $dz];
 
-            if(!Nearby::isAir($world, $x, $y, $z) || !self::canSurviveAt($world, $x, $y, $z)){
+            if(!Nearby::isAir($world, $x, $y, $z) || (!self::canSurviveAt($world, $x, $y, $z) && !NetherPortals::wouldLight($world, $x, $y, $z))){
                 return false;
             }
 

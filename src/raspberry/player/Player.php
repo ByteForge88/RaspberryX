@@ -92,6 +92,8 @@ use raspberry\world\World;
 use raspberry\world\Difficulty;
 use raspberry\world\WorldManager;
 
+use JsonException;
+
 use function abs;
 use function array_map;
 use function sin;
@@ -274,6 +276,8 @@ class Player extends Human implements CommandSender{
 
     private ItemUser $itemUser;
 
+    private PortalTravel $portalTravel;
+
     private ?FishingHook $fishingHook = null;
 
     private ?Vehicle $vehicle = null;
@@ -296,6 +300,7 @@ class Player extends Human implements CommandSender{
         $this->blockPlacer = new BlockPlacer($this);
         $this->containerOpener = new ContainerOpener($this);
         $this->itemUser = new ItemUser($this);
+        $this->portalTravel = new PortalTravel($this);
 
         foreach([$this->inventory, $this->armorInventory, $this->offHandInventory, $this->uiInventory] as $inventory){
             $inventory->addListener($this->recipeBook);
@@ -1138,6 +1143,9 @@ class Player extends Human implements CommandSender{
         return $drops;
     }
 
+    /**
+     * @throws JsonException
+     */
     public function tick(int $currentTick) : void{
         if(!$this->spawned || $this->dead){
             return;
@@ -1175,6 +1183,7 @@ class Player extends Human implements CommandSender{
         $this->tickTurtleHelmet();
         $this->tickAir();
         $this->containerOpener->tick();
+        $this->portalTravel->tick();
     }
 
     /**
@@ -1354,7 +1363,6 @@ class Player extends Human implements CommandSender{
 
         $this->swingArm(AnimatePacket::SWING_ATTACK);
         $painting->destroy(!$this->gameMode->hasInstantBuild());
-
         return true;
     }
 
@@ -1397,9 +1405,7 @@ class Player extends Human implements CommandSender{
         $this->exhaust(0.1);
 
         $held = $this->inventory->getItemInHand();
-        $maceSmashDamage = $held->getId() === ItemIds::MACE
-            ? ToolInfo::getMaceSmashDamage($this->fallDistance, $held->getEnchantmentLevel(Enchantment::DENSITY))
-            : null;
+        $maceSmashDamage = $held->getId() === ItemIds::MACE ? ToolInfo::getMaceSmashDamage($this->fallDistance, $held->getEnchantmentLevel(Enchantment::DENSITY)) : null;
         $damage = $maceSmashDamage ?? ToolInfo::getAttackDamage($held->getId());
         $damage += 3.0 * $this->effects->getLevel(Effect::STRENGTH);
         $damage = max(0.0, $damage - 4.0 * $this->effects->getLevel(Effect::WEAKNESS));
@@ -1475,21 +1481,8 @@ class Player extends Human implements CommandSender{
 
         $position = $target->getPosition();
         $world = $target->getWorld();
-        $world->broadcastPacket(
-            $position->getFloorX(),
-            $position->getFloorZ(),
-            LevelEventPacket::create(LevelEvent::PARTICLE_SMASH_ATTACK_GROUND_DUST, $position->x, $position->y, $position->z)
-        );
-        $world->broadcastPacket(
-            $position->getFloorX(),
-            $position->getFloorZ(),
-            LevelSoundEventPacket::create(
-                $damage >= 16.0 ? LevelSoundEvent::MACE_HEAVY_SMASH_GROUND : LevelSoundEvent::MACE_SMASH_GROUND,
-                $position->x,
-                $position->y,
-                $position->z
-            )
-        );
+        $world->broadcastPacket($position->getFloorX(), $position->getFloorZ(), LevelEventPacket::create(LevelEvent::PARTICLE_SMASH_ATTACK_GROUND_DUST, $position->x, $position->y, $position->z));
+        $world->broadcastPacket($position->getFloorX(), $position->getFloorZ(), LevelSoundEventPacket::create($damage >= 16.0 ? LevelSoundEvent::MACE_HEAVY_SMASH_GROUND : LevelSoundEvent::MACE_SMASH_GROUND, $position->x, $position->y, $position->z));
     }
 
     private function applyWindBurst(int $level, float $fallDistance) : void{
@@ -1499,6 +1492,7 @@ class Player extends Human implements CommandSender{
             3 => 1.3,
             default => 0.0
         };
+
         $yaw = deg2rad($this->yaw);
         $forwardBoost = 0.08 + 0.02 * $level;
         $this->setMotion(new Vector3(-sin($yaw) * $forwardBoost, $verticalBoost, cos($yaw) * $forwardBoost));
@@ -1520,11 +1514,7 @@ class Player extends Human implements CommandSender{
 
             $push = 0.6 + 0.15 * $level;
             $motion = $entity->getMotion();
-            $entity->setMotion(new Vector3(
-                $motion->x + $dx / $distance * $push,
-                max($motion->y, 0.4 + 0.1 * $level),
-                $motion->z + $dz / $distance * $push
-            ));
+            $entity->setMotion(new Vector3($motion->x + $dx / $distance * $push, max($motion->y, 0.4 + 0.1 * $level), $motion->z + $dz / $distance * $push));
 
             $entityPosition = $position->add(0, $entity->getEyeHeight() * 0.6, 0);
             $this->world->addParticle($entityPosition->x, $entityPosition->y, $entityPosition->z, ParticleEffect::WIND_EXPLOSION_EMITTER);
@@ -1532,11 +1522,7 @@ class Player extends Human implements CommandSender{
 
         $position = $this->position->add(0, $this->getEyeHeight() * 0.6, 0);
         $this->world->addParticle($position->x, $position->y, $position->z, ParticleEffect::WIND_EXPLOSION_EMITTER);
-        $this->world->broadcastPacket(
-            $this->position->getFloorX(),
-            $this->position->getFloorZ(),
-            LevelSoundEventPacket::create(LevelSoundEvent::MACE_SMASH_AIR, $this->position->x, $this->position->y, $this->position->z)
-        );
+        $this->world->broadcastPacket($this->position->getFloorX(), $this->position->getFloorZ(), LevelSoundEventPacket::create(LevelSoundEvent::MACE_SMASH_AIR, $this->position->x, $this->position->y, $this->position->z));
     }
 
     /**

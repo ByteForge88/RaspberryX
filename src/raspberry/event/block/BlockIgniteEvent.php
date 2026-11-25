@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace raspberry\event\block;
 
 use raspberry\block\BlockState;
+use raspberry\block\Fire;
+use raspberry\block\NetherPortals;
 
 use raspberry\math\Vector3;
 
@@ -12,18 +14,20 @@ use raspberry\player\Player;
 
 use raspberry\world\World;
 
+use JsonException;
+
 /**
  * Fire is about to appear in a block: it spread, lava or lightning lit it, or a player used
  * flint and steel or a fire charge.
  */
 class BlockIgniteEvent extends BlockChangeEvent{
 
-    public const CAUSE_SPREAD = "spread";
-    public const CAUSE_LAVA = "lava";
-    public const CAUSE_LIGHTNING = "lightning";
-    public const CAUSE_FLINT_AND_STEEL = "flint_and_steel";
-    public const CAUSE_FIRE_CHARGE = "fire_charge";
-    public const CAUSE_PLUGIN = "plugin";
+    public const string CAUSE_SPREAD = "spread";
+    public const string CAUSE_LAVA = "lava";
+    public const string CAUSE_LIGHTNING = "lightning";
+    public const string CAUSE_FLINT_AND_STEEL = "flint_and_steel";
+    public const string CAUSE_FIRE_CHARGE = "fire_charge";
+    public const string CAUSE_PLUGIN = "plugin";
 
     private string $cause;
 
@@ -39,22 +43,26 @@ class BlockIgniteEvent extends BlockChangeEvent{
     }
 
     /**
-     * Sets the fire unless a listener cancels it.
+     * Sets the fire unless a listener cancels it. Fire in an empty nether portal frame lights the
+     * portal instead.
+     *
+     * @throws JsonException;
      */
     public static function ignite(World $world, int $x, int $y, int $z, BlockState $fire, string $cause, ?Player $player = null, ?Vector3 $source = null) : bool{
-        if(!self::hasHandlers()){
+        if(self::hasHandlers()){
+            $event = new self($world, $x, $y, $z, $fire, $cause, $player, $source);
+            $event->call();
+
+            if($event->isCancelled()){
+                return false;
+            }
+
+            $fire = $event->getNewState();
+        }
+
+        if(!Fire::isFire($fire) || !NetherPortals::light($world, $x, $y, $z)){
             $world->setBlock($x, $y, $z, $fire);
-            return true;
         }
-
-        $event = new self($world, $x, $y, $z, $fire, $cause, $player, $source);
-        $event->call();
-
-        if($event->isCancelled()){
-            return false;
-        }
-
-        $world->setBlock($x, $y, $z, $event->getNewState());
 
         return true;
     }
