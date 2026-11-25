@@ -258,6 +258,10 @@ class ItemStackRequestHandler{
         $this->checkBound($from);
 
         $fromCreated = $from->containerId === ContainerIds::CREATED_OUTPUT;
+        if($fromCreated){
+            $count = min($count, $this->createdCount);
+        }
+
         $source = $fromCreated ? $this->takeCreated($count) : $this->getItem($from);
         $destination = $this->getItem($to);
 

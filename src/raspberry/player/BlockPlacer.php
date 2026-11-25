@@ -71,15 +71,18 @@ use raspberry\network\mcpe\protocol\types\LevelSoundEvent;
 use raspberry\network\mcpe\protocol\types\inventory\UseItemData;
 
 use raspberry\world\Chunk;
+use raspberry\world\Difficulty;
 
 use function abs;
 use function floor;
 use function mb_check_encoding;
+use function min;
 use function mt_rand;
 use function preg_match;
 use function rtrim;
 use function str_replace;
 use function strlen;
+use function str_ends_with;
 
 class BlockPlacer{
 
@@ -175,7 +178,7 @@ class BlockPlacer{
                 }
             }
 
-            if($this->useBlock($x, $y, $z, $clicked)){
+            if($this->useBlock($x, $y, $z, $clicked, $held)){
                 $player->swingArm(AnimatePacket::SWING_INTERACT);
                 return;
             }
@@ -321,9 +324,43 @@ class BlockPlacer{
     /**
      * Opens and closes doors, trapdoors and fence gates, flips levers and presses buttons.
      */
-    private function useBlock(int $x, int $y, int $z, BlockState $block) : bool{
+    private function useBlock(int $x, int $y, int $z, BlockState $block, Item $held) : bool{
         $name = $block->getName();
         $entity = $this->player->getWorld()->getBlockEntity($x, $y, $z);
+
+        if($name === BlockIds::CAKE){
+            $cakeName = $this->getCandleCakeName($held->getId());
+
+            if($cakeName !== null && $block->getProperty(BlockProperties::BITE_COUNTER) === 0){
+                $world = $this->player->getWorld();
+                $registry = $this->player->getNetworkSession()->getServer()->getBlockStateRegistry();
+                $world->setBlock($x, $y, $z, $registry->getDefaultState($cakeName));
+                $this->playSound(LevelSoundEvent::CAKE_ADD_CANDLE, $x, $y, $z, $world->getBlock($x, $y, $z));
+                $this->useUpHeld($held);
+                return true;
+            }
+
+            return $this->eatCake($x, $y, $z, $block);
+        }
+
+        if($name === BlockIds::CANDLE_CAKE || str_ends_with($name, "_candle_cake")){
+            if($block->getProperty(BlockProperties::LIT) === true){
+                $world = $this->player->getWorld();
+                $world->setBlock($x, $y, $z, $block->withProperty(BlockProperties::LIT, false));
+                $this->playSound(LevelSoundEvent::EXTINGUISH_CANDLE, $x, $y, $z, $world->getBlock($x, $y, $z));
+                return true;
+            }
+
+            if(!$this->canEat()){
+                return false;
+            }
+
+            $world = $this->player->getWorld();
+            $cake = $this->player->getNetworkSession()->getServer()->getBlockStateRegistry()->getDefaultState(BlockIds::CAKE);
+            $world->setBlock($x, $y, $z, $cake);
+            $world->dropItem(new Vector3($x + 0.5, $y + 0.5, $z + 0.5), new Item($this->getCandleId($name)));
+            return $this->eatCake($x, $y, $z, $cake);
+        }
 
         if($entity instanceof Sign){
             $this->useSign($entity, $block);
@@ -459,6 +496,55 @@ class BlockPlacer{
         }
 
         return false;
+    }
+
+    private function getCandleCakeName(string $itemId) : ?string{
+        if($itemId === ItemIds::CANDLE){
+            return BlockIds::CANDLE_CAKE;
+        }
+
+        if(preg_match('/^minecraft:\w+_candle$/D', $itemId) === 1){
+            $cakeName = str_replace("_candle", "_candle_cake", $itemId);
+            $registry = $this->player->getNetworkSession()->getServer()->getBlockStateRegistry();
+            return $registry->isRegistered($cakeName) ? $cakeName : null;
+        }
+
+        return null;
+    }
+
+    private function getCandleId(string $cakeName) : string{
+        if($cakeName === BlockIds::CANDLE_CAKE){
+            return ItemIds::CANDLE;
+        }
+
+        return str_replace("_candle_cake", "_candle", $cakeName);
+    }
+
+    private function canEat() : bool{
+        $player = $this->player;
+        return $player->getFood() < Player::MAX_FOOD
+            || $player->getGameMode()->hasInstantBuild()
+            || $player->getNetworkSession()->getServer()->getDifficulty() === Difficulty::PEACEFUL;
+    }
+
+    private function eatCake(int $x, int $y, int $z, BlockState $cake) : bool{
+        if(!$this->canEat()){
+            return false;
+        }
+
+        $bite = (int) $cake->getProperty(BlockProperties::BITE_COUNTER);
+
+        if($bite >= 6){
+            $this->player->getWorld()->setBlock($x, $y, $z, $this->player->getNetworkSession()->getServer()->getBlockStateRegistry()->getDefaultState(BlockIds::AIR));
+        }else{
+            $this->player->getWorld()->setBlock($x, $y, $z, $cake->withProperty(BlockProperties::BITE_COUNTER, $bite + 1));
+        }
+
+        $player = $this->player;
+        $player->setFood(min($player->getFood() + 2, Player::MAX_FOOD));
+        $player->setSaturation(min($player->getSaturation() + 0.4, (float) $player->getFood()));
+        $this->playSound(LevelSoundEvent::BURP, $x, $y, $z, null);
+        return true;
     }
 
     /**
