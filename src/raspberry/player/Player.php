@@ -78,6 +78,7 @@ use raspberry\network\mcpe\protocol\TextPacket;
 use raspberry\network\mcpe\protocol\ToastRequestPacket;
 use raspberry\network\mcpe\protocol\types\LevelEvent;
 use raspberry\network\mcpe\protocol\types\LevelSoundEvent;
+use raspberry\network\mcpe\protocol\types\ParticleEffect;
 
 use raspberry\permission\PermissionLevel;
 use raspberry\permission\PermissibleTrait;
@@ -1396,10 +1397,13 @@ class Player extends Human implements CommandSender{
         $this->exhaust(0.1);
 
         $held = $this->inventory->getItemInHand();
-        $damage = ToolInfo::getAttackDamage($held->getId());
+        $maceSmashDamage = $held->getId() === ItemIds::MACE
+            ? ToolInfo::getMaceSmashDamage($this->fallDistance, $held->getEnchantmentLevel(Enchantment::DENSITY))
+            : null;
+        $damage = $maceSmashDamage ?? ToolInfo::getAttackDamage($held->getId());
         $damage += 3.0 * $this->effects->getLevel(Effect::STRENGTH);
         $damage = max(0.0, $damage - 4.0 * $this->effects->getLevel(Effect::WEAKNESS));
-        $critical = $this->isCriticalHit();
+        $critical = $maceSmashDamage === null && $this->isCriticalHit();
 
         if($critical){
             $damage *= self::CRITICAL_MULTIPLIER;
@@ -1409,9 +1413,24 @@ class Player extends Human implements CommandSender{
         $damage += $bonus;
         $position = $target->getPosition();
 
-        if(!$target->damage(new DamageSource(DamageSource::CAUSE_ENTITY_ATTACK, $damage, $this))){
+        $breachLevel = $held->getEnchantmentLevel(Enchantment::BREACH);
+        $armorEffectiveness = max(0.0, 1.0 - 0.15 * $breachLevel);
+
+        if(!$target->damage(new DamageSource(DamageSource::CAUSE_ENTITY_ATTACK, $damage, $this, $armorEffectiveness))){
             $this->broadcastNear($target, LevelSoundEventPacket::create(LevelSoundEvent::ATTACK_NODAMAGE, $position->x, $position->y, $position->z));
             return false;
+        }
+
+        if($maceSmashDamage !== null){
+            $fallDistance = $this->fallDistance;
+            $this->fallDistance = 0.0;
+            $this->playMaceSmash($target, $damage);
+
+            $windBurstLevel = $held->getEnchantmentLevel(Enchantment::WIND_BURST);
+
+            if($windBurstLevel > 0){
+                $this->applyWindBurst($windBurstLevel, $fallDistance);
+            }
         }
 
         if($target->wasLastHitFresh()){
@@ -1447,6 +1466,77 @@ class Player extends Human implements CommandSender{
         }
 
         return true;
+    }
+
+    private function playMaceSmash(Living $target, float $damage) : void{
+        if($damage < 7.0){
+            return;
+        }
+
+        $position = $target->getPosition();
+        $world = $target->getWorld();
+        $world->broadcastPacket(
+            $position->getFloorX(),
+            $position->getFloorZ(),
+            LevelEventPacket::create(LevelEvent::PARTICLE_SMASH_ATTACK_GROUND_DUST, $position->x, $position->y, $position->z)
+        );
+        $world->broadcastPacket(
+            $position->getFloorX(),
+            $position->getFloorZ(),
+            LevelSoundEventPacket::create(
+                $damage >= 16.0 ? LevelSoundEvent::MACE_HEAVY_SMASH_GROUND : LevelSoundEvent::MACE_SMASH_GROUND,
+                $position->x,
+                $position->y,
+                $position->z
+            )
+        );
+    }
+
+    private function applyWindBurst(int $level, float $fallDistance) : void{
+        $clampedHeight = min($fallDistance, 7.5);
+        $verticalBoost = 0.72 + $clampedHeight * 0.10 + match($level){
+            2 => 0.55,
+            3 => 1.3,
+            default => 0.0
+        };
+        $yaw = deg2rad($this->yaw);
+        $forwardBoost = 0.08 + 0.02 * $level;
+        $this->setMotion(new Vector3(-sin($yaw) * $forwardBoost, $verticalBoost, cos($yaw) * $forwardBoost));
+
+        foreach($this->world->getEntities() as $entity){
+            if(!($entity instanceof Living) || $entity === $this || $entity->isClosed()){
+                continue;
+            }
+
+            $position = $entity->getPosition();
+            $dx = $position->x - $this->position->x;
+            $dy = $position->y - $this->position->y;
+            $dz = $position->z - $this->position->z;
+            $distance = sqrt($dx * $dx + $dy * $dy + $dz * $dz);
+
+            if($distance <= 0.0 || $distance > 2.5){
+                continue;
+            }
+
+            $push = 0.6 + 0.15 * $level;
+            $motion = $entity->getMotion();
+            $entity->setMotion(new Vector3(
+                $motion->x + $dx / $distance * $push,
+                max($motion->y, 0.4 + 0.1 * $level),
+                $motion->z + $dz / $distance * $push
+            ));
+
+            $entityPosition = $position->add(0, $entity->getEyeHeight() * 0.6, 0);
+            $this->world->addParticle($entityPosition->x, $entityPosition->y, $entityPosition->z, ParticleEffect::WIND_EXPLOSION_EMITTER);
+        }
+
+        $position = $this->position->add(0, $this->getEyeHeight() * 0.6, 0);
+        $this->world->addParticle($position->x, $position->y, $position->z, ParticleEffect::WIND_EXPLOSION_EMITTER);
+        $this->world->broadcastPacket(
+            $this->position->getFloorX(),
+            $this->position->getFloorZ(),
+            LevelSoundEventPacket::create(LevelSoundEvent::MACE_SMASH_AIR, $this->position->x, $this->position->y, $this->position->z)
+        );
     }
 
     /**

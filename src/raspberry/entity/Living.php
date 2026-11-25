@@ -428,7 +428,7 @@ abstract class Living extends Entity{
 
             if($defense > 0){
                 $points = max($defense / 5, $defense - 4 * $amount / ($toughness + 8));
-                $amount *= 1 - min(20.0, $points) / 25;
+                $amount *= 1 - min(20.0, $points) / 25 * $source->getArmorEffectiveness();
             }
         }
 
@@ -441,7 +441,7 @@ abstract class Living extends Entity{
         $protection = min(20, $this->getProtectionPoints($source));
 
         if($protection > 0){
-            $amount *= 1 - $protection / 25;
+            $amount *= 1 - $protection / 25 * $source->getArmorEffectiveness();
         }
 
         return max(0.0, $amount);
