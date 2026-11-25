@@ -327,7 +327,7 @@ class Chunk{
      *
      * @param Closure(string) : void $onDone
      */
-    public function encode(int $threshold, Closure $onDone) : void{
+    public function encode(int $threshold, Dimension $dimension, Closure $onDone) : void{
         $nbt = NbtSerializer::network();
         $extra = "";
 
@@ -335,7 +335,7 @@ class Chunk{
             $extra .= $nbt->write($entity->getSpawnData());
         }
 
-        $id = $this->ffi->rx_chunk_encode($this->handle, $this->x, $this->z, $this->revision, $extra, strlen($extra), $threshold);
+        $id = $this->ffi->rx_chunk_encode($this->handle, $this->x, $this->z, $this->revision, $extra, strlen($extra), $threshold, $dimension->value);
 
         if($id === 0){
             throw new LogicException("The native chunk is gone");

@@ -31,7 +31,7 @@ use FFI\CData;
  * @method int rx_light_sky_bottom(int $world, int $x, int $z)
  * @method int rx_chunk_export(int $chunk, ?CData $out, ?CData $out_length)
  * @method int rx_chunk_import(int $chunk, string|CData|null $data, int $length)
- * @method int rx_chunk_encode(int $chunk, int $chunk_x, int $chunk_z, int $revision, string|CData|null $extra, int $extra_length, int $threshold)
+ * @method int rx_chunk_encode(int $chunk, int $chunk_x, int $chunk_z, int $revision, string|CData|null $extra, int $extra_length, int $threshold, int $dimension)
  * @method int rx_chunk_copy(int $from, int $to)
  * @method void rx_generator_states(?CData $out, ?CData $out_length)
  * @method int rx_old_generate(int $seed, ?CData $states, int $count)

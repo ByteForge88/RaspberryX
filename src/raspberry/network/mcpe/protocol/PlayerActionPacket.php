@@ -14,6 +14,7 @@ class PlayerActionPacket implements Packet{
     public const int ACTION_START_SLEEPING = 5;
     public const int ACTION_STOP_SLEEPING = 6;
     public const int ACTION_RESPAWN = 7;
+    public const int ACTION_DIMENSION_CHANGE_DONE = 14;
 
     public int $actorRuntimeId = 0;
 
@@ -29,12 +30,27 @@ class PlayerActionPacket implements Packet{
 
     public int $face = 0;
 
+    public static function create(int $actorRuntimeId, int $action) : self{
+        $packet = new self();
+        $packet->actorRuntimeId = $actorRuntimeId;
+        $packet->action = $action;
+        return $packet;
+    }
+
     public static function getPacketId() : int{
         return ProtocolPacketIds::PLAYER_ACTION_PACKET;
     }
 
     public function encodePayload(BinaryWriter $writer) : void{
-        throw new UnexpectedValueException("PlayerActionPacket is only sent by the client");
+        $writer->writeUnsignedVarLong($this->actorRuntimeId);
+        $writer->writeVarInt($this->action);
+        $writer->writeVarInt($this->x);
+        $writer->writeVarInt($this->y);
+        $writer->writeVarInt($this->z);
+        $writer->writeVarInt($this->resultX);
+        $writer->writeVarInt($this->resultY);
+        $writer->writeVarInt($this->resultZ);
+        $writer->writeVarInt($this->face);
     }
 
     public function decodePayload(BinaryReader $reader) : void{

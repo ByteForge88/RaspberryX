@@ -152,7 +152,7 @@ abstract class Projectile extends Entity{
             return;
         }
 
-        if(++$this->age >= self::MAX_AGE || $this->position->y < Chunk::MIN_Y - self::VOID_DEPTH){
+        if(++$this->age >= self::MAX_AGE || $this->position->y < $this->world->getMinY() - self::VOID_DEPTH){
             $this->close();
             return;
         }

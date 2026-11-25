@@ -70,8 +70,6 @@ use raspberry\network\mcpe\protocol\LevelSoundEventPacket;
 use raspberry\network\mcpe\protocol\types\LevelSoundEvent;
 use raspberry\network\mcpe\protocol\types\inventory\UseItemData;
 
-use raspberry\world\Chunk;
-
 use function abs;
 use function floor;
 use function mb_check_encoding;
@@ -1075,7 +1073,8 @@ class BlockPlacer{
     }
 
     private function isLoaded(int $x, int $y, int $z) : bool{
-        return $y >= Chunk::MIN_Y && $y <= Chunk::MAX_Y && $this->player->getWorld()->isChunkLoaded($x >> 4, $z >> 4);
+        $world = $this->player->getWorld();
+        return $y >= $world->getMinY() && $y <= $world->getMaxY() && $world->isChunkLoaded($x >> 4, $z >> 4);
     }
 
     private function getBlockOrAir(int $x, int $y, int $z) : BlockState{

@@ -279,7 +279,7 @@ pub unsafe extern "C" fn rx_chunk_import(handle: u64, data: *const u8, length: u
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn rx_chunk_encode(handle: u64, chunk_x: i32, chunk_z: i32, revision: u64, extra: *const u8, extra_length: usize, threshold: i32) -> u64 {
+pub unsafe extern "C" fn rx_chunk_encode(handle: u64, chunk_x: i32, chunk_z: i32, revision: u64, extra: *const u8, extra_length: usize, threshold: i32, dimension: i32) -> u64 {
     let extra = slice(extra, extra_length).to_vec();
 
     let snapshot = with_chunk(handle, None, |entry| {
@@ -301,7 +301,7 @@ pub unsafe extern "C" fn rx_chunk_encode(handle: u64, chunk_x: i32, chunk_z: i32
         }
         Some(Ok(chunk)) => {
             pool::spawn(move || {
-                let batch = Arc::new(encode::level_chunk_batch(chunk_x, chunk_z, &encode::chunk_payload(&chunk, &extra), threshold));
+                let batch = Arc::new(encode::level_chunk_batch(chunk_x, chunk_z, dimension, &encode::chunk_payload(&chunk, dimension, &extra), threshold));
 
                 with_chunk(handle, (), |entry| {
                     if entry.chunk.version == chunk.version {

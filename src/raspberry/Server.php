@@ -96,6 +96,7 @@ use raspberry\network\mcpe\protocol\PlayerToggleCrafterSlotRequestPacket;
 use raspberry\network\mcpe\protocol\SetTimePacket;
 use raspberry\network\mcpe\protocol\GameRulesChangedPacket;
 use raspberry\network\mcpe\protocol\PlayerStartItemCooldownPacket;
+use raspberry\network\mcpe\protocol\ChangeDimensionPacket;
 use raspberry\network\nethernet\NetherNetIdentity;
 use raspberry\network\nethernet\NetherNetTransport;
 
@@ -932,7 +933,8 @@ class Server{
             SetActorMotionPacket::class,
             SetTimePacket::class,
             GameRulesChangedPacket::class,
-            PlayerStartItemCooldownPacket::class
+            PlayerStartItemCooldownPacket::class,
+            ChangeDimensionPacket::class
         ] as $packet){
             $this->packetRegistry->register($packet);
         }

@@ -11,6 +11,9 @@ const BIOME_SAME_AS_PREVIOUS: u8 = 0xff;
 
 const LEVEL_CHUNK_PACKET: u32 = 0x3a;
 
+const DIMENSION_NETHER: i32 = 1;
+const DIMENSION_END: i32 = 2;
+
 const COMPRESSION_DEFLATE: u8 = 0x00;
 const COMPRESSION_NONE: u8 = 0xff;
 const DEFLATE_LEVEL: u8 = 6;
@@ -105,13 +108,24 @@ fn write_storage(writer: &mut Writer, palette: &[u32], offsets: Option<&[u16]>) 
     }
 }
 
-pub fn chunk_payload(chunk: &Chunk, extra: &[u8]) -> Vec<u8> {
-    let mut writer = Writer::with_capacity(16 * 1024 + extra.len());
+pub fn dimension_subchunks(dimension: i32) -> (i32, usize) {
+    match dimension {
+        DIMENSION_NETHER => (0, 8),
+        DIMENSION_END => (0, 16),
+        _ => (crate::chunk::MIN_SUBCHUNK, crate::chunk::SUBCHUNKS),
+    }
+}
 
-    for (index, subchunk) in chunk.subchunks.iter().enumerate() {
+pub fn chunk_payload(chunk: &Chunk, dimension: i32, extra: &[u8]) -> Vec<u8> {
+    let mut writer = Writer::with_capacity(16 * 1024 + extra.len());
+    let (first, count) = dimension_subchunks(dimension);
+    let start = (first - crate::chunk::MIN_SUBCHUNK) as usize;
+    let subchunks = &chunk.subchunks[start..start + count];
+
+    for (index, subchunk) in subchunks.iter().enumerate() {
         writer.byte(SUBCHUNK_VERSION);
         writer.byte(subchunk.layers.len() as u8);
-        writer.byte((index as i32 + crate::chunk::MIN_SUBCHUNK) as u8);
+        writer.byte((index as i32 + first) as u8);
 
         for layer in &subchunk.layers {
             let (palette, offsets) = compact(layer);
@@ -121,7 +135,7 @@ pub fn chunk_payload(chunk: &Chunk, extra: &[u8]) -> Vec<u8> {
 
     let mut previous: Option<u32> = None;
 
-    for subchunk in &chunk.subchunks {
+    for subchunk in subchunks {
         let (palette, offsets) = compact(&subchunk.biomes);
         let uniform = offsets.is_none().then_some(palette[0]);
 
@@ -140,13 +154,13 @@ pub fn chunk_payload(chunk: &Chunk, extra: &[u8]) -> Vec<u8> {
     writer.data
 }
 
-pub fn level_chunk_batch(chunk_x: i32, chunk_z: i32, payload: &[u8], threshold: i32) -> Vec<u8> {
+pub fn level_chunk_batch(chunk_x: i32, chunk_z: i32, dimension: i32, payload: &[u8], threshold: i32) -> Vec<u8> {
     let mut packet = Writer::with_capacity(payload.len() + 32);
     packet.var_uint(LEVEL_CHUNK_PACKET);
     packet.var_int(chunk_x);
     packet.var_int(chunk_z);
-    packet.var_int(0); //overworld
-    packet.var_uint(crate::chunk::SUBCHUNKS as u32);
+    packet.var_int(dimension);
+    packet.var_uint(dimension_subchunks(dimension).1 as u32);
     packet.byte(0); //no blob cache
     packet.byte(0);
     packet.var_uint(0);

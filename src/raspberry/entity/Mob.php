@@ -337,7 +337,7 @@ abstract class Mob extends Living{
             }
         }
 
-        if($this->position->y < Chunk::MIN_Y - 64){
+        if($this->position->y < $this->world->getMinY() - 64){
             $this->damage(new DamageSource(DamageSource::CAUSE_VOID, 4.0));
         }
 

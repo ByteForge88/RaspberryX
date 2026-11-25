@@ -162,7 +162,7 @@ class ItemEntity extends Entity{
             return;
         }
 
-        if(++$this->age >= self::DESPAWN_TICKS || $this->position->y < Chunk::MIN_Y - self::VOID_DEPTH){
+        if(++$this->age >= self::DESPAWN_TICKS || $this->position->y < $this->world->getMinY() - self::VOID_DEPTH){
             $this->close();
             return;
         }

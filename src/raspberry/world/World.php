@@ -97,6 +97,12 @@ class World{
 
     private WorldMetadata $metadata;
 
+    private WorldMetadata $level;
+
+    private Dimension $dimension;
+
+    private ?World $overworld;
+
     private Generator $generator;
 
     private WorldProvider $provider;
@@ -151,8 +157,11 @@ class World{
 
     private GameRules $gameRules;
 
-    public function __construct(WorldMetadata $metadata, Generator $generator, WorldProvider $provider){
+    public function __construct(WorldMetadata $metadata, Generator $generator, WorldProvider $provider, Dimension $dimension = Dimension::OVERWORLD, ?World $overworld = null){
         $this->metadata = $metadata;
+        $this->level = $overworld?->getMetadata() ?? $metadata;
+        $this->dimension = $dimension;
+        $this->overworld = $overworld;
         $this->generator = $generator;
         $this->provider = $provider;
         $this->redstoneUpdater = new RedstoneUpdater($this);
@@ -160,10 +169,10 @@ class World{
         $this->light = new LightEngine();
         $this->randomTicker = new RandomTicker($this);
         $this->liquids = new LiquidEngine($this);
-        $this->weather = new Weather($this, $metadata);
+        $this->weather = $overworld?->getWeather() ?? new Weather($this, $metadata);
         $this->blockTicker = new BlockTicker($this);
         $this->sleeping = new Sleeping($this);
-        $this->gameRules = new GameRules($metadata->gameRules);
+        $this->gameRules = $overworld?->getGameRules() ?? new GameRules($metadata->gameRules);
         $this->tickingAreas = new TickingAreas($metadata);
     }
 
@@ -312,12 +321,11 @@ class World{
             return false;
         }
 
-        $this->metadata->gameRules = $this->gameRules->toArray();
-        $this->broadcastToPlayers(GameRulesChangedPacket::create([$name => $value]));
+        $this->level->gameRules = $this->gameRules->toArray();
+        $this->broadcastToLevel(GameRulesChangedPacket::create([$name => $value]));
 
-        //a stopped clock is stopped where the server has it
         if($name === GameRules::DO_DAYLIGHT_CYCLE){
-            $this->broadcastToPlayers(SetTimePacket::create($this->metadata->time));
+            $this->broadcastToLevel(SetTimePacket::create($this->level->time));
         }
 
         return true;
@@ -327,27 +335,35 @@ class World{
      * The world clock in ticks. The time of day is this modulo DAY_LENGTH.
      */
     public function getTime() : int{
-        return $this->metadata->time;
+        return $this->level->time;
     }
 
     public function setTime(int $time) : void{
-        $this->metadata->time = max(0, $time);
-        $this->broadcastToPlayers(SetTimePacket::create($this->metadata->time));
+        $this->level->time = max(0, $time);
+        $this->broadcastToLevel(SetTimePacket::create($this->level->time));
     }
 
     /** 0 to 23999: 0 is sunrise's end, 6000 noon, 18000 midnight */
     public function getTimeOfDay() : int{
-        return $this->metadata->time % self::DAY_LENGTH;
+        return $this->level->time % self::DAY_LENGTH;
+    }
+
+    /**
+     * The time of day the sky shows: the clock in the overworld, always midnight in the nether
+     * and noon in the end.
+     */
+    public function getSkyTimeOfDay() : int{
+        return $this->dimension->getFixedTime() ?? $this->getTimeOfDay();
     }
 
     /** how many days have gone by */
     public function getDay() : int{
-        return intdiv($this->metadata->time, self::DAY_LENGTH);
+        return intdiv($this->level->time, self::DAY_LENGTH);
     }
 
     /** ticks the world has run, which /time does not change */
     public function getGameTime() : int{
-        return $this->metadata->gameTime;
+        return $this->level->gameTime;
     }
 
     /** 0 is a full moon, 4 a new moon */
@@ -360,7 +376,7 @@ class World{
      * around sunrise and sunset, the way the client draws it.
      */
     public function getCelestialAngle() : float{
-        $part = fmod($this->getTimeOfDay() / self::DAY_LENGTH - 0.25, 1.0);
+        $part = fmod($this->getSkyTimeOfDay() / self::DAY_LENGTH - 0.25, 1.0);
 
         if($part < 0){
             ++$part;
@@ -380,7 +396,7 @@ class World{
     public function getSkyDarken(bool $weather = true) : int{
         $brightness = 0.5 + 2.0 * max(-0.25, min(0.25, cos($this->getSunAngle())));
 
-        if($weather){
+        if($weather && $this->dimension->hasWeather()){
             $brightness *= 1.0 - $this->weather->getRainLevel() * 5.0 / 16.0;
             $brightness *= 1.0 - $this->weather->getThunderLevel() * 5.0 / 16.0;
         }
@@ -398,7 +414,7 @@ class World{
 
     /** whether rain falls on the block, see Weather::isRainingAt() */
     public function isRainingAt(int $x, int $y, int $z) : bool{
-        return $this->weather->isRainingAt($x, $y, $z);
+        return $this->dimension->hasWeather() && $this->weather->isRainingAt($x, $y, $z);
     }
 
     /** true from sunrise to sunset, when the sky is bright enough to burn the undead */
@@ -410,6 +426,41 @@ class World{
         foreach($this->players as $player){
             $player->getNetworkSession()->sendDataPacket($packet);
         }
+    }
+
+    /**
+     * Sends to the players in this world and its other dimensions.
+     */
+    private function broadcastToLevel(Packet $packet) : void{
+        foreach(Server::getInstance()->getWorldManager()->getLoadedDimensions($this->getOverworld()) as $world){
+            $world->broadcastToPlayers($packet);
+        }
+    }
+
+    public function getDimension() : Dimension{
+        return $this->dimension;
+    }
+
+    /**
+     * The overworld this world belongs to, itself for an overworld.
+     */
+    public function getOverworld() : World{
+        return $this->overworld ?? $this;
+    }
+
+    /**
+     * The world of $dimension that belongs with this one, loaded or made when it is not yet.
+     */
+    public function getDimensionWorld(Dimension $dimension) : World{
+        return Server::getInstance()->getWorldManager()->getDimensionWorld($this->getOverworld(), $dimension);
+    }
+
+    public function getMinY() : int{
+        return $this->dimension->getMinY();
+    }
+
+    public function getMaxY() : int{
+        return $this->dimension->getMaxY();
     }
 
     public function getMobEngine() : MobEngine{
@@ -427,7 +478,7 @@ class World{
 
     /** the light that reaches a block from the sky, 0 to 15, as it would be at noon */
     public function getSkyLight(int $x, int $y, int $z) : int{
-        return $this->light->getSkyLight($x, $y, $z);
+        return $this->dimension->hasSkyLight() ? $this->light->getSkyLight($x, $y, $z) : 0;
     }
 
     /**
@@ -435,11 +486,15 @@ class World{
      * its block light and its sky light, the sky's dimmed by the time of day.
      */
     public function getLight(int $x, int $y, int $z) : int{
-        return max($this->light->getBlockLight($x, $y, $z), $this->light->getSkyLight($x, $y, $z) - $this->getSkyDarken());
+        return max($this->light->getBlockLight($x, $y, $z), $this->getSkyLight($x, $y, $z) - $this->getSkyDarken());
     }
 
     /** whether nothing is above the block that stops the light of the sky */
     public function canSeeSky(int $x, int $y, int $z) : bool{
+        if(!$this->dimension->hasSkyLight()){
+            return false;
+        }
+
         $bottom = $this->light->getSkyBottom($x, $z);
         return $bottom !== null && $y >= $bottom;
     }
@@ -494,7 +549,7 @@ class World{
         $chunk = $this->provider->loadChunk($chunkX, $chunkZ);
 
         if($chunk === null){
-            $chunk = new Chunk($chunkX, $chunkZ);
+            $chunk = new Chunk($chunkX, $chunkZ, $this->dimension->getDefaultBiome());
 
             $this->generator->generateChunk($chunk);
 
@@ -588,7 +643,7 @@ class World{
         }
 
         $this->generating[$key] = [$onReady];
-        $chunk = new Chunk($chunkX, $chunkZ);
+        $chunk = new Chunk($chunkX, $chunkZ, $this->dimension->getDefaultBiome());
 
         $generator->generateChunkLater($chunk, function() use ($key, $chunk) : void{
             $waiting = $this->generating[$key] ?? [];
@@ -887,13 +942,13 @@ class World{
 
         $chunk = $this->loadChunk(0, 0);
 
-        for($y = Chunk::MAX_Y; $y >= Chunk::MIN_Y; --$y){
+        for($y = $this->getMaxY(); $y >= $this->getMinY(); --$y){
             if($chunk->getBlock(0, $y, 0)->getName() !== BlockIds::AIR){
                 return new Vector3(0.5, $y + 1, 0.5);
             }
         }
 
-        return new Vector3(0.5, Chunk::MIN_Y, 0.5);
+        return new Vector3(0.5, $this->getMinY(), 0.5);
     }
 
     public function setSpawnPosition(Vector3 $position) : void{
@@ -948,15 +1003,18 @@ class World{
      */
     public function tick(int $currentTick) : void{
         $this->currentTick = $currentTick;
-        ++$this->metadata->gameTime;
         $this->updateTickingChunks();
 
-        if($this->gameRules->getBool(GameRules::DO_DAYLIGHT_CYCLE)){
-            ++$this->metadata->time;
+        if($this->overworld === null){
+            ++$this->level->gameTime;
+        }
 
-            if($this->metadata->gameTime % self::TIME_SYNC_TICKS === 0){
-                $this->broadcastToPlayers(SetTimePacket::create($this->metadata->time));
-            }
+        if($this->gameRules->getBool(GameRules::DO_DAYLIGHT_CYCLE)){
+            ++$this->level->time;
+        }
+
+        if($this->level->gameTime % self::TIME_SYNC_TICKS === 0){
+            $this->broadcastToLevel(SetTimePacket::create($this->level->time));
         }
 
         foreach($this->tickingChunks as $chunk){
@@ -975,7 +1033,11 @@ class World{
         $this->randomTicker->tick();
         $this->liquids->tick($currentTick);
         $this->blockTicker->tick($currentTick);
-        $this->weather->tick($this->randomTicker->getTickingChunks());
+
+        if($this->overworld === null){
+            $this->weather->tick($this->randomTicker->getTickingChunks());
+        }
+
         $this->sleeping->tick();
         NaturalSpawner::tick($this);
 

@@ -42,6 +42,9 @@ use raspberry\network\mcpe\protocol\RequestNetworkSettingsPacket;
 use raspberry\network\mcpe\protocol\ResourcePackClientResponsePacket;
 use raspberry\network\mcpe\protocol\SetLocalPlayerAsInitializedPacket;
 use raspberry\network\mcpe\protocol\StartGamePacket;
+use raspberry\network\mcpe\protocol\ChangeDimensionPacket;
+use raspberry\network\mcpe\protocol\LevelEventPacket;
+use raspberry\network\mcpe\protocol\SetTimePacket;
 use raspberry\network\mcpe\protocol\VoxelShapesPacket;
 use raspberry\network\mcpe\protocol\AddPlayerPacket;
 use raspberry\network\mcpe\protocol\MoveActorAbsolutePacket;
@@ -63,6 +66,7 @@ use raspberry\network\mcpe\protocol\types\AbilityData;
 use raspberry\network\mcpe\protocol\types\AbilityLayer;
 use raspberry\network\mcpe\protocol\types\Attribute;
 use raspberry\network\mcpe\protocol\types\EntityMetadata;
+use raspberry\network\mcpe\protocol\types\LevelEvent;
 use raspberry\network\mcpe\protocol\types\ItemInstance;
 use raspberry\network\mcpe\protocol\types\PlayerListEntry;
 use raspberry\network\mcpe\protocol\types\PlayerBlockAction;
@@ -135,6 +139,7 @@ use raspberry\Server;
 use raspberry\nbt\NbtException;
 
 use raspberry\world\Chunk;
+use raspberry\world\Dimension;
 use raspberry\world\World;
 use raspberry\world\generator\GeneratorFactory;
 
@@ -240,6 +245,12 @@ class NetworkSession{
 
     /** goes up when the sent chunks are forgotten, a chunk encoded before that is not sent */
     private int $chunkEpoch = 0;
+
+    /** the dimension the client is in */
+    private Dimension $dimension = Dimension::OVERWORLD;
+
+    /** goes up with every dimension change, the client names it when its loading screen ends */
+    private int $loadingScreenId = 0;
 
     /** where the client was teleported to, its movement is ignored until it arrives there */
     private ?Vector3 $pendingTeleport = null;
@@ -1070,11 +1081,51 @@ class NetworkSession{
     public function onTeleport(bool $worldChanged) : void{
         if($worldChanged){
             $this->forgetChunks();
+
+            if($this->player !== null && $this->player->getWorld()->getDimension() !== $this->dimension){
+                $this->changeDimension();
+            }
+
             $this->sendSpawnPositions();
         }
 
         $this->sendTeleport();
         $this->updateChunkQueue(true);
+    }
+
+    private function changeDimension() : void{
+        $player = $this->player;
+
+        if($player === null){
+            return;
+        }
+
+        $world = $player->getWorld();
+        $this->dimension = $world->getDimension();
+        $eyes = $player->getEyePosition();
+
+        $status = new PlayStatusPacket();
+        $status->status = PlayStatusPacket::PLAYER_SPAWN;
+
+        $this->sendDataPackets([
+            ChangeDimensionPacket::create($this->dimension->value, $eyes->x, $eyes->y, $eyes->z, false, ++$this->loadingScreenId),
+            $status,
+            PlayerActionPacket::create($player->getId(), PlayerActionPacket::ACTION_DIMENSION_CHANGE_DONE),
+            SetTimePacket::create($world->getTime())
+        ]);
+
+        $this->sendWeather($world);
+    }
+
+    public function sendWeather(World $world) : void{
+        $weather = $world->getWeather();
+        $rain = $world->getDimension()->hasWeather() && $weather->isRaining();
+        $thunder = $rain && $weather->isThundering();
+
+        $this->sendDataPackets([
+            LevelEventPacket::create($rain ? LevelEvent::START_RAINING : LevelEvent::STOP_RAINING, 0, 0, 0, $rain ? 65535 : 0),
+            LevelEventPacket::create($thunder ? LevelEvent::START_THUNDERSTORM : LevelEvent::STOP_THUNDERSTORM, 0, 0, 0, $thunder ? 65535 : 0)
+        ]);
     }
 
     private function sendTeleport() : void{
@@ -1099,12 +1150,15 @@ class NetworkSession{
             return;
         }
 
-        $worldSpawn = $player->getWorld()->getSpawnPosition();
-        [, $playerSpawn] = $player->getSpawnLocation();
+        $worldSpawn = $player->getWorld()->getOverworld()->getSpawnPosition();
+        [$spawnWorld, $playerSpawn] = $player->getSpawnLocation();
+
+        $own = SetSpawnPositionPacket::create(SetSpawnPositionPacket::TYPE_PLAYER_SPAWN, $playerSpawn->getFloorX(), $playerSpawn->getFloorY(), $playerSpawn->getFloorZ());
+        $own->dimension = $spawnWorld->getDimension()->value;
 
         $this->sendDataPackets([
             SetSpawnPositionPacket::create(SetSpawnPositionPacket::TYPE_WORLD_SPAWN, $worldSpawn->getFloorX(), $worldSpawn->getFloorY(), $worldSpawn->getFloorZ()),
-            SetSpawnPositionPacket::create(SetSpawnPositionPacket::TYPE_PLAYER_SPAWN, $playerSpawn->getFloorX(), $playerSpawn->getFloorY(), $playerSpawn->getFloorZ())
+            $own
         ]);
     }
 
@@ -1763,11 +1817,14 @@ class NetworkSession{
         $startGame->worldName = $this->server->getServerName();
         $startGame->levelId = $world->getName();
         $startGame->time = $world->getTime();
-        $startGame->rainLevel = $world->getWeather()->getRainLevel();
-        $startGame->lightningLevel = $world->getWeather()->getThunderLevel();
+        $startGame->dimension = $world->getDimension()->value;
+        $startGame->rainLevel = $world->getDimension()->hasWeather() ? $world->getWeather()->getRainLevel() : 0.0;
+        $startGame->lightningLevel = $world->getDimension()->hasWeather() ? $world->getWeather()->getThunderLevel() : 0.0;
         $startGame->serverChunkTickRadius = $this->server->getTickDistance();
         $startGame->playerPermissions = $this->player->isOp() ? StartGamePacket::PERMISSION_OPERATOR : StartGamePacket::PERMISSION_MEMBER;
         $startGame->blockDefinitions = BlockDefinitions::get();
+
+        $this->dimension = $world->getDimension();
 
         $this->sendDataPackets([
             new JigsawStructureDataPacket(),
@@ -2105,7 +2162,7 @@ class NetworkSession{
     private function encodeLoadedChunk(World $world, Chunk $chunk, int $x, int $z, string $key, int $epoch) : void{
         $revision = $chunk->getRevision();
 
-        $chunk->encode($this->compression->isEnabled() ? $this->compression->getThreshold() : -1, function(string $batch) use ($world, $chunk, $x, $z, $key, $epoch, $revision) : void{
+        $chunk->encode($this->compression->isEnabled() ? $this->compression->getThreshold() : -1, $world->getDimension(), function(string $batch) use ($world, $chunk, $x, $z, $key, $epoch, $revision) : void{
             if($epoch !== $this->chunkEpoch || !$this->isConnected()){
                 return;
             }

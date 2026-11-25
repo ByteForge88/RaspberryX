@@ -34,8 +34,11 @@ class WorldManager{
 
     private Logger $logger;
 
-    /** @var array<string, World> keyed by lower-case name */
+    /** @var array<string, World> */
     private array $worlds = [];
+
+    /** @var array<string, array<int, World>> */
+    private array $dimensions = [];
 
     private ?World $defaultWorld = null;
 
@@ -108,6 +111,50 @@ class WorldManager{
         return $this->worlds[strtolower($name)] ?? null;
     }
 
+    public function getDimensionWorld(World $overworld, Dimension $dimension) : World{
+        $overworld = $overworld->getOverworld();
+
+        if($dimension === Dimension::OVERWORLD){
+            return $overworld;
+        }
+
+        $key = strtolower($overworld->getName());
+
+        if(isset($this->dimensions[$key][$dimension->value])){
+            return $this->dimensions[$key][$dimension->value];
+        }
+
+        if(($this->worlds[$key] ?? null) !== $overworld){
+            throw new InvalidArgumentException("World '{$overworld->getName()}' is not managed by this WorldManager");
+        }
+
+        $provider = new RaspberryWorldProvider(Path::join($this->worldPath($overworld->getName()), $dimension->getFolder()), $this->logger);
+        $seed = $overworld->getMetadata()->seed;
+
+        if(RaspberryWorldProvider::exists($provider->getPath())){
+            $metadata = $provider->loadMetadata();
+        }else{
+            $metadata = new WorldMetadata($overworld->getName(), GeneratorFactory::forDimension($dimension), "", time(), $this->blockDataVersion);
+            $metadata->seed = $seed;
+            $provider->saveMetadata($metadata);
+        }
+
+        $generator = $this->generatorFactory->create($metadata->generator, $metadata->generatorSettings, $seed);
+        $world = $this->dimensions[$key][$dimension->value] = new World($metadata, $generator, $provider, $dimension, $overworld);
+        $world->preloadTickingAreas();
+
+        (new WorldLoadEvent($world))->call();
+        return $world;
+    }
+
+    /**
+     * @return list<World>
+     */
+    public function getLoadedDimensions(World $world) : array{
+        $overworld = $world->getOverworld();
+        return [$overworld, ...array_values($this->dimensions[strtolower($overworld->getName())] ?? [])];
+    }
+
     public function isWorldLoaded(string $name) : bool{
         return isset($this->worlds[strtolower($name)]);
     }
@@ -116,7 +163,15 @@ class WorldManager{
      * @return list<World>
      */
     public function getWorlds() : array{
-        return array_values($this->worlds);
+        $worlds = array_values($this->worlds);
+
+        foreach($this->dimensions as $dimensions){
+            foreach($dimensions as $world){
+                $worlds[] = $world;
+            }
+        }
+
+        return $worlds;
     }
 
     public function getWorldCount() : int{
@@ -147,7 +202,7 @@ class WorldManager{
     public function saveAll() : int{
         $saved = 0;
 
-        foreach($this->worlds as $world){
+        foreach($this->getWorlds() as $world){
             $saved += $world->save();
         }
 
@@ -160,21 +215,41 @@ class WorldManager{
      * @return int number of chunks written
      */
     public function unloadWorld(World $world) : int{
+        $key = strtolower($world->getName());
+
+        if($world->getDimension() !== Dimension::OVERWORLD){
+            if(($this->dimensions[$key][$world->getDimension()->value] ?? null) !== $world){
+                throw new InvalidArgumentException("World '{$world->getName()}' is not managed by this WorldManager");
+            }
+
+            (new WorldUnloadEvent($world))->call();
+
+            unset($this->dimensions[$key][$world->getDimension()->value]);
+
+            return $world->close();
+        }
+
         if($world === $this->defaultWorld){
             throw new LogicException("The default world cannot be unloaded");
         }
-
-        $key = strtolower($world->getName());
 
         if(($this->worlds[$key] ?? null) !== $world){
             throw new InvalidArgumentException("World '{$world->getName()}' is not managed by this WorldManager");
         }
 
+        $saved = 0;
+
+        foreach($this->dimensions[$key] ?? [] as $dimension){
+            $saved += $this->unloadWorld($dimension);
+        }
+
+        unset($this->dimensions[$key]);
+
         (new WorldUnloadEvent($world))->call();
 
         unset($this->worlds[$key]);
 
-        return $world->close();
+        return $saved + $world->close();
     }
 
     /**
@@ -185,14 +260,14 @@ class WorldManager{
     public function close() : int{
         $saved = 0;
 
-        foreach($this->worlds as $world){
+        foreach($this->getWorlds() as $world){
             (new WorldUnloadEvent($world))->call();
             $saved += $world->close();
         }
 
         $this->worlds = [];
+        $this->dimensions = [];
         $this->defaultWorld = null;
-
         return $saved;
     }
 

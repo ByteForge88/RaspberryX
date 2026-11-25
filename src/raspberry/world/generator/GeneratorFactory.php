@@ -6,6 +6,8 @@ namespace raspberry\world\generator;
 
 use raspberry\block\BlockStateRegistry;
 
+use raspberry\world\Dimension;
+
 use InvalidArgumentException;
 
 use function implode;
@@ -18,6 +20,8 @@ class GeneratorFactory{
     public const string OLD = "old";
     public const string PRE_NORMAL = "pre-normal";
     public const string VOID = "void";
+    public const string NETHER = "nether";
+    public const string THE_END = "the_end";
     public const string DEFAULT = self::PRE_NORMAL;
 
     /** @var list<string> */
@@ -39,7 +43,17 @@ class GeneratorFactory{
             self::OLD => new OldGenerator($seed, $this->blockStateRegistry),
             self::PRE_NORMAL => new PreNormalGenerator($seed, $this->blockStateRegistry),
             self::VOID => new VoidGenerator($this->blockStateRegistry),
-            default => throw new InvalidArgumentException("Unknown world generator '{$name}', available: " . implode(", ", self::NAMES))
+            self::NETHER => new NetherGenerator($this->blockStateRegistry),
+            self::THE_END => new EndGenerator($this->blockStateRegistry),
+            default => throw new InvalidArgumentException("Unknown world generator '$name', available: " . implode(", ", self::NAMES))
+        };
+    }
+
+    public static function forDimension(Dimension $dimension) : string{
+        return match($dimension){
+            Dimension::OVERWORLD => self::DEFAULT,
+            Dimension::NETHER => self::NETHER,
+            Dimension::THE_END => self::THE_END
         };
     }
 }

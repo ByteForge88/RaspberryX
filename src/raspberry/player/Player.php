@@ -86,6 +86,7 @@ use raspberry\permission\PermissionManager;
 use raspberry\utils\UUID;
 
 use raspberry\world\Chunk;
+use raspberry\world\Dimension;
 use raspberry\world\World;
 use raspberry\world\Difficulty;
 use raspberry\world\WorldManager;
@@ -238,6 +239,8 @@ class Player extends Human implements CommandSender{
 
     private ?string $spawnWorldName = null;
 
+    private Dimension $spawnDimension = Dimension::OVERWORLD;
+
     /** whether the spawn point is a bed, which has to still be there when the player respawns */
     private bool $spawnAtBed = false;
 
@@ -307,6 +310,11 @@ class Player extends Human implements CommandSender{
         $position = $data->getListTag("Pos");
         $rotation = $data->getListTag("Rotation");
         $world = $worldManager->getWorld($data->getString("World", ""));
+        $dimension = Dimension::tryFrom($data->getInt("DimensionId", 0) ?? 0) ?? Dimension::OVERWORLD;
+
+        if($world !== null){
+            $world = $worldManager->getDimensionWorld($world, $dimension);
+        }
 
         if($world === null || $position === null || $position->count() !== 3 || $position->getTagType() !== DoubleTag::TAG_DOUBLE){
             return null;
@@ -314,7 +322,6 @@ class Player extends Human implements CommandSender{
 
         [$x, $y, $z] = $position->getAllValues();
         [$yaw, $pitch] = $rotation !== null && $rotation->count() === 2 && $rotation->getTagType() === FloatTag::TAG_FLOAT ? $rotation->getAllValues() : [0.0, 0.0];
-
         return [$world, new Vector3($x, $y, $z), $yaw, $pitch];
     }
 
@@ -350,6 +357,7 @@ class Player extends Human implements CommandSender{
 
         if($spawnWorld !== null){
             $this->spawnWorldName = $spawnWorld;
+            $this->spawnDimension = Dimension::tryFrom($data->getInt("SpawnDimension", 0) ?? 0) ?? Dimension::OVERWORLD;
             $this->spawnPosition = new Vector3($data->getInt("SpawnX", 0) + 0.5, (float) $data->getInt("SpawnY", 0), $data->getInt("SpawnZ", 0) + 0.5);
             $this->spawnAtBed = $data->getByte("SpawnBed", 0) === 1;
         }
@@ -385,6 +393,7 @@ class Player extends Human implements CommandSender{
             ->setLong("FirstPlayed", $this->firstPlayed)
             ->setLong("LastPlayed", (int) (microtime(true) * 1000))
             ->setString("World", $world->getName())
+            ->setInt("DimensionId", $world->getDimension()->value)
             ->setTag("Pos", new ListTag([new DoubleTag($position->x), new DoubleTag($position->y), new DoubleTag($position->z)]))
             ->setTag("Rotation", new ListTag([new FloatTag($this->yaw), new FloatTag($this->pitch)]))
             ->setInt("PlayerGameType", $this->gameMode->value)
@@ -411,6 +420,7 @@ class Player extends Human implements CommandSender{
 
         if($this->spawnPosition !== null && $this->spawnWorldName !== null){
             $data->setString("SpawnWorld", $this->spawnWorldName)
+                ->setInt("SpawnDimension", $this->spawnDimension->value)
                 ->setInt("SpawnX", $this->spawnPosition->getFloorX())
                 ->setInt("SpawnY", $this->spawnPosition->getFloorY())
                 ->setInt("SpawnZ", $this->spawnPosition->getFloorZ())
@@ -868,7 +878,7 @@ class Player extends Human implements CommandSender{
             $world = $worldManager->getWorld($this->spawnWorldName);
 
             if($world !== null){
-                return [$world, $this->spawnPosition];
+                return [$worldManager->getDimensionWorld($world, $this->spawnDimension), $this->spawnPosition];
             }
         }
 
@@ -888,10 +898,12 @@ class Player extends Human implements CommandSender{
         if($position === null){
             $this->spawnPosition = null;
             $this->spawnWorldName = null;
+            $this->spawnDimension = Dimension::OVERWORLD;
             $this->spawnAtBed = false;
         }else{
             $this->spawnPosition = new Vector3($position->getFloorX() + 0.5, (float) $position->getFloorY(), $position->getFloorZ() + 0.5);
             $this->spawnWorldName = ($world ?? $this->world)->getName();
+            $this->spawnDimension = ($world ?? $this->world)->getDimension();
             $this->spawnAtBed = $bed;
         }
 
@@ -1148,7 +1160,7 @@ class Player extends Human implements CommandSender{
             ++$this->sleepTicks;
         }
 
-        if($this->position->y < Chunk::MIN_Y - self::VOID_DEPTH && $currentTick - $this->lastVoidDamageTick >= self::VOID_DAMAGE_TICKS){
+        if($this->position->y < $this->world->getMinY() - self::VOID_DEPTH && $currentTick - $this->lastVoidDamageTick >= self::VOID_DAMAGE_TICKS){
             $this->lastVoidDamageTick = $currentTick;
             $this->damage(new DamageSource(DamageSource::CAUSE_VOID, self::VOID_DAMAGE));
         }

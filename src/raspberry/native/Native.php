@@ -50,7 +50,7 @@ class Native{
         
         int32_t rx_chunk_export(uint64_t chunk, char** out, size_t* out_length);
         int32_t rx_chunk_import(uint64_t chunk, const char* data, size_t length);
-        uint64_t rx_chunk_encode(uint64_t chunk, int32_t chunk_x, int32_t chunk_z, uint64_t revision, const char* extra, size_t extra_length, int32_t threshold);
+        uint64_t rx_chunk_encode(uint64_t chunk, int32_t chunk_x, int32_t chunk_z, uint64_t revision, const char* extra, size_t extra_length, int32_t threshold, int32_t dimension);
         int32_t rx_chunk_copy(uint64_t from, uint64_t to);
 
         void rx_generator_states(char** out, size_t* out_length);
