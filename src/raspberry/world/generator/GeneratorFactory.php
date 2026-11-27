@@ -44,7 +44,7 @@ class GeneratorFactory{
             self::PRE_NORMAL => new PreNormalGenerator($seed, $this->blockStateRegistry),
             self::VOID => new VoidGenerator($this->blockStateRegistry),
             self::NETHER => new NetherGenerator($this->blockStateRegistry),
-            self::THE_END => new EndGenerator($this->blockStateRegistry),
+            self::THE_END => new EndGenerator($seed, $this->blockStateRegistry),
             default => throw new InvalidArgumentException("Unknown world generator '$name', available: " . implode(", ", self::NAMES))
         };
     }

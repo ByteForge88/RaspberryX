@@ -3,5 +3,6 @@
 
 pub mod old;
 pub mod blocks;
+pub mod end;
 pub mod features;
 pub mod pre_normal;

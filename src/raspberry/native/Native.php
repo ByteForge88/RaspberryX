@@ -60,6 +60,7 @@ class Native{
         void rx_pre_normal_free(uint64_t generator);
         uint64_t rx_pre_normal_chunk(uint64_t generator, int32_t chunk_x, int32_t chunk_z);
         uint64_t rx_pre_normal_spawn(uint64_t generator);
+        uint64_t rx_end_chunk(int64_t seed, int32_t chunk_x, int32_t chunk_z, uint32_t biome, uint32_t air, uint32_t end_stone, uint32_t obsidian, int32_t platform_x, int32_t platform_y, int32_t platform_z, int32_t platform_radius);
         
         uint64_t rx_mobs_new(int64_t seed);
         void rx_mobs_free(uint64_t world);

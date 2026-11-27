@@ -6,6 +6,7 @@ namespace raspberry\player;
 
 use raspberry\Server;
 
+use raspberry\block\Beds;
 use raspberry\block\BlockIds;
 use raspberry\block\NetherPortals;
 
@@ -19,6 +20,7 @@ use raspberry\world\Dimension;
 use raspberry\world\World;
 use raspberry\world\generator\EndGenerator;
 
+use Closure;
 use JsonException;
 
 use function floor;
@@ -79,7 +81,13 @@ class PortalTravel{
 
             if(!$this->inEndPortal && !$this->travelling){
                 $this->inEndPortal = true;
-                $this->enterEnd($player->getWorld());
+                $world = $player->getWorld();
+
+                if($world->getDimension() === Dimension::THE_END){
+                    $this->leaveEnd($world);
+                }else{
+                    $this->enterEnd($world);
+                }
             }
 
             return;
@@ -130,7 +138,7 @@ class PortalTravel{
         $position = $player->getPosition();
         $half = $player->getWidth() / 2;
         $top = $position->y + $player->getHeight();
-        $canEnterEnd = $world->getDimension() !== Dimension::THE_END && $player->getVehicle() === null;
+        $canUseEndPortal = $player->getVehicle() === null;
         $nether = null;
 
         for($x = (int) floor($position->x - $half); $x <= (int) floor($position->x + $half); ++$x){
@@ -144,7 +152,7 @@ class PortalTravel{
                 for($y = max($world->getMinY(), (int) floor($position->y)); $y <= min($world->getMaxY(), (int) floor($top)); ++$y){
                     $name = $chunk->getBlock($x & 15, $y, $z & 15)->getName();
 
-                    if($name === BlockIds::END_PORTAL && $canEnterEnd && $position->x + $half > $x && $position->z + $half > $z && $top > $y){
+                    if($name === BlockIds::END_PORTAL && $canUseEndPortal && $position->x + $half > $x && $position->z + $half > $z && $top > $y){
                         return [$x, $y, $z, $name];
                     }
 
@@ -166,7 +174,61 @@ class PortalTravel{
     private function enterEnd(World $from) : void{
         $destination = $from->getDimensionWorld(Dimension::THE_END);
         [$x, $y, $z] = [EndGenerator::PLATFORM_X, EndGenerator::PLATFORM_Y, EndGenerator::PLATFORM_Z];
-        $radius = EndGenerator::PLATFORM_RADIUS;
+        $this->requestEndChunks($from, $destination, $x, $z, EndGenerator::PLATFORM_RADIUS, function() use ($destination, $x, $y, $z) : void{
+            $this->arriveInEnd($destination, $x, $y, $z);
+        });
+    }
+
+    private function leaveEnd(World $from) : void{
+        $spawn = $this->player->getPersonalSpawnLocation();
+
+        if($spawn === null || $spawn[0]->getDimension() === Dimension::THE_END){
+            $this->returnToWorldSpawn($from);
+            return;
+        }
+
+        [$destination, $target] = $spawn;
+        [$x, $y, $z] = [$target->getFloorX(), $target->getFloorY(), $target->getFloorZ()];
+        $bed = $this->player->isSpawnAtBed();
+
+        if($y <= $destination->getMinY() || $y >= $destination->getMaxY()){
+            $this->returnToWorldSpawn($from);
+            return;
+        }
+
+        $this->requestEndChunks($from, $destination, $x, $z, $bed ? 2 : 0, function() use ($from, $destination, $target, $x, $y, $z, $bed) : void{
+            $position = $bed ? Beds::findStandUpSpot($destination, $x, $y, $z) : $target;
+
+            if($position === null){
+                $this->returnToWorldSpawn($from);
+                return;
+            }
+
+            $this->arriveFromEnd($destination, $position);
+        });
+    }
+
+    private function returnToWorldSpawn(World $from) : void{
+        $destination = $from->getOverworld();
+        $target = $destination->getSpawnPosition();
+        $this->requestEndChunks($from, $destination, $target->getFloorX(), $target->getFloorZ(), 0, function() use ($destination, $target) : void{
+            $this->arriveFromEnd($destination, $target);
+        });
+    }
+
+    private function arriveFromEnd(World $destination, Vector3 $target) : void{
+        $player = $this->player;
+        $player->teleport($target, null, null, $destination);
+
+        if($player->getWorld() === $destination && $player->getPosition()->equals($target)){
+            $player->getNetworkSession()->sendDataPacket(LevelSoundEventPacket::create(LevelSoundEvent::PORTAL_TRAVEL, $target->x, $target->y, $target->z));
+        }
+    }
+
+    /**
+     * @param Closure() : void $onReady
+     */
+    private function requestEndChunks(World $from, World $destination, int $x, int $z, int $radius, Closure $onReady) : void{
         [$minX, $maxX] = [($x - $radius) >> 4, ($x + $radius) >> 4];
         [$minZ, $maxZ] = [($z - $radius) >> 4, ($z + $radius) >> 4];
         $waiting = ($maxX - $minX + 1) * ($maxZ - $minZ + 1);
@@ -174,9 +236,15 @@ class PortalTravel{
 
         for($cx = $minX; $cx <= $maxX; ++$cx){
             for($cz = $minZ; $cz <= $maxZ; ++$cz){
-                $destination->requestChunk($cx, $cz, function(Chunk $chunk) use (&$waiting, $id, $from, $destination, $x, $y, $z) : void{
-                    if(--$waiting === 0 && $id === $this->endTravelId){
-                        $this->arriveInEnd($from, $destination, $x, $y, $z);
+                $destination->requestChunk($cx, $cz, function(Chunk $chunk) use (&$waiting, $id, $from, $onReady) : void{
+                    if(--$waiting !== 0 || $id !== $this->endTravelId){
+                        return;
+                    }
+
+                    $player = $this->player;
+                    if(!$player->isClosed() && !$player->isDead() && $player->isSpawned() && $player->getWorld() === $from &&
+                        $player->getGameMode()->hasCollision() && $player->getVehicle() === null && !$player->getNetworkSession()->isChangingDimension() && !$this->travelling){
+                        $onReady();
                     }
                 });
             }
@@ -186,15 +254,9 @@ class PortalTravel{
     /**
      * @throws JsonException
      */
-    private function arriveInEnd(World $from, World $destination, int $x, int $y, int $z) : void{
+    private function arriveInEnd(World $destination, int $x, int $y, int $z) : void{
         $player = $this->player;
         $session = $player->getNetworkSession();
-
-        if($player->isClosed() || $player->isDead() || !$player->isSpawned() || $player->getWorld() !== $from ||
-            !$player->getGameMode()->hasCollision() || $player->getVehicle() !== null || $session->isChangingDimension() || $this->travelling){
-            return;
-        }
-
         $target = new Vector3($x + 0.5, $y + 1, $z + 0.5);
         $player->teleport($target, 90.0, 0.0, $destination);
 

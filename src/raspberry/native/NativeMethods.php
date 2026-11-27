@@ -40,6 +40,7 @@ use FFI\CData;
  * @method void rx_pre_normal_free(int $generator)
  * @method int rx_pre_normal_chunk(int $generator, int $chunk_x, int $chunk_z)
  * @method int rx_pre_normal_spawn(int $generator)
+ * @method int rx_end_chunk(int $seed, int $chunk_x, int $chunk_z, int $biome, int $air, int $end_stone, int $obsidian, int $platform_x, int $platform_y, int $platform_z, int $platform_radius)
  * @method int rx_mobs_new(int $seed)
  * @method void rx_mobs_free(int $world)
  * @method void rx_mobs_chunk(int $world, int $chunk_x, int $chunk_z, int $chunk)

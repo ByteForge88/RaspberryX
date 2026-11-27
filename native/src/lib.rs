@@ -394,6 +394,14 @@ fn spawn_job(job: impl FnOnce() -> Vec<u8> + Send + 'static) -> u64 {
 }
 
 #[no_mangle]
+pub extern "C" fn rx_end_chunk(seed: i64, chunk_x: i32, chunk_z: i32, biome: u32, air: u32, end_stone: u32, obsidian: u32, platform_x: i32, platform_y: i32, platform_z: i32, platform_radius: i32) -> u64 {
+    spawn_job(move || {
+        let chunk = generator::end::generate(seed, chunk_x, chunk_z, biome, [air, end_stone, obsidian], [platform_x, platform_y, platform_z, platform_radius]);
+        adopt(chunk).to_le_bytes().to_vec()
+    })
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn rx_pre_normal_new(seed: i64, states: *const u32, count: usize) -> u64 {
     if states.is_null() || count != generator::blocks::count() {
         return 0;

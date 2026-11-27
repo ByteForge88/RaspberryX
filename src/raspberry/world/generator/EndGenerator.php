@@ -4,36 +4,44 @@ declare(strict_types=1);
 
 namespace raspberry\world\generator;
 
-use raspberry\block\BlockState;
+use raspberry\block\BlockIds;
+use raspberry\block\BlockStateIds;
 use raspberry\block\BlockStateRegistry;
 
 use raspberry\math\Vector3;
 
+use raspberry\native\Native;
+
 use raspberry\world\Chunk;
 use raspberry\world\Dimension;
 
-use function abs;
+use Closure;
+use UnexpectedValueException;
 
-class EndGenerator implements Generator{
+use function strlen;
+use function unpack;
+use function usleep;
 
-    public const int PLATFORM_X = 100;
+class EndGenerator implements AsyncGenerator{
+
+    public const int PLATFORM_X = 84;
     public const int PLATFORM_Y = 48;
     public const int PLATFORM_Z = 0;
     public const int PLATFORM_RADIUS = 2;
 
-    private const int ISLAND_RADIUS = 48;
+    private const int WAIT_MICROSECONDS = 200;
 
-    private const int ISLAND_TOP = 60;
+    private readonly int $air;
+    private readonly int $endStone;
+    private readonly int $obsidian;
 
-    private const int ISLAND_DEPTH = 12;
-
-    private BlockState $endStone;
-
-    private BlockState $obsidian;
-
-    public function __construct(BlockStateRegistry $registry){
-        $this->endStone = $registry->getDefaultState("minecraft:end_stone");
-        $this->obsidian = $registry->getDefaultState("minecraft:obsidian");
+    public function __construct(
+        private readonly int $seed,
+        BlockStateRegistry $registry
+    ){
+        $this->air = BlockStateIds::get($registry->getDefaultState(BlockIds::AIR));
+        $this->endStone = BlockStateIds::get($registry->getDefaultState(BlockIds::END_STONE));
+        $this->obsidian = BlockStateIds::get($registry->getDefaultState(BlockIds::OBSIDIAN));
     }
 
     public function getName() : string{
@@ -45,28 +53,40 @@ class EndGenerator implements Generator{
     }
 
     public function generateChunk(Chunk $chunk) : void{
-        $chunk->fillBiome(Dimension::THE_END->getDefaultBiome());
-        $baseX = $chunk->getX() << 4;
-        $baseZ = $chunk->getZ() << 4;
+        $done = false;
+        $this->generateChunkLater($chunk, function() use (&$done) : void{
+            $done = true;
+        });
 
-        for($x = 0; $x < Chunk::WIDTH; ++$x){
-            for($z = 0; $z < Chunk::WIDTH; ++$z){
-                $worldX = $baseX + $x;
-                $worldZ = $baseZ + $z;
-                $distance = $worldX * $worldX + $worldZ * $worldZ;
-
-                if($distance <= self::ISLAND_RADIUS ** 2){
-                    $bottom = self::ISLAND_TOP - (int) (self::ISLAND_DEPTH * (1 - $distance / self::ISLAND_RADIUS ** 2)) - 1;
-
-                    for($y = $bottom; $y <= self::ISLAND_TOP; ++$y){
-                        $chunk->setBlock($x, $y, $z, $this->endStone);
-                    }
-                }
-
-                if(abs($worldX - self::PLATFORM_X) <= self::PLATFORM_RADIUS && abs($worldZ - self::PLATFORM_Z) <= self::PLATFORM_RADIUS){
-                    $chunk->setBlock($x, self::PLATFORM_Y, $z, $this->obsidian);
-                }
+        while(!$done){
+            if(Native::poll() === 0){
+                usleep(self::WAIT_MICROSECONDS);
             }
         }
+    }
+
+    public function generateChunkLater(Chunk $chunk, Closure $onDone) : void{
+        $ffi = Native::get();
+        $id = $ffi->rx_end_chunk(
+            $this->seed, $chunk->getX(), $chunk->getZ(), Dimension::THE_END->getDefaultBiome(),
+            $this->air, $this->endStone, $this->obsidian,
+            self::PLATFORM_X, self::PLATFORM_Y, self::PLATFORM_Z, self::PLATFORM_RADIUS
+        );
+
+        if($id === 0){
+            throw new UnexpectedValueException("The native library would not make chunk {$chunk->getX()}, {$chunk->getZ()}");
+        }
+
+        Native::await($id, function(string $data) use ($ffi, $chunk, $onDone) : void{
+            if(strlen($data) !== 8){
+                $onDone();
+                throw new UnexpectedValueException("The native library failed to make chunk {$chunk->getX()}, {$chunk->getZ()}");
+            }
+
+            $handle = unpack("P", $data)[1];
+            $ffi->rx_chunk_copy($handle, $chunk->getHandle());
+            $ffi->rx_chunk_free($handle);
+            $onDone();
+        });
     }
 }

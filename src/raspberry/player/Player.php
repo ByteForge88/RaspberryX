@@ -878,19 +878,29 @@ class Player extends Human implements CommandSender{
      * @return array{World, Vector3}
      */
     public function getSpawnLocation() : array{
-        $worldManager = $this->session->getServer()->getWorldManager();
+        $spawn = $this->getPersonalSpawnLocation();
 
-        if($this->spawnPosition !== null && $this->spawnWorldName !== null){
-            $world = $worldManager->getWorld($this->spawnWorldName);
-
-            if($world !== null){
-                return [$worldManager->getDimensionWorld($world, $this->spawnDimension), $this->spawnPosition];
-            }
+        if($spawn !== null){
+            return $spawn;
         }
 
-        $world = $worldManager->getDefaultWorld();
-
+        $world = $this->session->getServer()->getWorldManager()->getDefaultWorld();
         return [$world, $world->getSpawnPosition()];
+    }
+
+    /**
+     * The player's saved spawn, when its world is available.
+     *
+     * @return array{World, Vector3}|null
+     */
+    public function getPersonalSpawnLocation() : ?array{
+        if($this->spawnPosition === null || $this->spawnWorldName === null){
+            return null;
+        }
+
+        $worldManager = $this->session->getServer()->getWorldManager();
+        $world = $worldManager->getWorld($this->spawnWorldName);
+        return $world === null ? null : [$worldManager->getDimensionWorld($world, $this->spawnDimension), $this->spawnPosition];
     }
 
     public function isSpawnAtBed() : bool{
