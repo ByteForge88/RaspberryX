@@ -20,6 +20,7 @@ use raspberry\block\BlockProperties;
 use raspberry\block\BlockState;
 use raspberry\block\BlockSupport;
 use raspberry\block\Cauldrons;
+use raspberry\block\EndPortals;
 use raspberry\block\ItemBlocks;
 use raspberry\block\RedstoneOre;
 use raspberry\block\NoteBlocks;
@@ -139,6 +140,17 @@ class BlockPlacer{
 
         if($event->isCancelled()){
             $this->resend($x, $y, $z, $face);
+            return;
+        }
+
+        if($held->getId() === ItemIds::ENDER_EYE && $clicked->getName() === BlockIds::END_PORTAL_FRAME){
+            if($player->getGameMode()->allowsBuilding() && EndPortals::insertEye($world, $x, $y, $z)){
+                $player->swingArm(AnimatePacket::SWING_INTERACT);
+                $this->useUpHeld($held);
+            }else{
+                $this->resend($x, $y, $z, $face);
+            }
+
             return;
         }
 

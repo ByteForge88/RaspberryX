@@ -11,9 +11,13 @@ use raspberry\block\NetherPortals;
 
 use raspberry\math\Vector3;
 
+use raspberry\network\mcpe\protocol\LevelSoundEventPacket;
+use raspberry\network\mcpe\protocol\types\LevelSoundEvent;
+
 use raspberry\world\Chunk;
 use raspberry\world\Dimension;
 use raspberry\world\World;
+use raspberry\world\generator\EndGenerator;
 
 use JsonException;
 
@@ -56,6 +60,8 @@ class PortalTravel{
     private int $cooldown = 0;
 
     private bool $travelling = false;
+    private bool $inEndPortal = false;
+    private int $endTravelId = 0;
 
     public function __construct(Player $player){
         $this->player = $player;
@@ -67,6 +73,19 @@ class PortalTravel{
     public function tick() : void{
         $player = $this->player;
         $portal = $player->getGameMode()->hasCollision() && !$player->getNetworkSession()->isChangingDimension() ? $this->findPortal() : null;
+
+        if($portal !== null && $portal[3] === BlockIds::END_PORTAL){
+            $this->ticksInPortal = 0;
+
+            if(!$this->inEndPortal && !$this->travelling){
+                $this->inEndPortal = true;
+                $this->enterEnd($player->getWorld());
+            }
+
+            return;
+        }
+
+        $this->inEndPortal = false;
 
         if($portal === null){
             $this->ticksInPortal = 0;
@@ -96,20 +115,23 @@ class PortalTravel{
         }
 
         if($this->ticksInPortal >= ($player->getGameMode()->hasInstantBuild() ? self::CREATIVE_WAIT : self::SURVIVAL_WAIT)){
-            $this->travel($portal, $destination, $target);
+            $this->travel([$portal[0], $portal[1], $portal[2]], $destination, $target);
         }
     }
 
     /**
-     * The first portal block the player's box touches.
+     * The end portal or first nether portal block the player's box touches.
      *
-     * @return array{int, int, int}|null
+     * @return array{int, int, int, string}|null
      */
     private function findPortal() : ?array{
         $player = $this->player;
         $world = $player->getWorld();
         $position = $player->getPosition();
         $half = $player->getWidth() / 2;
+        $top = $position->y + $player->getHeight();
+        $canEnterEnd = $world->getDimension() !== Dimension::THE_END && $player->getVehicle() === null;
+        $nether = null;
 
         for($x = (int) floor($position->x - $half); $x <= (int) floor($position->x + $half); ++$x){
             for($z = (int) floor($position->z - $half); $z <= (int) floor($position->z + $half); ++$z){
@@ -119,15 +141,85 @@ class PortalTravel{
                     continue;
                 }
 
-                for($y = max($world->getMinY(), (int) floor($position->y)); $y <= min($world->getMaxY(), (int) floor($position->y + $player->getHeight())); ++$y){
-                    if($chunk->getBlock($x & 15, $y, $z & 15)->getName() === BlockIds::PORTAL){
-                        return [$x, $y, $z];
+                for($y = max($world->getMinY(), (int) floor($position->y)); $y <= min($world->getMaxY(), (int) floor($top)); ++$y){
+                    $name = $chunk->getBlock($x & 15, $y, $z & 15)->getName();
+
+                    if($name === BlockIds::END_PORTAL && $canEnterEnd && $position->x + $half > $x && $position->z + $half > $z && $top > $y){
+                        return [$x, $y, $z, $name];
+                    }
+
+                    if($name === BlockIds::PORTAL){
+                        $nether ??= [$x, $y, $z, $name];
                     }
                 }
             }
         }
 
-        return null;
+        return $nether;
+    }
+
+    /**
+     * Waits for the chunks the obsidian platform crosses, then takes the player to the End.
+     *
+     * @throws JsonException
+     */
+    private function enterEnd(World $from) : void{
+        $destination = $from->getDimensionWorld(Dimension::THE_END);
+        [$x, $y, $z] = [EndGenerator::PLATFORM_X, EndGenerator::PLATFORM_Y, EndGenerator::PLATFORM_Z];
+        $radius = EndGenerator::PLATFORM_RADIUS;
+        [$minX, $maxX] = [($x - $radius) >> 4, ($x + $radius) >> 4];
+        [$minZ, $maxZ] = [($z - $radius) >> 4, ($z + $radius) >> 4];
+        $waiting = ($maxX - $minX + 1) * ($maxZ - $minZ + 1);
+        $id = ++$this->endTravelId;
+
+        for($cx = $minX; $cx <= $maxX; ++$cx){
+            for($cz = $minZ; $cz <= $maxZ; ++$cz){
+                $destination->requestChunk($cx, $cz, function(Chunk $chunk) use (&$waiting, $id, $from, $destination, $x, $y, $z) : void{
+                    if(--$waiting === 0 && $id === $this->endTravelId){
+                        $this->arriveInEnd($from, $destination, $x, $y, $z);
+                    }
+                });
+            }
+        }
+    }
+
+    /**
+     * @throws JsonException
+     */
+    private function arriveInEnd(World $from, World $destination, int $x, int $y, int $z) : void{
+        $player = $this->player;
+        $session = $player->getNetworkSession();
+
+        if($player->isClosed() || $player->isDead() || !$player->isSpawned() || $player->getWorld() !== $from ||
+            !$player->getGameMode()->hasCollision() || $player->getVehicle() !== null || $session->isChangingDimension() || $this->travelling){
+            return;
+        }
+
+        $target = new Vector3($x + 0.5, $y + 1, $z + 0.5);
+        $player->teleport($target, 90.0, 0.0, $destination);
+
+        if($player->getWorld() !== $destination || !$player->getPosition()->equals($target)){
+            return;
+        }
+
+        $registry = Server::getInstance()->getBlockStateRegistry();
+        $obsidian = $registry->getDefaultState(BlockIds::OBSIDIAN);
+        $air = $registry->getDefaultState(BlockIds::AIR);
+        $radius = EndGenerator::PLATFORM_RADIUS;
+
+        for($dx = -$radius; $dx <= $radius; ++$dx){
+            for($dz = -$radius; $dz <= $radius; ++$dz){
+                for($dy = 0; $dy <= 3; ++$dy){
+                    $block = $dy === 0 ? $obsidian : $air;
+
+                    if(!$destination->getBlock($x + $dx, $y + $dy, $z + $dz)->equals($block)){
+                        $destination->setBlock($x + $dx, $y + $dy, $z + $dz, $block);
+                    }
+                }
+            }
+        }
+
+        $session->sendDataPacket(LevelSoundEventPacket::create(LevelSoundEvent::PORTAL_TRAVEL, $target->x, $target->y, $target->z));
     }
 
     /**

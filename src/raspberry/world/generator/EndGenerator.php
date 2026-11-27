@@ -19,8 +19,7 @@ class EndGenerator implements Generator{
     public const int PLATFORM_X = 100;
     public const int PLATFORM_Y = 48;
     public const int PLATFORM_Z = 0;
-
-    private const int PLATFORM_RADIUS = 2;
+    public const int PLATFORM_RADIUS = 2;
 
     private const int ISLAND_RADIUS = 48;
 

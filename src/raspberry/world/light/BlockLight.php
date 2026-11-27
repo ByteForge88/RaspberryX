@@ -34,7 +34,6 @@ class BlockLight{
     /** blocks with a faint glow the light table leaves out */
     private const array FAINT = [
         "minecraft:brewing_stand" => 1,
-        "minecraft:end_portal_frame" => 1,
         "minecraft:sculk_sensor" => 1,
         "minecraft:calibrated_sculk_sensor" => 1
     ];

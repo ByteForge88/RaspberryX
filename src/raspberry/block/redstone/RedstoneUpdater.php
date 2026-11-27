@@ -103,7 +103,7 @@ class RedstoneUpdater{
     ];
 
     /** blocks whose change can change the power of blocks two away */
-    private const string POWER_BLOCKS = '/^minecraft:(redstone_wire|redstone_block|(unlit_)?redstone_torch|lever|\w+_button|\w+_pressure_plate|(powered|unpowered)_(repeater|comparator)|observer|daylight_detector(_inverted)?|trapped_chest|lectern|detector_rail|target|tripwire_hook|(waxed_)?((exposed|weathered|oxidized)_)?lightning_rod)$/D';
+    private const string POWER_BLOCKS = '/^minecraft:(redstone_wire|redstone_block|(unlit_)?redstone_torch|lever|\w+_button|\w+_pressure_plate|(powered|unpowered)_(repeater|comparator)|observer|daylight_detector(_inverted)?|trapped_chest|lectern|end_portal_frame|detector_rail|target|tripwire_hook|(waxed_)?((exposed|weathered|oxidized)_)?lightning_rod)$/D';
 
     private const string COPPER_BULB = '/^minecraft:(waxed_)?((exposed|weathered|oxidized)_)?copper_bulb$/D';
 
