@@ -58,7 +58,7 @@ class PlayerAuthInputPacket implements Packet{
     /** the client's tick counter, one more for every PlayerAuthInput */
     public int $tick = 0;
 
-    /** using the held item; only breaking blocks uses this now */
+    /** using the held item on a block, or breaking it */
     public ?UseItemData $itemInteraction = null;
 
     /** an inventory request, sent when mining with a tool */

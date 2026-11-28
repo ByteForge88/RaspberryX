@@ -33,11 +33,12 @@ class AnimatePacket implements Packet{
     /** 0: main hand, 1: off hand */
     public int $hand = 0;
 
-    public static function create(int $action, int $actorRuntimeId, ?string $swingSource = null) : self{
+    public static function create(int $action, int $actorRuntimeId, ?string $swingSource = null, float $data = 0.0) : self{
         $packet = new self();
         $packet->action = $action;
         $packet->actorRuntimeId = $actorRuntimeId;
         $packet->swingSource = $swingSource;
+        $packet->data = $data;
         return $packet;
     }
 

@@ -11,6 +11,7 @@ use raspberry\event\entity\ExplosionPrimeEvent;
 
 use raspberry\math\Vector3;
 
+use raspberry\network\mcpe\protocol\SetActorDataPacket;
 use raspberry\network\mcpe\protocol\types\EntityMetadata;
 
 use raspberry\world\Explosion;
@@ -76,6 +77,7 @@ class PrimedTNT extends Entity{
         $metadata->setFlag(EntityMetadata::FLAG_IGNITED);
         $metadata->setLong(EntityMetadata::KEY_FLAGS_TWO, 0);
         $metadata->setInt(EntityMetadata::KEY_FUSE_TIME, $this->fuse);
+        $metadata->setFloat(EntityMetadata::KEY_SCALE, 1.0);
         $metadata->setFloat(EntityMetadata::KEY_WIDTH, self::SIZE);
         $metadata->setFloat(EntityMetadata::KEY_HEIGHT, self::SIZE);
         return $metadata;
@@ -97,7 +99,19 @@ class PrimedTNT extends Entity{
 
         $this->fall(self::GRAVITY, self::DRAG, 0.7);
 
-        if(--$this->fuse > 0){
+        --$this->fuse;
+
+        if($this->viewers !== []){
+            $metadata = new EntityMetadata();
+            $metadata->setInt(EntityMetadata::KEY_FUSE_TIME, $this->fuse);
+            $packet = SetActorDataPacket::create($this->id, $metadata, 0);
+
+            foreach($this->viewers as $viewer){
+                $viewer->getNetworkSession()->sendDataPacket($packet);
+            }
+        }
+
+        if($this->fuse > 0){
             return;
         }
 

@@ -256,6 +256,9 @@ class Player extends Human implements CommandSender{
     /** when the player first joined */
     private int $firstPlayed;
 
+    /** when the player was last saved before this join */
+    private int $lastPlayed;
+
     private PlayerInventory $inventory;
 
     private ArmorInventory $armorInventory;
@@ -290,6 +293,7 @@ class Player extends Human implements CommandSender{
         $this->gameMode = $gameMode;
         $this->flying = $gameMode->forcesFlying();
         $this->firstPlayed = (int) (microtime(true) * 1000);
+        $this->lastPlayed = $this->firstPlayed;
         $this->inventory = new PlayerInventory();
         $this->armorInventory = new ArmorInventory();
         $this->offHandInventory = new Inventory(1);
@@ -369,6 +373,7 @@ class Player extends Human implements CommandSender{
         }
 
         $this->firstPlayed = $data->getLong("FirstPlayed", $this->firstPlayed);
+        $this->lastPlayed = $data->getLong("LastPlayed", $this->firstPlayed);
         $this->foodTickTimer = max(1, min($data->getInt("FoodTickTimer", 1), 80));
         $this->fallDistance = max(0.0, $data->getFloat("FallDistance", 0.0));
 
@@ -449,6 +454,18 @@ class Player extends Human implements CommandSender{
         }
 
         return new ListTag($list, CompoundTag::TAG_COMPOUND);
+    }
+
+    public function getFirstPlayed() : ?int{
+        return $this->firstPlayed;
+    }
+
+    public function getLastPlayed() : ?int{
+        return $this->lastPlayed;
+    }
+
+    public function hasPlayedBefore() : bool{
+        return $this->lastPlayed - $this->firstPlayed > 1;
     }
 
     public function getName() : string{
@@ -1470,11 +1487,11 @@ class Player extends Human implements CommandSender{
         $this->broadcastNear($target, LevelSoundEventPacket::create(LevelSoundEvent::ATTACK_STRONG, $position->x, $position->y, $position->z));
 
         if($critical){
-            $this->broadcastNear($target, AnimatePacket::create(AnimatePacket::ACTION_CRITICAL_HIT, $target->getId()));
+            $this->broadcastNear($target, AnimatePacket::create(AnimatePacket::ACTION_CRITICAL_HIT, $target->getId(), data: 55.0));
         }
 
         if($bonus > 0){
-            $this->broadcastNear($target, AnimatePacket::create(AnimatePacket::ACTION_MAGIC_CRITICAL_HIT, $target->getId()));
+            $this->broadcastNear($target, AnimatePacket::create(AnimatePacket::ACTION_MAGIC_CRITICAL_HIT, $target->getId(), data: 15.0));
         }
 
         if(!$this->gameMode->hasInstantBuild()){
@@ -1983,7 +2000,11 @@ class Player extends Human implements CommandSender{
     }
 
     public function isOnline() : bool{
-        return !$this->closed && $this->session->isConnected();
+        return !$this->closed && $this->isConnected();
+    }
+
+    public function isConnected() : bool{
+        return $this->session->isConnected();
     }
 
     /**

@@ -1953,7 +1953,11 @@ class NetworkSession{
             $player->setSprinting(false);
         }
 
-        $player->setSneaking($packet->hasFlag(PlayerAuthInputPacket::FLAG_SNEAKING));
+        if($packet->hasFlag(PlayerAuthInputPacket::FLAG_START_SNEAKING)){
+            $player->setSneaking(true);
+        }elseif($packet->hasFlag(PlayerAuthInputPacket::FLAG_STOP_SNEAKING)){
+            $player->setSneaking(false);
+        }
 
         if($packet->hasFlag(PlayerAuthInputPacket::FLAG_START_SWIMMING)){
             $player->setSwimming(true);
@@ -2055,8 +2059,12 @@ class NetworkSession{
 
         $interaction = $packet->itemInteraction;
 
-        if($interaction !== null && $interaction->action === UseItemData::ACTION_BREAK_BLOCK){
-            $breaker->finish($interaction->x, $interaction->y, $interaction->z);
+        if($interaction !== null){
+            if($interaction->action === UseItemData::ACTION_BREAK_BLOCK){
+                $breaker->finish($interaction->x, $interaction->y, $interaction->z);
+            }elseif($interaction->action === UseItemData::ACTION_CLICK_BLOCK){
+                $player->getBlockPlacer()->useItemOn($interaction);
+            }
         }
 
         if($packet->itemStackRequest !== null){
