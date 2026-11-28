@@ -15,6 +15,7 @@ use raspberry\Server;
 
 use Symfony\Component\Filesystem\Path;
 
+use Closure;
 use SplFileInfo;
 use InvalidArgumentException;
 use RecursiveIteratorIterator;
@@ -87,7 +88,14 @@ abstract class PluginBase implements CommandExecutor{
      * @internal
      */
     public function load() : void{
-        $this->onLoad();
+        $this->loadWithSingleton($this->onLoad(...));
+    }
+
+    /**
+     * @internal
+     */
+    protected function loadWithSingleton(Closure $load) : void{
+        $load();
     }
 
     /**
